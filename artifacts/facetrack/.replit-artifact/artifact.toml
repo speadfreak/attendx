@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "FaceTrack – Intelligent Attendance System"
+version = "1.0.0"
+id = "artifacts/facetrack"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22809
+
+[services.development]
+run = "pnpm --filter @workspace/facetrack run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/facetrack", "run", "build" ]
+publicDir = "artifacts/facetrack/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22809"
+BASE_PATH = "/"

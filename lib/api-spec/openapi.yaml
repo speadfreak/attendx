@@ -3,13 +3,27 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: FaceTrack Intelligent Attendance System API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication
+  - name: students
+    description: Student management
+  - name: classrooms
+    description: Classroom management
+  - name: attendance
+    description: Attendance tracking
+  - name: sms
+    description: SMS notification logs
+  - name: face
+    description: Face recognition
+  - name: dashboard
+    description: Dashboard analytics
 paths:
   /healthz:
     get:
@@ -24,7 +38,525 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Admin login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginBody"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current admin
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current admin info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Admin"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /students:
+    get:
+      operationId: listStudents
+      tags: [students]
+      summary: List all students
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: classroomId
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: List of students
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Student"
+    post:
+      operationId: createStudent
+      tags: [students]
+      summary: Create a new student
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStudentBody"
+      responses:
+        "201":
+          description: Student created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Student"
+
+  /students/{id}:
+    get:
+      operationId: getStudent
+      tags: [students]
+      summary: Get a student by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Student found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Student"
+        "404":
+          description: Student not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateStudent
+      tags: [students]
+      summary: Update a student
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStudentBody"
+      responses:
+        "200":
+          description: Student updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Student"
+    delete:
+      operationId: deleteStudent
+      tags: [students]
+      summary: Delete a student
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Student deleted
+
+  /classrooms:
+    get:
+      operationId: listClassrooms
+      tags: [classrooms]
+      summary: List all classrooms
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of classrooms
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Classroom"
+    post:
+      operationId: createClassroom
+      tags: [classrooms]
+      summary: Create a classroom
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateClassroomBody"
+      responses:
+        "201":
+          description: Classroom created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Classroom"
+
+  /classrooms/{id}:
+    get:
+      operationId: getClassroom
+      tags: [classrooms]
+      summary: Get a classroom
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Classroom found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Classroom"
+    patch:
+      operationId: updateClassroom
+      tags: [classrooms]
+      summary: Update a classroom
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateClassroomBody"
+      responses:
+        "200":
+          description: Classroom updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Classroom"
+    delete:
+      operationId: deleteClassroom
+      tags: [classrooms]
+      summary: Delete a classroom
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Classroom deleted
+
+  /attendance:
+    get:
+      operationId: listAttendance
+      tags: [attendance]
+      summary: List attendance logs
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: classroomId
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+        - name: studentId
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+        - name: date
+          in: query
+          required: false
+          schema:
+            type: ["string", "null"]
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Attendance logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AttendanceLog"
+    post:
+      operationId: createAttendance
+      tags: [attendance]
+      summary: Mark attendance manually
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAttendanceBody"
+      responses:
+        "201":
+          description: Attendance marked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttendanceLog"
+
+  /attendance/{id}:
+    patch:
+      operationId: updateAttendance
+      tags: [attendance]
+      summary: Update attendance record
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAttendanceBody"
+      responses:
+        "200":
+          description: Attendance updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttendanceLog"
+
+  /attendance/today:
+    get:
+      operationId: getTodayAttendance
+      tags: [attendance]
+      summary: Get today's live attendance feed
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: classroomId
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: Today's attendance
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AttendanceLog"
+
+  /face/encode:
+    post:
+      operationId: encodeFace
+      tags: [face]
+      summary: Encode and store a face for a student
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EncodeFaceBody"
+      responses:
+        "200":
+          description: Face encoded and stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FaceEncodeResponse"
+        "400":
+          description: No face detected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /face/recognize:
+    post:
+      operationId: recognizeFace
+      tags: [face]
+      summary: Recognize a face and mark attendance
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecognizeFaceBody"
+      responses:
+        "200":
+          description: Face recognized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FaceRecognizeResponse"
+        "404":
+          description: No match found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /sms-logs:
+    get:
+      operationId: listSmsLogs
+      tags: [sms]
+      summary: List SMS notification logs
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: ["string", "null"]
+        - name: studentId
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: SMS logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SmsLog"
+
+  /dashboard/stats:
+    get:
+      operationId: getDashboardStats
+      tags: [dashboard]
+      summary: Get dashboard summary statistics
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Dashboard statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+
+  /dashboard/recent-activity:
+    get:
+      operationId: getRecentActivity
+      tags: [dashboard]
+      summary: Get recent attendance activity feed
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Recent activity
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AttendanceLog"
+
+  /dashboard/attendance-trend:
+    get:
+      operationId: getAttendanceTrend
+      tags: [dashboard]
+      summary: Get attendance trend for the past 7 days
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Attendance trend data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AttendanceTrendPoint"
+
+  /dashboard/classroom-summary:
+    get:
+      operationId: getClassroomSummary
+      tags: [dashboard]
+      summary: Get per-classroom attendance summary for today
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Classroom summary
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ClassroomAttendanceSummary"
+
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   schemas:
     HealthStatus:
       type: object
@@ -34,3 +566,370 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    LoginBody:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+      required:
+        - email
+        - password
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        admin:
+          $ref: "#/components/schemas/Admin"
+      required:
+        - token
+        - admin
+
+    Admin:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - email
+        - role
+        - createdAt
+
+    Student:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        studentId:
+          type: string
+        classroomId:
+          type: ["integer", "null"]
+        classroomName:
+          type: ["string", "null"]
+        parentPhone:
+          type: string
+        photoUrl:
+          type: ["string", "null"]
+        qrCode:
+          type: ["string", "null"]
+        hasFaceEncoding:
+          type: boolean
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - studentId
+        - classroomId
+        - classroomName
+        - parentPhone
+        - photoUrl
+        - qrCode
+        - hasFaceEncoding
+        - createdAt
+
+    CreateStudentBody:
+      type: object
+      properties:
+        name:
+          type: string
+        studentId:
+          type: string
+        classroomId:
+          type: ["integer", "null"]
+        parentPhone:
+          type: string
+        photoUrl:
+          type: ["string", "null"]
+      required:
+        - name
+        - studentId
+        - parentPhone
+
+    UpdateStudentBody:
+      type: object
+      properties:
+        name:
+          type: string
+        classroomId:
+          type: ["integer", "null"]
+        parentPhone:
+          type: string
+        photoUrl:
+          type: ["string", "null"]
+
+    Classroom:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        teacherName:
+          type: ["string", "null"]
+        studentCount:
+          type: integer
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - description
+        - teacherName
+        - studentCount
+        - createdAt
+
+    CreateClassroomBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        teacherName:
+          type: ["string", "null"]
+      required:
+        - name
+
+    UpdateClassroomBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        teacherName:
+          type: ["string", "null"]
+
+    AttendanceLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        studentId:
+          type: integer
+        studentName:
+          type: string
+        classroomId:
+          type: ["integer", "null"]
+        classroomName:
+          type: ["string", "null"]
+        status:
+          type: string
+        method:
+          type: string
+        markedAt:
+          type: string
+        notes:
+          type: ["string", "null"]
+      required:
+        - id
+        - studentId
+        - studentName
+        - classroomId
+        - classroomName
+        - status
+        - method
+        - markedAt
+        - notes
+
+    CreateAttendanceBody:
+      type: object
+      properties:
+        studentId:
+          type: integer
+        classroomId:
+          type: ["integer", "null"]
+        status:
+          type: string
+        method:
+          type: string
+        notes:
+          type: ["string", "null"]
+      required:
+        - studentId
+        - status
+        - method
+
+    UpdateAttendanceBody:
+      type: object
+      properties:
+        status:
+          type: string
+        notes:
+          type: ["string", "null"]
+
+    SmsLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        studentId:
+          type: integer
+        studentName:
+          type: string
+        parentPhone:
+          type: string
+        message:
+          type: string
+        status:
+          type: string
+        provider:
+          type: string
+        sentAt:
+          type: string
+        errorMessage:
+          type: ["string", "null"]
+      required:
+        - id
+        - studentId
+        - studentName
+        - parentPhone
+        - message
+        - status
+        - provider
+        - sentAt
+        - errorMessage
+
+    EncodeFaceBody:
+      type: object
+      properties:
+        studentId:
+          type: integer
+        imageBase64:
+          type: string
+      required:
+        - studentId
+        - imageBase64
+
+    FaceEncodeResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required:
+        - success
+        - message
+
+    RecognizeFaceBody:
+      type: object
+      properties:
+        imageBase64:
+          type: string
+        classroomId:
+          type: ["integer", "null"]
+      required:
+        - imageBase64
+
+    FaceRecognizeResponse:
+      type: object
+      properties:
+        studentId:
+          type: integer
+        studentName:
+          type: string
+        confidence:
+          type: number
+        attendanceId:
+          type: integer
+        alreadyMarked:
+          type: boolean
+      required:
+        - studentId
+        - studentName
+        - confidence
+        - attendanceId
+        - alreadyMarked
+
+    DashboardStats:
+      type: object
+      properties:
+        totalStudents:
+          type: integer
+        totalClassrooms:
+          type: integer
+        presentToday:
+          type: integer
+        absentToday:
+          type: integer
+        lateToday:
+          type: integer
+        attendanceRate:
+          type: number
+        smsSentToday:
+          type: integer
+      required:
+        - totalStudents
+        - totalClassrooms
+        - presentToday
+        - absentToday
+        - lateToday
+        - attendanceRate
+        - smsSentToday
+
+    AttendanceTrendPoint:
+      type: object
+      properties:
+        date:
+          type: string
+        present:
+          type: integer
+        absent:
+          type: integer
+        late:
+          type: integer
+      required:
+        - date
+        - present
+        - absent
+        - late
+
+    ClassroomAttendanceSummary:
+      type: object
+      properties:
+        classroomId:
+          type: integer
+        classroomName:
+          type: string
+        totalStudents:
+          type: integer
+        presentCount:
+          type: integer
+        absentCount:
+          type: integer
+        attendanceRate:
+          type: number
+      required:
+        - classroomId
+        - classroomName
+        - totalStudents
+        - presentCount
+        - absentCount
+        - attendanceRate
