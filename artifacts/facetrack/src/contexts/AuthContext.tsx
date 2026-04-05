@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { useGetMe } from "@workspace/api-client-react";
+import { useGetMe, setAuthTokenGetter } from "@workspace/api-client-react";
 import type { Admin } from "@workspace/api-client-react/src/generated/api.schemas";
 import { useLocation } from "wouter";
 
@@ -17,7 +17,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(localStorage.getItem("ft_token"));
   const [, setLocation] = useLocation();
 
-  const { data: admin, isLoading, error, refetch } = useGetMe({
+  const { data: admin, isLoading, error } = useGetMe({
     query: {
       enabled: !!token,
       retry: false,
@@ -32,11 +32,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = (newToken: string) => {
     localStorage.setItem("ft_token", newToken);
+    setAuthTokenGetter(() => newToken);
     setToken(newToken);
   };
 
   const logout = () => {
     localStorage.removeItem("ft_token");
+    setAuthTokenGetter(null);
     setToken(null);
     setLocation("/login");
   };
