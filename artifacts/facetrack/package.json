@@ -75,6 +75,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
-    "@vladmandic/face-api": "^1.7.15"
+    "@vladmandic/face-api": "^1.7.15",
+    "gsap": "^3.14.2"
   }
 }
