@@ -235,12 +235,13 @@ export default function LoginPage() {
           }}
         />
 
-        {/* The Black Panther Logo */}
+        {/* AI Face Recognition Hero */}
         <img
           ref={logoRef}
-          src="/logo.jpg"
-          alt="FaceTrack"
-          className="relative z-10 w-72 h-auto object-contain rounded-2xl panther-logo select-none"
+          src="/hero.jpg"
+          alt="FaceTrack AI"
+          className="relative z-10 w-80 h-auto object-cover rounded-3xl select-none panther-logo"
+          style={{ maxHeight: "75vh", objectPosition: "center top" }}
           draggable={false}
         />
       </div>
@@ -251,9 +252,10 @@ export default function LoginPage() {
           {/* Mobile logo */}
           <div className="lg:hidden flex justify-center mb-6">
             <img
-              src="/logo.jpg"
+              src="/hero.jpg"
               alt="FaceTrack"
-              className="w-20 h-20 object-contain rounded-xl panther-logo"
+              className="w-24 h-32 object-cover rounded-2xl panther-logo"
+              style={{ objectPosition: "center top" }}
             />
           </div>
 
