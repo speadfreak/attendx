@@ -239,7 +239,7 @@ export default function LoginPage() {
         <img
           ref={logoRef}
           src="/hero.jpg"
-          alt="FaceTrack AI"
+          alt="AttendX AI"
           className="relative z-10 w-80 h-auto object-cover rounded-3xl select-none panther-logo"
           style={{ maxHeight: "75vh", objectPosition: "center top" }}
           draggable={false}
@@ -253,7 +253,7 @@ export default function LoginPage() {
           <div className="lg:hidden flex justify-center mb-6">
             <img
               src="/hero.jpg"
-              alt="FaceTrack"
+              alt="AttendX"
               className="w-24 h-32 object-cover rounded-2xl panther-logo"
               style={{ objectPosition: "center top" }}
             />
@@ -266,7 +266,7 @@ export default function LoginPage() {
               className="text-4xl font-black tracking-tight text-white mb-2"
               style={{ fontFamily: "'Orbitron', monospace" }}
             >
-              FACE<span className="text-purple-400 text-glow-sm">TRACK</span>
+              ATTEND<span className="text-purple-400 text-glow-sm">X ⚡</span>
             </h1>
             <p ref={subtitleRef} className="text-purple-300/70 text-sm tracking-widest uppercase">
               Intelligent Attendance Command Center
