@@ -34,3 +34,15 @@ channel = "stable-25_05"
 TWILIO_ACCOUNT_SID = "ACcb58bdd15aa0e005593044129bef18fb"
 TWILIO_AUTH_TOKEN = "2bd1a7ea314561f1cbfd97cf0c6683c9"
 TWILIO_FROM_NUMBER = "+16626855320"
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[[ports]]
+localPort = 8081
+externalPort = 8081
+
+[[ports]]
+localPort = 22809
+externalPort = 80
