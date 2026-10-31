@@ -11,8 +11,8 @@ import gsap from "gsap";
 const PARTICLES = Array.from({ length: 28 }, (_, i) => i);
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("admin@gmail.com");
-  const [password, setPassword] = useState("admin_password");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const { login } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
