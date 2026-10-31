@@ -1,34 +1,24 @@
 import { Router } from "express";
 import { db, studentsTable, faceEncodingsTable, attendanceLogsTable } from "@workspace/db";
 import { eq, and, gte } from "drizzle-orm";
+import { z } from "zod/v4";
 import { requireAuth } from "../lib/auth";
-import { sendSms, buildPresentMessage, buildLateMessage } from "../lib/sms";
+import { enqueueJob } from "../lib/jobs";
+import { writeAudit } from "../lib/audit";
+import { findClosestFaceMatch } from "../lib/face-matching";
 
 const router = Router();
 
-function euclideanDistance(a: number[], b: number[]): number {
-  let sum = 0;
-  for (let i = 0; i < Math.min(a.length, b.length); i++) {
-    sum += (a[i] - b[i]) ** 2;
-  }
-  return Math.sqrt(sum);
-}
-
-function descriptorToConfidence(distance: number): number {
-  return Math.max(0, 1 - distance / 1.2);
-}
-
 router.post("/face/encode", requireAuth, async (req, res): Promise<void> => {
-  const { studentId, imageBase64, faceDescriptor } = req.body;
+  const { studentId, faceDescriptor } = req.body;
   if (!studentId) { res.status(400).json({ error: "studentId required" }); return; }
-  if (!imageBase64 && !faceDescriptor) { res.status(400).json({ error: "imageBase64 or faceDescriptor required" }); return; }
+  const parsedDescriptor = z.array(z.number().finite()).length(128).safeParse(faceDescriptor);
+  if (!parsedDescriptor.success) { res.status(400).json({ error: "A valid 128-value face descriptor is required" }); return; }
 
   const [student] = await db.select().from(studentsTable).where(eq(studentsTable.id, Number(studentId)));
   if (!student) { res.status(404).json({ error: "Student not found" }); return; }
 
-  const descriptor: number[] = faceDescriptor
-    ? Array.from(faceDescriptor)
-    : extractFallbackEncoding(imageBase64);
+  const descriptor = parsedDescriptor.data;
 
   const encodingJson = JSON.stringify(descriptor);
 
@@ -43,7 +33,12 @@ router.post("/face/encode", requireAuth, async (req, res): Promise<void> => {
 });
 
 router.post("/face/recognize", requireAuth, async (req, res): Promise<void> => {
-  const { imageBase64, faceDescriptor, classroomId } = req.body;
+  const { faceDescriptor, classroomId } = req.body;
+  const parsedDescriptor = z.array(z.number().finite()).length(128).safeParse(faceDescriptor);
+  if (!parsedDescriptor.success) {
+    res.status(400).json({ error: "A valid 128-value face descriptor is required" });
+    return;
+  }
 
   const allEncodings = await db
     .select({ studentId: faceEncodingsTable.studentId, encoding: faceEncodingsTable.encoding })
@@ -54,24 +49,7 @@ router.post("/face/recognize", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  const queryDescriptor: number[] = faceDescriptor
-    ? Array.from(faceDescriptor)
-    : imageBase64 ? extractFallbackEncoding(imageBase64) : [];
-
-  if (!queryDescriptor.length) {
-    res.status(400).json({ error: "No face data provided" });
-    return;
-  }
-
-  let bestMatch: { studentId: number; distance: number } | null = null;
-
-  for (const row of allEncodings) {
-    const stored: number[] = JSON.parse(row.encoding);
-    const dist = euclideanDistance(queryDescriptor, stored);
-    if (!bestMatch || dist < bestMatch.distance) {
-      bestMatch = { studentId: row.studentId, distance: dist };
-    }
-  }
+  const bestMatch = findClosestFaceMatch(parsedDescriptor.data, allEncodings);
 
   const THRESHOLD = faceDescriptor ? 0.55 : 0.05;
 
@@ -80,7 +58,7 @@ router.post("/face/recognize", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  const confidence = descriptorToConfidence(bestMatch.distance);
+  const confidence = bestMatch.confidence;
 
   const [student] = await db.select().from(studentsTable).where(eq(studentsTable.id, bestMatch.studentId));
   if (!student) { res.status(404).json({ error: "Student not found" }); return; }
@@ -106,26 +84,23 @@ router.post("/face/recognize", requireAuth, async (req, res): Promise<void> => {
     classroomId: classroomId ? Number(classroomId) : student.classroomId,
     status,
     method: "face",
+    source: "webcam",
+    confidence,
   }).returning();
 
-  const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
-  const message = isLate
-    ? buildLateMessage(student.name, timeStr)
-    : buildPresentMessage(student.name, timeStr);
-
-  sendSms({ studentId: student.id, parentPhone: student.parentPhone, message }).catch(() => {});
+  if (status === "late") {
+    await enqueueJob({ type: "send_sms", worker: "api", payload: { studentId: student.id, status } });
+  }
+  const actor = (req as typeof req & { admin?: { adminId?: number } }).admin;
+  await writeAudit({
+    actorAdminId: actor?.adminId,
+    action: "attendance.face.committed",
+    targetType: "attendance",
+    targetId: log.id,
+    payload: { studentId: student.id, source: "webcam", confidence, status },
+  });
 
   res.json({ studentId: student.id, studentName: student.name, confidence, attendanceId: log.id, alreadyMarked: false, status });
 });
-
-function extractFallbackEncoding(base64Image: string): number[] {
-  const bytes = Buffer.from(base64Image.replace(/^data:image\/[^;]+;base64,/, ""), "base64");
-  const encoding: number[] = [];
-  const step = Math.floor(bytes.length / 128);
-  for (let i = 0; i < 128; i++) {
-    encoding.push(bytes[i * step] / 255.0);
-  }
-  return encoding;
-}
 
 export default router;

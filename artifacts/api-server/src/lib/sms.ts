@@ -33,7 +33,7 @@ export async function sendSms(params: {
   studentId: number;
   parentPhone: string;
   message: string;
-}): Promise<void> {
+}): Promise<"sent" | "failed"> {
   const { studentId, parentPhone, message } = params;
 
   let status = "sent";
@@ -42,11 +42,11 @@ export async function sendSms(params: {
 
   try {
     if (twilioEnabled()) {
-      logger.info({ studentId, parentPhone }, "Sending Twilio SMS");
+      logger.info({ studentId }, "Sending Twilio SMS");
       await sendViaTwilio(parentPhone, message);
       logger.info({ studentId }, "Twilio SMS sent successfully");
     } else {
-      logger.info({ studentId, parentPhone }, "[SIMULATED] SMS notification logged");
+      logger.info({ studentId }, "[SIMULATED] SMS notification logged");
     }
   } catch (err) {
     status = "failed";
@@ -62,16 +62,17 @@ export async function sendSms(params: {
     provider,
     errorMessage,
   });
+  return status as "sent" | "failed";
 }
 
 export function buildPresentMessage(studentName: string, time: string): string {
-  return `FaceTrack: ${studentName} arrived in class at ${time}. All is well.`;
+  return `AttendX: ${studentName} arrived in class at ${time}. All is well.`;
 }
 
 export function buildAbsentMessage(studentName: string): string {
-  return `FaceTrack Alert: ${studentName} has not arrived in class. Please check immediately.`;
+  return `AttendX alert: ${studentName} has not arrived in class. Please check immediately.`;
 }
 
 export function buildLateMessage(studentName: string, time: string): string {
-  return `FaceTrack: ${studentName} arrived late to class at ${time}.`;
+  return `AttendX: ${studentName} arrived late to class at ${time}.`;
 }

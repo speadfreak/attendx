@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   LayoutDashboard, Users, UserCheck, School,
-  FileText, MessageSquare, LogOut, UserCog, Menu, X,
+  FileText, MessageSquare, LogOut, UserCog, Menu, X, ServerCog,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import gsap from "gsap";
@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { href: "/reports",    label: "Reports",    icon: FileText },
   { href: "/sms-logs",   label: "SMS Logs",   icon: MessageSquare },
   { href: "/admins",     label: "Admins",     icon: UserCog },
+  { href: "/operations", label: "Operations", icon: ServerCog },
 ];
 
 export function Layout({ children }: { children: ReactNode }) {
@@ -101,7 +102,7 @@ export function Layout({ children }: { children: ReactNode }) {
               className="text-base font-black text-white leading-none tracking-wider"
               style={{ fontFamily: "'Orbitron', monospace" }}
             >
-              ATTEND<span className="text-purple-400">X ⚡</span>
+              ATTEND<span className="text-purple-400">X</span>
             </h1>
             <p className="text-[9px] text-purple-400/50 tracking-widest mt-0.5">COMMAND CENTER</p>
           </div>
@@ -198,7 +199,7 @@ export function Layout({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-2">
             <img src="/logo.jpg" alt="AttendX" className="w-7 h-7 rounded-lg object-cover" style={{ filter: "drop-shadow(0 0 6px rgba(155,91,255,0.6))" }} />
             <h1 className="font-black text-white tracking-wider text-sm" style={{ fontFamily: "'Orbitron', monospace" }}>
-              ATTEND<span className="text-purple-400">X ⚡</span>
+              ATTEND<span className="text-purple-400">X</span>
             </h1>
           </div>
           <Button variant="ghost" size="icon" onClick={() => setMobileOpen(false)} className="text-white/40 h-7 w-7">
@@ -253,7 +254,7 @@ export function Layout({ children }: { children: ReactNode }) {
             </Button>
             <img src="/logo.jpg" alt="AttendX" className="w-6 h-6 rounded-md object-cover" style={{ filter: "drop-shadow(0 0 4px rgba(155,91,255,0.6))" }} />
             <span className="font-black text-sm text-white tracking-wider" style={{ fontFamily: "'Orbitron', monospace" }}>
-              ATTEND<span className="text-purple-400">X ⚡</span>
+              ATTEND<span className="text-purple-400">X</span>
             </span>
           </div>
           <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: "linear-gradient(135deg, #7C3AED, #9B5BFF)" }}>

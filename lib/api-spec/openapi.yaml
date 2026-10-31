@@ -3,7 +3,7 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: FaceTrack Intelligent Attendance System API
+  description: AttendX intelligent attendance and Pi operations API
 servers:
   - url: /api
     description: Base API path
@@ -24,6 +24,14 @@ tags:
     description: Face recognition
   - name: dashboard
     description: Dashboard analytics
+  - name: pi
+    description: Raspberry Pi device health and operations
+  - name: jobs
+    description: Background job queue
+  - name: reviews
+    description: Low-confidence attendance review
+  - name: system
+    description: Device settings and telemetry
 paths:
   /healthz:
     get:
@@ -551,12 +559,392 @@ paths:
                 items:
                   $ref: "#/components/schemas/ClassroomAttendanceSummary"
 
+  /pi/pair:
+    post:
+      operationId: pairPiDevice
+      tags: [pi]
+      summary: Pair the Pi and issue a short-lived session token
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PiPairingInput"
+      responses:
+        "200":
+          description: One-time Pi session token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PiPairingResponse"
+
+  /pi/status:
+    get:
+      operationId: getPiStatus
+      tags: [pi]
+      summary: Get Pi connection and telemetry status
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Pi status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PiStatus"
+
+  /pi/heartbeat:
+    post:
+      operationId: piHeartbeat
+      tags: [pi]
+      summary: Send Pi health heartbeat and rotate its session token
+      security:
+        - piToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PiHeartbeatInput"
+      responses:
+        "200":
+          description: Heartbeat accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PiHeartbeatResponse"
+
+  /pi/actions:
+    post:
+      operationId: createPiAction
+      tags: [pi, jobs]
+      summary: Queue one approved Pi maintenance action
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PiActionInput"
+      responses:
+        "201":
+          description: Action queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+
+  /pi/sessions/kill:
+    post:
+      operationId: killPiSessions
+      tags: [pi]
+      summary: Revoke the Pi session and cancel active operations
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Pi session revoked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KillSessionsResponse"
+
+  /jobs:
+    get:
+      operationId: listJobs
+      tags: [jobs]
+      summary: List recent jobs and queue counts
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Recent jobs and status counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobQueueSummary"
+
+  /jobs/next:
+    get:
+      operationId: claimNextPiJob
+      tags: [jobs]
+      summary: Claim the next Pi job
+      security:
+        - piToken: []
+      responses:
+        "200":
+          description: Job claim result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobClaim"
+
+  /jobs/{id}/complete:
+    post:
+      operationId: completePiJob
+      tags: [jobs]
+      summary: Report a Pi job result
+      security:
+        - piToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JobCompletionInput"
+      responses:
+        "200":
+          description: Job result saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+
+  /jobs/{id}/retry:
+    post:
+      operationId: retryJob
+      tags: [jobs]
+      summary: Retry a failed job
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Job returned to the queue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+
+  /attendance/bulk-match:
+    post:
+      operationId: bulkMatchAttendance
+      tags: [attendance, face]
+      summary: Match a sequence of gate-camera face descriptors
+      security:
+        - piToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkMatchInput"
+      responses:
+        "200":
+          description: Matched, reviewed, and skipped faces
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkMatchResponse"
+
+  /reviews:
+    get:
+      operationId: listMatchReviews
+      tags: [reviews]
+      summary: List pending and recent face-match reviews
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Review queue
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MatchReview"
+
+  /reviews/{id}/decision:
+    post:
+      operationId: decideMatchReview
+      tags: [reviews]
+      summary: Approve or reject a low-confidence match
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewDecisionInput"
+      responses:
+        "200":
+          description: Review decision recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewDecisionResponse"
+
+  /system/settings:
+    get:
+      operationId: getSystemSettings
+      tags: [system]
+      summary: Get attendance confidence and retention settings
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: System settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemSettings"
+    patch:
+      operationId: updateSystemSettings
+      tags: [system]
+      summary: Update confidence threshold and review retention
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SystemSettingsInput"
+      responses:
+        "200":
+          description: Updated system settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemSettings"
+
+  /system/fan-override:
+    post:
+      operationId: setFanOverride
+      tags: [system, jobs]
+      summary: Queue a fan mode override for the Pi
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FanOverrideInput"
+      responses:
+        "201":
+          description: Fan override queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+
+  /dashboard/confidence-heatmap:
+    get:
+      operationId: getConfidenceHeatmap
+      tags: [dashboard, face]
+      summary: Get historical low-confidence matches by student and classroom
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Confidence review aggregates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConfidenceHeatmapPoint"
+
+  /attendance/records/clear-preview:
+    get:
+      operationId: previewAttendanceClear
+      tags: [attendance]
+      summary: Count manual or automated attendance rows before clearing
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: source
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [manual, automated]
+      responses:
+        "200":
+          description: Matching attendance row count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttendanceClearPreview"
+
+  /attendance/records:
+    delete:
+      operationId: clearAttendanceRecords
+      tags: [attendance]
+      summary: Delete manual or automated attendance records after confirmation
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AttendanceClearInput"
+      responses:
+        "200":
+          description: Attendance rows deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttendanceClearResponse"
+
+  /audit-logs:
+    get:
+      operationId: listAuditLogs
+      tags: [system]
+      summary: View recent administrator and automated audit events
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Recent audit events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditLogEntry"
+
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    piToken:
+      type: apiKey
+      in: header
+      name: X-Pi-Token
   schemas:
     HealthStatus:
       type: object
@@ -743,6 +1131,11 @@ components:
           type: string
         method:
           type: string
+        source:
+          type: string
+          enum: [manual, webcam, gate-camera]
+        confidence:
+          type: ["number", "null"]
         markedAt:
           type: string
         notes:
@@ -755,6 +1148,8 @@ components:
         - classroomName
         - status
         - method
+        - source
+        - confidence
         - markedAt
         - notes
 
@@ -821,11 +1216,11 @@ components:
       properties:
         studentId:
           type: integer
-        imageBase64:
-          type: string
+        faceDescriptor:
+          $ref: "#/components/schemas/FaceDescriptor"
       required:
         - studentId
-        - imageBase64
+        - faceDescriptor
 
     FaceEncodeResponse:
       type: object
@@ -841,12 +1236,12 @@ components:
     RecognizeFaceBody:
       type: object
       properties:
-        imageBase64:
-          type: string
+        faceDescriptor:
+          $ref: "#/components/schemas/FaceDescriptor"
         classroomId:
           type: ["integer", "null"]
       required:
-        - imageBase64
+        - faceDescriptor
 
     FaceRecognizeResponse:
       type: object
@@ -933,3 +1328,428 @@ components:
         - presentCount
         - absentCount
         - attendanceRate
+
+    PiPairingInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+      required: [name]
+
+    PiPairingResponse:
+      type: object
+      properties:
+        deviceId:
+          type: string
+        token:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+      required: [deviceId, token, expiresAt]
+
+    PiDeviceSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [offline, discovered, connected, running_task]
+        localIp:
+          type: ["string", "null"]
+        uptimeSeconds:
+          type: ["integer", "null"]
+        cpuTempC:
+          type: ["number", "null"]
+        queueDepth:
+          type: integer
+        fanTempC:
+          type: ["number", "null"]
+        fanState:
+          type: string
+          enum: [on, off, auto, unknown]
+        lastSeenAt:
+          type: ["string", "null"]
+          format: date-time
+      required: [id, name, status, localIp, uptimeSeconds, cpuTempC, queueDepth, fanTempC, fanState, lastSeenAt]
+
+    PiStatus:
+      type: object
+      properties:
+        device:
+          anyOf:
+            - $ref: "#/components/schemas/PiDeviceSummary"
+            - type: "null"
+        online:
+          type: boolean
+        staleAfterSeconds:
+          type: integer
+      required: [device, online, staleAfterSeconds]
+
+    PiHeartbeatInput:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [connected, running_task]
+        localIp:
+          type: string
+        uptimeSeconds:
+          type: integer
+          minimum: 0
+        cpuTempC:
+          type: ["number", "null"]
+        queueDepth:
+          type: integer
+          minimum: 0
+        fanTempC:
+          type: ["number", "null"]
+        fanState:
+          type: string
+          enum: [on, off, auto, unknown]
+      required: [status, uptimeSeconds, queueDepth]
+
+    PiHeartbeatResponse:
+      type: object
+      properties:
+        accepted:
+          type: boolean
+        nextToken:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        serverTime:
+          type: string
+          format: date-time
+      required: [accepted, nextToken, expiresAt, serverTime]
+
+    PiActionInput:
+      type: object
+      properties:
+        action:
+          type: string
+          enum: [worker-status, restart-worker, camera-status, recent-logs]
+      required: [action]
+
+    KillSessionsResponse:
+      type: object
+      properties:
+        revoked:
+          type: boolean
+        cancelledJobs:
+          type: integer
+      required: [revoked, cancelledJobs]
+
+    Job:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        worker:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, done, failed, cancelled]
+        attempts:
+          type: integer
+        result:
+          anyOf:
+            - type: object
+              additionalProperties: true
+            - type: "null"
+        error:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: ["string", "null"]
+          format: date-time
+        completedAt:
+          type: ["string", "null"]
+          format: date-time
+      required: [id, type, payload, worker, status, attempts, result, error, createdAt, startedAt, completedAt]
+
+    JobCounts:
+      type: object
+      properties:
+        pending:
+          type: integer
+        running:
+          type: integer
+        failed:
+          type: integer
+        done:
+          type: integer
+      required: [pending, running, failed, done]
+
+    JobQueueSummary:
+      type: object
+      properties:
+        counts:
+          $ref: "#/components/schemas/JobCounts"
+        jobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/Job"
+      required: [counts, jobs]
+
+    JobClaim:
+      type: object
+      properties:
+        job:
+          anyOf:
+            - $ref: "#/components/schemas/Job"
+            - type: "null"
+      required: [job]
+
+    JobCompletionInput:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [done, failed]
+        result:
+          anyOf:
+            - type: object
+              additionalProperties: true
+            - type: "null"
+        error:
+          type: ["string", "null"]
+      required: [status]
+
+    FaceDescriptor:
+      type: array
+      minItems: 128
+      maxItems: 128
+      items:
+        type: number
+
+    DescriptorFrame:
+      type: object
+      properties:
+        descriptors:
+          type: array
+          items:
+            $ref: "#/components/schemas/FaceDescriptor"
+      required: [descriptors]
+
+    BulkMatchInput:
+      type: object
+      properties:
+        batchId:
+          type: string
+          format: uuid
+        classroomId:
+          type: ["integer", "null"]
+        frames:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/DescriptorFrame"
+      required: [batchId, frames]
+
+    BulkMatchStudentResult:
+      type: object
+      properties:
+        studentId:
+          type: integer
+        studentName:
+          type: string
+        attendanceId:
+          type: ["integer", "null"]
+        status:
+          type: string
+          enum: [present, late, already_marked]
+        confidence:
+          type: number
+      required: [studentId, studentName, attendanceId, status, confidence]
+
+    BulkMatchResponse:
+      type: object
+      properties:
+        matched:
+          type: array
+          items:
+            $ref: "#/components/schemas/BulkMatchStudentResult"
+        reviewQueued:
+          type: integer
+        skipped:
+          type: integer
+        threshold:
+          type: number
+      required: [matched, reviewQueued, skipped, threshold]
+
+    MatchReview:
+      type: object
+      properties:
+        id:
+          type: integer
+        studentId:
+          type: ["integer", "null"]
+        studentName:
+          type: ["string", "null"]
+        classroomId:
+          type: ["integer", "null"]
+        classroomName:
+          type: ["string", "null"]
+        confidence:
+          type: number
+        source:
+          type: string
+          enum: [gate-camera]
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, studentId, studentName, classroomId, classroomName, confidence, source, status, createdAt]
+
+    ReviewDecisionInput:
+      type: object
+      properties:
+        decision:
+          type: string
+          enum: [approve, reject]
+        note:
+          type: ["string", "null"]
+      required: [decision]
+
+    ReviewDecisionResponse:
+      type: object
+      properties:
+        review:
+          $ref: "#/components/schemas/MatchReview"
+        attendance:
+          anyOf:
+            - $ref: "#/components/schemas/AttendanceLog"
+            - type: "null"
+      required: [review, attendance]
+
+    SystemSettings:
+      type: object
+      properties:
+        confidenceThreshold:
+          type: number
+          minimum: 0
+          maximum: 1
+        reviewRetentionDays:
+          type: integer
+          minimum: 1
+          maximum: 365
+        fanMode:
+          type: string
+          enum: [auto, on, off]
+        updatedAt:
+          type: ["string", "null"]
+          format: date-time
+      required: [confidenceThreshold, reviewRetentionDays, fanMode, updatedAt]
+
+    SystemSettingsInput:
+      type: object
+      properties:
+        confidenceThreshold:
+          type: number
+          minimum: 0.1
+          maximum: 0.99
+        reviewRetentionDays:
+          type: integer
+          minimum: 1
+          maximum: 365
+      minProperties: 1
+
+    FanOverrideInput:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [auto, on, off]
+      required: [mode]
+
+    ConfidenceHeatmapPoint:
+      type: object
+      properties:
+        day:
+          type: string
+          format: date
+        classroomId:
+          type: ["integer", "null"]
+        classroomName:
+          type: ["string", "null"]
+        studentId:
+          type: ["integer", "null"]
+        studentName:
+          type: ["string", "null"]
+        lowConfidenceMatches:
+          type: integer
+        totalMatches:
+          type: integer
+        lowConfidenceRate:
+          type: number
+      required: [day, classroomId, classroomName, studentId, studentName, lowConfidenceMatches, totalMatches, lowConfidenceRate]
+
+    AttendanceClearPreview:
+      type: object
+      properties:
+        source:
+          type: string
+          enum: [manual, automated]
+        count:
+          type: integer
+      required: [source, count]
+
+    AttendanceClearInput:
+      type: object
+      properties:
+        source:
+          type: string
+          enum: [manual, automated]
+        expectedCount:
+          type: integer
+          minimum: 0
+      required: [source, expectedCount]
+
+    AttendanceClearResponse:
+      type: object
+      properties:
+        source:
+          type: string
+          enum: [manual, automated]
+        deletedCount:
+          type: integer
+      required: [source, deletedCount]
+
+    AuditLogEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        actorAdminId:
+          type: ["integer", "null"]
+        actorName:
+          type: ["string", "null"]
+        action:
+          type: string
+        targetType:
+          type: string
+        targetId:
+          type: ["integer", "string", "null"]
+        payload:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, actorAdminId, actorName, action, targetType, targetId, payload, createdAt]

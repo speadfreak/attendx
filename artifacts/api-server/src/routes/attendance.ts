@@ -1,6 +1,8 @@
 import { Router } from "express";
-import { db, attendanceLogsTable, studentsTable, classroomsTable } from "@workspace/db";
-import { eq, and, gte, lte, sql } from "drizzle-orm";
+import { db, attendanceLogsTable, studentsTable, classroomsTable, auditLogsTable } from "@workspace/db";
+import { and, count, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { enqueueJob } from "../lib/jobs";
+import { writeAudit } from "../lib/audit";
 import {
   ListAttendanceQueryParams,
   CreateAttendanceBody,
@@ -9,29 +11,82 @@ import {
   GetTodayAttendanceQueryParams,
 } from "@workspace/api-zod";
 import { requireAuth } from "../lib/auth";
-import { sendSms, buildPresentMessage, buildLateMessage } from "../lib/sms";
 
 const router = Router();
+
+router.get("/attendance/records/clear-preview", requireAuth, async (req, res): Promise<void> => {
+  const source = req.query.source;
+  if (source !== "manual" && source !== "automated") {
+    res.status(400).json({ error: "source must be manual or automated" });
+    return;
+  }
+  const condition = source === "manual"
+    ? eq(attendanceLogsTable.source, "manual")
+    : inArray(attendanceLogsTable.source, ["webcam", "gate-camera"]);
+  const [result] = await db.select({ total: count() }).from(attendanceLogsTable).where(condition);
+  res.json({ source, count: Number(result.total) });
+});
+
+router.delete("/attendance/records", requireAuth, async (req, res): Promise<void> => {
+  const source = req.body?.source;
+  const expectedCount = Number(req.body?.expectedCount);
+  if ((source !== "manual" && source !== "automated") || !Number.isInteger(expectedCount) || expectedCount < 0) {
+    res.status(400).json({ error: "source and a non-negative expectedCount are required" });
+    return;
+  }
+  const condition = source === "manual"
+    ? eq(attendanceLogsTable.source, "manual")
+    : inArray(attendanceLogsTable.source, ["webcam", "gate-camera"]);
+  const actor = (req as typeof req & { admin?: { adminId?: number } }).admin;
+
+  try {
+    const deletedCount = await db.transaction(async (tx) => {
+      const [current] = await tx.select({ total: count() }).from(attendanceLogsTable).where(condition);
+      if (Number(current.total) !== expectedCount) throw new Error("ATTENDANCE_CLEAR_COUNT_CHANGED");
+      const removed = await tx.delete(attendanceLogsTable).where(condition).returning({ id: attendanceLogsTable.id });
+      await tx.insert(auditLogsTable).values({
+        actorAdminId: actor?.adminId ?? null,
+        action: "attendance.records.cleared",
+        targetType: "attendance",
+        targetId: source,
+        payload: { source, deletedCount: removed.length },
+      });
+      return removed.length;
+    });
+    res.json({ source, deletedCount });
+  } catch (error) {
+    if (error instanceof Error && error.message === "ATTENDANCE_CLEAR_COUNT_CHANGED") {
+      const [current] = await db.select({ total: count() }).from(attendanceLogsTable).where(condition);
+      res.status(409).json({ error: "Attendance records changed after the preview", currentCount: Number(current.total) });
+      return;
+    }
+    throw error;
+  }
+});
 
 function formatLog(r: {
   id: number;
   studentId: number;
-  studentName: string;
+  studentName: string | null;
   classroomId: number | null;
   classroomName: string | null;
   status: string;
   method: string;
+  source: string;
+  confidence: number | null;
   markedAt: Date;
   notes: string | null;
 }) {
   return {
     id: r.id,
     studentId: r.studentId,
-    studentName: r.studentName,
+    studentName: r.studentName ?? "Unknown student",
     classroomId: r.classroomId ?? null,
     classroomName: r.classroomName ?? null,
     status: r.status,
     method: r.method,
+    source: r.source,
+    confidence: r.confidence,
     markedAt: r.markedAt.toISOString(),
     notes: r.notes ?? null,
   };
@@ -72,6 +127,8 @@ async function getAttendanceRows(params: {
       classroomName: classroomsTable.name,
       status: attendanceLogsTable.status,
       method: attendanceLogsTable.method,
+      source: attendanceLogsTable.source,
+      confidence: attendanceLogsTable.confidence,
       markedAt: attendanceLogsTable.markedAt,
       notes: attendanceLogsTable.notes,
     })
@@ -111,19 +168,27 @@ router.post("/attendance", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
-  const [log] = await db.insert(attendanceLogsTable).values(parsed.data).returning();
+  const [log] = await db.insert(attendanceLogsTable).values({
+    ...parsed.data,
+    source: "manual",
+    confidence: null,
+  }).returning();
 
-  const now = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
-  let message = "";
-  if (log.status === "present") {
-    message = buildPresentMessage(student.name, now);
-  } else if (log.status === "late") {
-    message = buildLateMessage(student.name, now);
+  if (log.status === "late" || log.status === "absent") {
+    await enqueueJob({
+      type: "send_sms",
+      worker: "api",
+      payload: { studentId: student.id, status: log.status },
+    });
   }
-
-  if (message) {
-    sendSms({ studentId: student.id, parentPhone: student.parentPhone, message }).catch(() => {});
-  }
+  const actor = (req as typeof req & { admin?: { adminId?: number } }).admin;
+  await writeAudit({
+    actorAdminId: actor?.adminId,
+    action: "attendance.manual.created",
+    targetType: "attendance",
+    targetId: log.id,
+    payload: { studentId: student.id, status: log.status, source: "manual" },
+  });
 
   const rows = await getAttendanceRows({ studentId: log.studentId });
   const r = rows[0];

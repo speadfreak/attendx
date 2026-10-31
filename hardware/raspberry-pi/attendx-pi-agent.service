@@ -1,0 +1,26 @@
+[Unit]
+Description=AttendX Raspberry Pi attendance and device worker
+After=network-online.target avahi-daemon.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=attendx
+Group=attendx
+SupplementaryGroups=video render dialout
+WorkingDirectory=/opt/attendx/pi-agent
+EnvironmentFile=/etc/attendx/agent.env
+ExecStart=/usr/bin/node /opt/attendx/pi-agent/agent.mjs
+Restart=always
+RestartSec=3
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/attendx
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

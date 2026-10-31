@@ -4,3 +4,8 @@ export * from "./students";
 export * from "./face_encodings";
 export * from "./attendance_logs";
 export * from "./sms_logs";
+export * from "./audit_logs";
+export * from "./pi_devices";
+export * from "./jobs";
+export * from "./match_reviews";
+export * from "./system_settings";
