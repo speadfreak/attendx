@@ -5,14 +5,19 @@ import {
   Activity, AlertCircle, Check, CheckCircle2, ChevronRight, Clipboard,
   Cpu, Fan, Fingerprint, KeyRound, LoaderCircle, LockKeyhole, Network,
   RefreshCw, RotateCcw, Server, ShieldAlert, ShieldCheck, Thermometer,
-  X, XCircle,
+  Trash2, ScrollText, X, XCircle,
 } from "lucide-react";
 import {
+  getGetDashboardStatsQueryKey,
   getGetConfidenceHeatmapQueryKey,
   getGetPiStatusQueryKey,
   getGetSystemSettingsQueryKey,
+  getListAttendanceQueryKey,
+  getListAuditLogsQueryKey,
   getListJobsQueryKey,
   getListMatchReviewsQueryKey,
+  getPreviewAttendanceClearQueryKey,
+  useClearAttendanceRecords,
   useCreatePiAction,
   useDecideMatchReview,
   useGetConfidenceHeatmap,
@@ -22,6 +27,8 @@ import {
   useListJobs,
   useListMatchReviews,
   usePairPiDevice,
+  useListAuditLogs,
+  usePreviewAttendanceClear,
   useRetryJob,
   useSetFanOverride,
   useUpdateSystemSettings,
@@ -81,6 +88,10 @@ export default function OperationsPage() {
   const reviewsQuery = useListMatchReviews({ query: { queryKey: getListMatchReviewsQueryKey(), refetchInterval: 30_000 } });
   const settingsQuery = useGetSystemSettings();
   const heatmapQuery = useGetConfidenceHeatmap();
+  const auditQuery = useListAuditLogs({ limit: 50 }, { query: { queryKey: getListAuditLogsQueryKey({ limit: 50 }), refetchInterval: 30_000 } });
+  const manualClearPreview = usePreviewAttendanceClear({ source: "manual" }, { query: { queryKey: getPreviewAttendanceClearQueryKey({ source: "manual" }), refetchInterval: 30_000 } });
+  const automatedClearPreview = usePreviewAttendanceClear({ source: "automated" }, { query: { queryKey: getPreviewAttendanceClearQueryKey({ source: "automated" }), refetchInterval: 30_000 } });
+  const clearRecordsMutation = useClearAttendanceRecords();
   const pairMutation = usePairPiDevice();
   const actionMutation = useCreatePiAction();
   const killMutation = useKillPiSessions();
@@ -230,6 +241,28 @@ export default function OperationsPage() {
     },
     onError: () => setFeedback(`Job #${id} could not be retried.`),
   });
+
+  const clearRecords = (source: "manual" | "automated", count?: number) => {
+    if (count == null || count < 1) {
+      setFeedback("There are no matching attendance records to clear.");
+      return;
+    }
+    const label = source === "manual" ? "manual" : "automated (webcam and gate-camera)";
+    if (!window.confirm(`Permanently delete ${count} ${label} attendance record${count === 1 ? "" : "s"}? This cannot be undone. Audit history will remain.`)) return;
+    clearRecordsMutation.mutate({ data: { source, expectedCount: count } }, {
+      onSuccess: (result) => {
+        setFeedback(`${result.deletedCount} ${label} attendance record${result.deletedCount === 1 ? "" : "s"} deleted. The action remains in the audit log.`);
+        void queryClient.invalidateQueries({ queryKey: getListAttendanceQueryKey() });
+        void queryClient.invalidateQueries({ queryKey: getGetDashboardStatsQueryKey() });
+        void queryClient.invalidateQueries({ queryKey: getListAuditLogsQueryKey({ limit: 50 }) });
+        void queryClient.invalidateQueries({ queryKey: getPreviewAttendanceClearQueryKey({ source }) });
+      },
+      onError: () => {
+        setFeedback("Records changed after the preview or deletion failed. Refresh the count and confirm again.");
+        void queryClient.invalidateQueries({ queryKey: getPreviewAttendanceClearQueryKey({ source }) });
+      },
+    });
+  };
 
   const heartbeatFresh = Boolean(device?.lastSeenAt && piQuery.data &&
     Date.now() - new Date(device.lastSeenAt).getTime() <= piQuery.data.staleAfterSeconds * 1000);
@@ -557,6 +590,71 @@ export default function OperationsPage() {
         </article>
       </section>
 
+      <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+        <article className={`${panel} p-5 sm:p-6`}>
+          <div className="flex items-start justify-between gap-3">
+            <SectionHeading eyebrow="Accountability" title="Audit trail" detail="Recent admin decisions and automated attendance operations." />
+            <button type="button" className={actionClass} onClick={() => void auditQuery.refetch()} disabled={auditQuery.isFetching}>
+              <RefreshCw size={14} className={auditQuery.isFetching ? "animate-spin" : ""} />Refresh
+            </button>
+          </div>
+          {auditQuery.isLoading ? <div className="space-y-2"><Skeleton className="h-12" /><Skeleton className="h-12" /><Skeleton className="h-12" /></div> :
+            auditQuery.isError ? <ErrorNotice message="The audit trail could not be loaded." onRetry={() => void auditQuery.refetch()} /> :
+              auditQuery.data?.length ? (
+                <div className="max-h-[420px] space-y-2 overflow-auto pr-1">
+                  {auditQuery.data.map((event) => (
+                    <div key={event.id} className="grid grid-cols-[1fr_auto] gap-2 rounded-lg border border-violet-100/[0.08] bg-violet-100/[0.025] px-3 py-2.5 sm:grid-cols-[1fr_0.8fr_0.8fr_auto] sm:items-center">
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-semibold text-violet-50">{event.action.replaceAll(".", " ")}</p>
+                        <p className="mt-0.5 truncate text-[10px] text-violet-100/40">{event.targetType}{event.targetId == null ? "" : ` · ${event.targetId}`}</p>
+                      </div>
+                      <span className="truncate text-[11px] text-violet-100/55">{event.actorName || "System"}</span>
+                      <span className="truncate text-[10px] text-violet-100/40">{formatTime(event.createdAt)}</span>
+                      <span className="font-mono text-[10px] text-violet-100/35">#{event.id}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-violet-200/15 p-6 text-center">
+                  <ScrollText size={20} className="mx-auto text-violet-200/45" />
+                  <p className="mt-2 text-sm text-violet-50">No audit events yet</p>
+                </div>
+              )}
+        </article>
+
+        <article className={`${panel} p-5 sm:p-6`}>
+          <SectionHeading eyebrow="Data control" title="Attendance records" detail="Review biometric data retention or clear records by source." />
+          <div className="mb-4 rounded-xl border border-violet-100/[0.08] bg-violet-100/[0.025] p-3">
+            <p className="flex items-center gap-2 text-xs font-semibold text-violet-50"><ShieldCheck size={14} className="text-violet-300" />Face data handling</p>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-violet-100/50">Face descriptors are removed when a review is decided. Rejected review metadata is purged after {settingsQuery.data?.reviewRetentionDays ?? "—"} days. Raw camera images are not uploaded.</p>
+          </div>
+          <div className="space-y-3">
+            <ClearRecordControl
+              title="Manual attendance"
+              detail="Only records entered manually"
+              count={manualClearPreview.data?.count}
+              loading={manualClearPreview.isLoading}
+              disabled={manualClearPreview.isError || clearRecordsMutation.isPending}
+              onRefresh={() => void manualClearPreview.refetch()}
+              onClear={() => clearRecords("manual", manualClearPreview.data?.count)}
+            />
+            <ClearRecordControl
+              title="Automated attendance"
+              detail="Webcam and gate-camera records"
+              count={automatedClearPreview.data?.count}
+              loading={automatedClearPreview.isLoading}
+              disabled={automatedClearPreview.isError || clearRecordsMutation.isPending}
+              onRefresh={() => void automatedClearPreview.refetch()}
+              onClear={() => clearRecords("automated", automatedClearPreview.data?.count)}
+            />
+          </div>
+          {manualClearPreview.isError && <ErrorNotice message="Manual attendance count unavailable." onRetry={() => void manualClearPreview.refetch()} />}
+          {automatedClearPreview.isError && <ErrorNotice message="Automated attendance count unavailable." onRetry={() => void automatedClearPreview.refetch()} />}
+          {clearRecordsMutation.isError && <p className="mt-3 text-xs text-rose-200">Nothing was reported as cleared. Refresh the count and try again.</p>}
+          <p className="mt-3 text-[10px] leading-relaxed text-violet-100/35">Clearing is permanent. The app shows the current row count and asks for confirmation before deleting. Audit history is retained.</p>
+        </article>
+      </section>
+
       <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-violet-100/[0.07] pt-3 text-[10px] text-violet-100/35">
         <span className="flex items-center gap-1.5"><ShieldCheck size={12} />Operator actions are restricted to approved device operations.</span>
         <span>Heartbeat timestamp: {formatTime(device?.lastSeenAt)}</span>
@@ -571,6 +669,31 @@ function Metric({ icon: Icon, title, value, sub }: { icon: typeof Activity; titl
       <p className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-violet-100/40"><Icon size={12} />{title}</p>
       <p className="mt-2 truncate text-sm font-semibold text-violet-50">{value}</p>
       {sub && <p className="mt-0.5 truncate text-[10px] text-violet-100/40">{sub}</p>}
+    </div>
+  );
+}
+
+function ClearRecordControl({ title, detail, count, loading, disabled, onRefresh, onClear }: {
+  title: string;
+  detail: string;
+  count?: number;
+  loading: boolean;
+  disabled: boolean;
+  onRefresh: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200/10 bg-rose-200/[0.025] p-3">
+      <div className="min-w-0">
+        <p className="text-xs font-semibold text-violet-50">{title}</p>
+        <p className="mt-0.5 text-[10px] text-violet-100/45">{detail} · {loading ? "Counting…" : `${count ?? "—"} records`}</p>
+      </div>
+      <div className="flex gap-2">
+        <button type="button" className={actionClass} onClick={onRefresh} aria-label={`Refresh ${title} count`} disabled={loading || disabled}><RefreshCw size={13} /></button>
+        <button type="button" className={dangerAction} onClick={onClear} disabled={disabled || loading || !count} data-testid={`button-clear-${title.toLowerCase().replaceAll(" ", "-")}`}>
+          <Trash2 size={14} />Clear
+        </button>
+      </div>
     </div>
   );
 }

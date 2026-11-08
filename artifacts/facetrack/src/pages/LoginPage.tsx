@@ -266,7 +266,7 @@ export default function LoginPage() {
               className="text-4xl font-black tracking-tight text-white mb-2"
               style={{ fontFamily: "'Orbitron', monospace" }}
             >
-              ATTEND<span className="text-purple-400 text-glow-sm">X ⚡</span>
+              ATTEND<span className="text-purple-400 text-glow-sm">X</span>
             </h1>
             <p ref={subtitleRef} className="text-purple-300/70 text-sm tracking-widest uppercase">
               Intelligent Attendance Command Center
@@ -286,7 +286,8 @@ export default function LoginPage() {
                   <Input
                     id="email"
                     type="email"
-                    placeholder="admin@gmail.com"
+                    autoComplete="username"
+                    placeholder="you@school.edu"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="pl-10 bg-white/5 border-purple-500/20 text-white focus-visible:ring-purple-500/50 focus-visible:border-purple-500/50 placeholder:text-white/20 transition-all"
@@ -303,6 +304,7 @@ export default function LoginPage() {
                   <Input
                     id="password"
                     type="password"
+                    autoComplete="current-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="pl-10 bg-white/5 border-purple-500/20 text-white focus-visible:ring-purple-500/50 focus-visible:border-purple-500/50 placeholder:text-white/20 transition-all"

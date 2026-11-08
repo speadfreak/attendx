@@ -1,0 +1,1 @@
+- [Orval Zod exports](orval-zod-exports.md) — regenerate shared schemas carefully; duplicate wildcard exports can break the API package build.
