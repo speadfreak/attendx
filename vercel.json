@@ -1,23 +1,42 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm --filter @workspace/facetrack run build",
-  "outputDirectory": "artifacts/facetrack/dist/public",
-  "rewrites": [
-    {
-      "source": "/((?!api/).*)",
-      "destination": "/index.html"
+  "services": {
+    "api-server": {
+      "root": "artifacts/api-server",
+      "framework": "express",
+      "entrypoint": "src/app.ts",
+      "installCommand": "pnpm install --frozen-lockfile"
+    },
+    "facetrack": {
+      "root": "artifacts/facetrack",
+      "framework": "vite",
+      "installCommand": "pnpm install --frozen-lockfile",
+      "buildCommand": "pnpm run build",
+      "outputDirectory": "dist/public",
+      "rewrites": [
+        { "source": "/((?!api/)[^.]*)", "destination": "/index.html" }
+      ]
+    },
+    "mockup-sandbox": {
+      "root": "artifacts/mockup-sandbox",
+      "framework": "vite",
+      "installCommand": "pnpm install --frozen-lockfile",
+      "buildCommand": "pnpm run build",
+      "outputDirectory": "dist",
+      "rewrites": [
+        { "source": "/sandbox", "destination": "/" },
+        { "source": "/sandbox/preview/(.*)", "destination": "/index.html" },
+        { "source": "/sandbox/(.*)", "destination": "/$1" }
+      ]
     }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": { "service": "api-server" } },
+    { "source": "/sandbox/(.*)", "destination": { "service": "mockup-sandbox" } },
+    { "source": "/sandbox", "destination": { "service": "mockup-sandbox" } },
+    { "source": "/(.*)", "destination": { "service": "facetrack" } }
   ],
   "crons": [
-    {
-      "path": "/api/internal/cron",
-      "schedule": "0 3 * * *"
-    }
-  ],
-  "functions": {
-    "api/[...route].ts": {
-      "maxDuration": 60
-    }
-  }
+    { "path": "/api/internal/cron", "schedule": "0 3 * * *" }
+  ]
 }

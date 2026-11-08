@@ -6,26 +6,17 @@ import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 import { mockupPreviewPlugin } from "./mockupPreviewPlugin";
 
 const rawPort = process.env.PORT;
-
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
-}
-
-const port = Number(rawPort);
+// PORT is required on Replit; outside of it (e.g. Vercel builds, local builds)
+// fall back to Vite's default so `vite build` works without env setup.
+const port = rawPort ? Number(rawPort) : 5173;
 
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-const basePath = process.env.BASE_PATH;
-
-if (!basePath) {
-  throw new Error(
-    "BASE_PATH environment variable is required but was not provided.",
-  );
-}
+// Public mount path. On Vercel this service is routed at /sandbox (see the
+// mockup-sandbox service rewrites in vercel.json); Replit overrides BASE_PATH.
+const basePath = process.env.BASE_PATH ?? "/sandbox/";
 
 export default defineConfig({
   base: basePath,

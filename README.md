@@ -53,11 +53,12 @@
 ```
 artifacts/facetrack     React 19 + Vite + Tailwind 4 web app (the command center)
 artifacts/api-server    Express 5 API (auth, attendance, QR, reviews, events, reports…)
+artifacts/mockup-sandbox  Vite design-preview sandbox (served at /sandbox on Vercel)
 lib/db                  Drizzle schema (students, attendance, qr_issues, qr_scan_logs, seats…)
 lib/api-*               OpenAPI spec + generated zod/client (legacy endpoints)
 hardware/               Raspberry Pi agent + Arduino fan controller
 scripts/                seed-demo.ts — instant demo data
-api/[...route].ts       Vercel serverless entrypoint
+vercel.json             Vercel services config: facetrack @ / · api-server @ /api · sandbox @ /sandbox
 ```
 
 ## Local development
