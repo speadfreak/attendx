@@ -2,7 +2,28 @@
 
 **Intelligent attendance command center** — AI face recognition + signed QR door terminals + parent SMS alerts, with a real-time dark-purple command center UI.
 
-![Phase](https://img.shields.io/badge/phase-3%20·%20command%20center-blueviolet) ![stack](https://img.shields.io/badge/stack-Vite%20·%20Express%20·%20Drizzle%20·%20Postgres-purple)
+![Phase](https://img.shields.io/badge/phase-4%20·%20gate%20integrity-blueviolet) ![stack](https://img.shields.io/badge/stack-Vite%20·%20Express%20·%20Drizzle%20·%20Postgres-purple)
+
+## What's new in Phase 4
+
+### 🛡 Gate Integrity Validator (sensor fusion)
+- **Arduino gate firmware** (`hardware/arduino/AttendXGateValidator.ino`): HC-SR04 ultrasonic + IR break-beam pass-event detection with hysteresis + debounce, serial JSON protocol (`STATUS` / `THRESH` / `GAPU` / `GAPI` commands)
+- **Pi agent ingestion**: persistent serial listener (`ATTENDX_GATE_PORT`, default `/dev/ttyACM1`), event buffering, batched `POST /api/gate/sensor-events`, offline spool via the existing outbox
+- **Cross-validation engine**: epoch-aligned windows compare gate-camera vs ultrasonic vs IR counts → `missed_detections` + `sensor_conflict` alerts, deduped per (gate, window, type); runs inline after ingestion, in the daily cron recovery pass, and via manual **Run validation**
+- **Operations UI**: Gate Integrity card — 3 counters, verdict badge, rolling discrepancy chart, alert list + event timeline drawer, **Simulate** (events clearly tagged `[DEMO]` everywhere) and Run buttons; new `gate` notification category
+
+### ⏰ Admin-controlled attendance time rules
+- System settings for **entrance time, late cutoff, absence cutoff + attendance timezone** (default `Africa/Addis_Ababa`) — replaces every hardcoded server-time check across face, QR, gate-camera and review-decision paths
+- Timezone-correct present/late resolution with proper local-day bounds
+- **Absent sweep locked** until the absence cutoff (with explicit force override)
+- Operations settings UI with validation (IANA timezone + ordering `entrance ≤ late ≤ absence`)
+
+### 📟 SMS delivery diagnostics
+- Twilio API errors parsed (code + message + more_info) and **surfaced verbatim** in job errors — the root cause of silent "delivery failures" was Twilio auth errors (e.g. 20003) being swallowed
+- Retryable (network / 5xx / 429) vs permanent failure classification: retryable jobs requeue up to 3 attempts, permanent failures fail fast with actionable detail
+
+### 🎨 Branding
+- Custom AttendX emblem applied across the app: hero logo, sidebar/mobile emblem, favicon-32/192, apple-touch-icon — zero legacy asset references remain
 
 ## What's inside (Phase 3)
 
@@ -54,9 +75,9 @@
 artifacts/facetrack     React 19 + Vite + Tailwind 4 web app (the command center)
 artifacts/api-server    Express 5 API (auth, attendance, QR, reviews, events, reports…)
 artifacts/mockup-sandbox  Vite design-preview sandbox (served at /sandbox on Vercel)
-lib/db                  Drizzle schema (students, attendance, qr_issues, qr_scan_logs, seats…)
+lib/db                  Drizzle schema (students, attendance, qr_issues, seats, gate_sensor_events, gate_integrity_alerts…)
 lib/api-*               OpenAPI spec + generated zod/client (legacy endpoints)
-hardware/               Raspberry Pi agent + Arduino fan controller
+hardware/               Raspberry Pi agent + Arduino fan controller & gate validator
 scripts/                seed-demo.ts — instant demo data
 vercel.json             Vercel services config: facetrack @ / · api-server @ /api · sandbox @ /sandbox
 ```
