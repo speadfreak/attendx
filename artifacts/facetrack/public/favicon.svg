@@ -1,3 +1,21 @@
-<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="180" height="180" rx="36" fill="#FF3C00"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
+  <rect width="180" height="180" rx="38" fill="#111B2B"/>
+  <circle cx="90" cy="90" r="66" fill="#19283A" stroke="#30435A" stroke-width="2"/>
+
+  <!-- Four registration marks form a compact gate around the face. -->
+  <path d="M54 42H43a7 7 0 0 0-7 7v11M126 42h11a7 7 0 0 1 7 7v11M36 120v11a7 7 0 0 0 7 7h11M144 120v11a7 7 0 0 1-7 7h-11"
+        fill="none" stroke="#FF7048" stroke-width="5" stroke-linecap="round"/>
+
+  <!-- Identity silhouette, simplified to stay legible at tab size. -->
+  <path d="M90 49c-18 0-30 13-30 31v12c0 8 3 15 8 21l5 6v9c-12 3-20 9-25 18h84c-5-9-13-15-25-18v-9l5-6c5-6 8-13 8-21V80c0-18-12-31-30-31Z"
+        fill="#F4F0E6"/>
+  <path d="M74 82h5M101 82h5" stroke="#17263A" stroke-width="5" stroke-linecap="round"/>
+  <path d="M82 106c5 4 11 4 16 0" fill="none" stroke="#17263A" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- Live scan beam and verified, deduplicated mark. -->
+  <path d="M47 91h86" stroke="#49E1CF" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="47" cy="91" r="4" fill="#49E1CF"/>
+  <circle cx="133" cy="91" r="4" fill="#49E1CF"/>
+  <circle cx="126" cy="126" r="18" fill="#FF7048" stroke="#19283A" stroke-width="4"/>
+  <path d="m118 126 5 5 11-12" fill="none" stroke="#111B2B" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

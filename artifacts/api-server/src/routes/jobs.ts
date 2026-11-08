@@ -5,6 +5,7 @@ import { z } from "zod/v4";
 import { requireAuth } from "../lib/auth";
 import { requirePiToken, type PiAuthenticatedRequest } from "../lib/pi-auth";
 import { writeAudit } from "../lib/audit";
+import { processVercelJob } from "../lib/jobs";
 
 const router = Router();
 const adminId = (req: Request) => (req as Request & { admin?: { adminId: number } }).admin?.adminId;
@@ -128,6 +129,10 @@ router.post("/jobs/:id/retry", requireAuth, async (req, res): Promise<void> => {
     completedAt: null,
     error: null,
   }).where(eq(jobsTable.id, id)).returning();
+
+  if (job.worker === "api" && process.env.VERCEL) {
+    await processVercelJob(job.id);
+  }
 
   await writeAudit({
     actorAdminId: adminId(req),

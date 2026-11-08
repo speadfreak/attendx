@@ -9,24 +9,36 @@ export async function enqueueJob(params: {
   payload: Record<string, unknown>;
   worker?: string;
 }) {
+  const worker = params.worker ?? "pi";
   const [job] = await db
     .insert(jobsTable)
     .values({
       type: params.type,
       payload: params.payload,
-      worker: params.worker ?? "pi",
+      worker,
       status: "pending",
     })
     .returning();
+
+  if (worker === "api" && process.env.VERCEL) {
+    await processVercelJob(job.id);
+  }
+
   return job;
 }
 
-async function claimServerJob() {
+async function claimServerJob(jobId?: number) {
   return db.transaction(async (tx) => {
+    const conditions = [
+      eq(jobsTable.worker, "api"),
+      eq(jobsTable.status, "pending"),
+    ];
+    if (jobId !== undefined) conditions.push(eq(jobsTable.id, jobId));
+
     const [candidate] = await tx
       .select()
       .from(jobsTable)
-      .where(and(eq(jobsTable.worker, "api"), eq(jobsTable.status, "pending")))
+      .where(and(...conditions))
       .orderBy(asc(jobsTable.createdAt), asc(jobsTable.id))
       .limit(1)
       .for("update", { skipLocked: true });
@@ -49,59 +61,70 @@ async function claimServerJob() {
 
 let processing = false;
 
-export async function processOneServerJob(): Promise<void> {
-  if (processing) return;
+type ClaimedServerJob = NonNullable<Awaited<ReturnType<typeof claimServerJob>>>;
+
+async function runServerJob(job: ClaimedServerJob): Promise<void> {
+  try {
+    if (job.type !== "send_sms") {
+      throw new Error(`Unsupported API worker job type: ${job.type}`);
+    }
+
+    const studentId = Number(job.payload.studentId);
+    const status = String(job.payload.status);
+    if (!Number.isInteger(studentId) || !["late", "absent"].includes(status)) {
+      throw new Error("Invalid attendance notification job payload");
+    }
+    const [student] = await db.select().from(studentsTable).where(eq(studentsTable.id, studentId));
+    if (!student) throw new Error("Student no longer exists");
+
+    const message = status === "absent"
+      ? buildAbsentMessage(student.name)
+      : buildLateMessage(student.name, new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }));
+    const deliveryStatus = await sendSms({
+      studentId: student.id,
+      parentPhone: student.parentPhone,
+      message,
+    });
+
+    await db
+      .update(jobsTable)
+      .set({
+        status: deliveryStatus === "sent" ? "done" : "failed",
+        result: { deliveryStatus },
+        error: deliveryStatus === "failed" ? "SMS provider reported a delivery failure" : null,
+        completedAt: new Date(),
+      })
+      .where(eq(jobsTable.id, job.id));
+
+    await writeAudit({
+      action: "sms.job.processed",
+      targetType: "job",
+      targetId: job.id,
+      payload: { deliveryStatus, studentId: student.id },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await db
+      .update(jobsTable)
+      .set({ status: "failed", error: message, completedAt: new Date() })
+      .where(eq(jobsTable.id, job.id));
+    logger.error({ err: error, jobId: job.id }, "API worker job failed");
+  }
+}
+
+export async function processVercelJob(jobId: number): Promise<void> {
+  const job = await claimServerJob(jobId);
+  if (job) await runServerJob(job);
+}
+
+export async function processOneServerJob(): Promise<boolean> {
+  if (processing) return false;
   processing = true;
   try {
     const job = await claimServerJob();
-    if (!job) return;
-
-    try {
-      if (job.type !== "send_sms") {
-        throw new Error(`Unsupported API worker job type: ${job.type}`);
-      }
-
-      const studentId = Number(job.payload.studentId);
-      const status = String(job.payload.status);
-      if (!Number.isInteger(studentId) || !["late", "absent"].includes(status)) {
-        throw new Error("Invalid attendance notification job payload");
-      }
-      const [student] = await db.select().from(studentsTable).where(eq(studentsTable.id, studentId));
-      if (!student) throw new Error("Student no longer exists");
-
-      const message = status === "absent"
-        ? buildAbsentMessage(student.name)
-        : buildLateMessage(student.name, new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }));
-      const deliveryStatus = await sendSms({
-        studentId: student.id,
-        parentPhone: student.parentPhone,
-        message,
-      });
-
-      await db
-        .update(jobsTable)
-        .set({
-          status: deliveryStatus === "sent" ? "done" : "failed",
-          result: { deliveryStatus },
-          error: deliveryStatus === "failed" ? "SMS provider reported a delivery failure" : null,
-          completedAt: new Date(),
-        })
-        .where(eq(jobsTable.id, job.id));
-
-      await writeAudit({
-        action: "sms.job.processed",
-        targetType: "job",
-        targetId: job.id,
-        payload: { deliveryStatus, studentId: student.id },
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      await db
-        .update(jobsTable)
-        .set({ status: "failed", error: message, completedAt: new Date() })
-        .where(eq(jobsTable.id, job.id));
-      logger.error({ err: error, jobId: job.id }, "API worker job failed");
-    }
+    if (!job) return false;
+    await runServerJob(job);
+    return true;
   } finally {
     processing = false;
   }

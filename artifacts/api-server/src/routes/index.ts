@@ -12,6 +12,7 @@ import piRouter from "./pi";
 import jobsRouter from "./jobs";
 import operationsRouter from "./operations";
 import bulkAttendanceRouter from "./bulk-attendance";
+import vercelCronRouter from "./vercel-cron";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(piRouter);
 router.use(jobsRouter);
 router.use(operationsRouter);
 router.use(bulkAttendanceRouter);
+router.use(vercelCronRouter);
 
 export default router;
