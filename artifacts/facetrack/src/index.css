@@ -360,3 +360,215 @@
   .border.hover-elevate-2:not(.no-hover-interaction-elevate)::after,
   .border.active-elevate-2:not(.no-active-interaction-elevate)::after { inset: -1px; }
 }
+
+/* ============================================================
+   ATTENDX PHASE 3 — COMMAND CENTER DESIGN SYSTEM
+   Layered glow tokens: soft outer glow + sharp inner border.
+   Every card, badge, dot and button uses these variables so the
+   whole app speaks one visual language.
+   ============================================================ */
+:root {
+  --gx-glow-outer: 0 0 24px rgba(155, 91, 255, 0.10), 0 8px 40px rgba(90, 30, 180, 0.10);
+  --gx-glow-outer-strong: 0 0 28px rgba(155, 91, 255, 0.22), 0 10px 46px rgba(90, 30, 180, 0.16);
+  --gx-glow-border: 1px solid rgba(155, 91, 255, 0.16);
+  --gx-glow-border-strong: 1px solid rgba(155, 91, 255, 0.34);
+  --gx-inner-border: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --gx-card-bg: linear-gradient(135deg, rgba(20, 8, 40, 0.92) 0%, rgba(12, 4, 24, 0.96) 100%);
+
+  /* status language — used system-wide */
+  --st-green: 34, 197, 94;
+  --st-amber: 245, 158, 11;
+  --st-red: 239, 68, 68;
+  --st-purple: 155, 91, 255;
+  --st-cyan: 34, 211, 238;
+  --st-slate: 148, 163, 184;
+}
+
+/* ── Glow card: layered soft outer glow + sharp inner border ── */
+.gx-card {
+  position: relative;
+  border-radius: 1rem;
+  background: var(--gx-card-bg);
+  border: var(--gx-glow-border);
+  box-shadow: var(--gx-glow-outer), var(--gx-inner-border);
+  transition: box-shadow 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
+}
+.gx-card:hover {
+  border-color: rgba(155, 91, 255, 0.30);
+  box-shadow: var(--gx-glow-outer-strong), var(--gx-inner-border);
+}
+.gx-card-accent::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 3px; height: 100%;
+  background: linear-gradient(180deg, #9B5BFF, #C084FC, transparent);
+  border-radius: 3px 0 0 3px;
+}
+.gx-card-flat {
+  box-shadow: none;
+}
+.gx-card-flat:hover {
+  box-shadow: var(--gx-glow-outer), var(--gx-inner-border);
+}
+
+/* ── Gradient wordmark / section headers ── */
+.gx-gradient-text {
+  background: linear-gradient(92deg, #E9D5FF 0%, #C084FC 38%, #9B5BFF 72%, #7C3AED 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+.gx-gradient-text-green {
+  background: linear-gradient(92deg, #D1FAE5 0%, #34D399 60%, #10B981 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* ── Animated gradient mesh background (slow, low opacity) ── */
+.gx-mesh {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+.gx-mesh::before,
+.gx-mesh::after {
+  content: '';
+  position: absolute;
+  width: 60vmax;
+  height: 60vmax;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.14;
+  animation: mesh-drift 26s ease-in-out infinite alternate;
+}
+.gx-mesh::before {
+  background: radial-gradient(circle at 30% 30%, rgba(155, 91, 255, 0.8), transparent 65%);
+  top: -20vmax; left: -12vmax;
+}
+.gx-mesh::after {
+  background: radial-gradient(circle at 70% 60%, rgba(67, 217, 168, 0.55), transparent 62%);
+  bottom: -24vmax; right: -14vmax;
+  animation-duration: 34s;
+  animation-delay: -8s;
+}
+@keyframes mesh-drift {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  50%  { transform: translate3d(6vmax, 4vmax, 0) scale(1.12); }
+  100% { transform: translate3d(-4vmax, 7vmax, 0) scale(0.96); }
+}
+
+/* ── Shimmer skeletons shaped like glow cards ── */
+.gx-skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1rem;
+  background: var(--gx-card-bg);
+  border: var(--gx-glow-border);
+}
+.gx-skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 20%, rgba(155, 91, 255, 0.10) 45%, rgba(192, 132, 252, 0.14) 50%, rgba(155, 91, 255, 0.10) 55%, transparent 80%);
+  transform: translateX(-100%);
+  animation: gx-shimmer 1.8s ease-in-out infinite;
+}
+@keyframes gx-shimmer {
+  100% { transform: translateX(100%); }
+}
+
+/* ── Status color utilities (green=present/online, amber=late/pending,
+      red=absent/offline/failed, purple=primary/AI) ── */
+.st-green  { color: rgb(var(--st-green)); }
+.st-amber  { color: rgb(var(--st-amber)); }
+.st-red    { color: rgb(var(--st-red)); }
+.st-purple { color: rgb(var(--st-purple)); }
+.st-cyan   { color: rgb(var(--st-cyan)); }
+.st-slate  { color: rgb(var(--st-slate)); }
+
+.st-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+.st-badge-green  { color: rgb(var(--st-green));  background: rgba(var(--st-green), 0.10);  border-color: rgba(var(--st-green), 0.22); }
+.st-badge-amber  { color: rgb(var(--st-amber));  background: rgba(var(--st-amber), 0.10);  border-color: rgba(var(--st-amber), 0.22); }
+.st-badge-red    { color: rgb(var(--st-red));    background: rgba(var(--st-red), 0.10);    border-color: rgba(var(--st-red), 0.22); }
+.st-badge-purple { color: rgb(var(--st-purple)); background: rgba(var(--st-purple), 0.10); border-color: rgba(var(--st-purple), 0.22); }
+.st-badge-cyan   { color: rgb(var(--st-cyan));   background: rgba(var(--st-cyan), 0.10);   border-color: rgba(var(--st-cyan), 0.22); }
+.st-badge-slate  { color: rgb(var(--st-slate));  background: rgba(var(--st-slate), 0.10);  border-color: rgba(var(--st-slate), 0.22); }
+
+.st-dot {
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.st-dot-green  { background: rgb(var(--st-green));  box-shadow: 0 0 6px rgba(var(--st-green), 0.7); }
+.st-dot-amber  { background: rgb(var(--st-amber));  box-shadow: 0 0 6px rgba(var(--st-amber), 0.7); }
+.st-dot-red    { background: rgb(var(--st-red));    box-shadow: 0 0 6px rgba(var(--st-red), 0.7); }
+.st-dot-purple { background: rgb(var(--st-purple)); box-shadow: 0 0 6px rgba(var(--st-purple), 0.7); }
+.st-dot-slate  { background: rgb(var(--st-slate));  box-shadow: 0 0 6px rgba(var(--st-slate), 0.5); }
+
+/* ── Live feed slide-in ── */
+@keyframes gx-slide-in {
+  from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.gx-slide-in { animation: gx-slide-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* ── Kiosk pulse for QR terminal ── */
+@keyframes gx-kiosk-glow {
+  0%, 100% { box-shadow: 0 0 30px rgba(155, 91, 255, 0.18), 0 0 80px rgba(155, 91, 255, 0.08); }
+  50%      { box-shadow: 0 0 44px rgba(155, 91, 255, 0.34), 0 0 120px rgba(155, 91, 255, 0.14); }
+}
+.gx-kiosk-glow { animation: gx-kiosk-glow 3.2s ease-in-out infinite; }
+
+/* ── Heatmap cells ── */
+.heatmap-cell {
+  width: 13px; height: 13px;
+  border-radius: 3px;
+  outline: 1px solid rgba(255, 255, 255, 0.05);
+  outline-offset: -1px;
+  transition: transform 0.12s ease;
+}
+.heatmap-cell:hover { transform: scale(1.35); outline: 1px solid rgba(155, 91, 255, 0.7); }
+.hm-present { background: rgb(34, 197, 94); }
+.hm-late    { background: rgb(245, 158, 11); }
+.hm-absent  { background: rgb(239, 68, 68); }
+.hm-empty   { background: rgba(155, 91, 255, 0.07); }
+
+/* ── Print styles for QR ID cards ── */
+@media print {
+  body * { visibility: hidden; }
+  .gx-print-sheet, .gx-print-sheet * { visibility: visible; }
+  .gx-print-sheet {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    background: #fff !important;
+    color: #111 !important;
+  }
+  .gx-no-print { display: none !important; }
+  .gx-print-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    border: 1px dashed #999 !important;
+    background: #fff !important;
+    color: #111 !important;
+  }
+}

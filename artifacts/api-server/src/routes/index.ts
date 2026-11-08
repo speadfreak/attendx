@@ -13,6 +13,11 @@ import jobsRouter from "./jobs";
 import operationsRouter from "./operations";
 import bulkAttendanceRouter from "./bulk-attendance";
 import vercelCronRouter from "./vercel-cron";
+import qrRouter from "./qr";
+import eventsRouter from "./events";
+import notificationsRouter from "./notifications";
+import reportsRouter from "./reports";
+import searchRouter from "./search";
 
 const router: IRouter = Router();
 
@@ -30,5 +35,10 @@ router.use(jobsRouter);
 router.use(operationsRouter);
 router.use(bulkAttendanceRouter);
 router.use(vercelCronRouter);
+router.use(qrRouter);
+router.use(eventsRouter);
+router.use(notificationsRouter);
+router.use(reportsRouter);
+router.use(searchRouter);
 
 export default router;

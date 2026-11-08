@@ -1,8 +1,10 @@
 import { and, asc, eq, sql } from "drizzle-orm";
-import { db, jobsTable, studentsTable } from "@workspace/db";
+import { db, jobsTable, studentsTable, classroomsTable } from "@workspace/db";
 import { logger } from "./logger";
 import { writeAudit } from "./audit";
-import { buildAbsentMessage, buildLateMessage, sendSms } from "./sms";
+import { sendSms } from "./sms";
+import { buildStatusMessage } from "./sms-templates";
+import { publishEvent } from "./events";
 
 export async function enqueueJob(params: {
   type: string;
@@ -19,6 +21,8 @@ export async function enqueueJob(params: {
       status: "pending",
     })
     .returning();
+
+  publishEvent("job.updated", { jobId: job.id, type: job.type, status: job.status, worker: job.worker });
 
   if (worker === "api" && process.env.VERCEL) {
     await processVercelJob(job.id);
@@ -77,9 +81,21 @@ async function runServerJob(job: ClaimedServerJob): Promise<void> {
     const [student] = await db.select().from(studentsTable).where(eq(studentsTable.id, studentId));
     if (!student) throw new Error("Student no longer exists");
 
-    const message = status === "absent"
-      ? buildAbsentMessage(student.name)
-      : buildLateMessage(student.name, new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }));
+    let classroomName: string | null = null;
+    if (student.classroomId) {
+      const [cls] = await db
+        .select({ name: classroomsTable.name })
+        .from(classroomsTable)
+        .where(eq(classroomsTable.id, student.classroomId))
+        .limit(1);
+      classroomName = cls?.name ?? null;
+    }
+
+    const message = await buildStatusMessage(
+      status as "late" | "absent",
+      student.name,
+      classroomName,
+    );
     const deliveryStatus = await sendSms({
       studentId: student.id,
       parentPhone: student.parentPhone,
@@ -96,6 +112,9 @@ async function runServerJob(job: ClaimedServerJob): Promise<void> {
       })
       .where(eq(jobsTable.id, job.id));
 
+    publishEvent("job.updated", { jobId: job.id, type: job.type, status: deliveryStatus === "sent" ? "done" : "failed", worker: "api" });
+    publishEvent("sms.sent", { studentId: student.id, status: deliveryStatus, smsStatus: status });
+
     await writeAudit({
       action: "sms.job.processed",
       targetType: "job",
@@ -108,6 +127,7 @@ async function runServerJob(job: ClaimedServerJob): Promise<void> {
       .update(jobsTable)
       .set({ status: "failed", error: message, completedAt: new Date() })
       .where(eq(jobsTable.id, job.id));
+    publishEvent("job.updated", { jobId: job.id, type: job.type, status: "failed", worker: "api", error: message });
     logger.error({ err: error, jobId: job.id }, "API worker job failed");
   }
 }

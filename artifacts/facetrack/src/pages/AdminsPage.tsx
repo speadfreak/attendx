@@ -175,8 +175,9 @@ function AdminFormDialog({
             <Select value={role} onValueChange={setRole}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="super_admin">Super Admin</SelectItem>
-                <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="super_admin">Super Admin — full access incl. operations</SelectItem>
+                <SelectItem value="admin">Admin — everything except super-admin management</SelectItem>
+                <SelectItem value="teacher">Teacher — view + manual marking + QR issue</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -205,17 +206,12 @@ export default function AdminsPage() {
 
   const getRoleBadge = (role: string) => {
     if (role === "super_admin") {
-      return (
-        <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[10px] gap-1">
-          <ShieldCheck className="w-3 h-3" /> Super Admin
-        </Badge>
-      );
+      return <span className="st-badge st-badge-purple"><ShieldCheck className="w-2.5 h-2.5" /> Super Admin</span>;
     }
-    return (
-      <Badge variant="outline" className="bg-muted text-muted-foreground border-border text-[10px] gap-1">
-        <ShieldAlert className="w-3 h-3" /> Admin
-      </Badge>
-    );
+    if (role === "teacher") {
+      return <span className="st-badge st-badge-amber"><ShieldAlert className="w-2.5 h-2.5" /> Teacher</span>;
+    }
+    return <span className="st-badge st-badge-green"><ShieldCheck className="w-2.5 h-2.5" /> Admin</span>;
   };
 
   return (

@@ -9,3 +9,6 @@ export * from "./pi_devices";
 export * from "./jobs";
 export * from "./match_reviews";
 export * from "./system_settings";
+export * from "./qr_issues";
+export * from "./qr_scan_logs";
+export * from "./classroom_seats";

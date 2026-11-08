@@ -7,6 +7,7 @@ import { requireAuth } from "../lib/auth";
 import { hashPiToken, requirePiToken, type PiAuthenticatedRequest } from "../lib/pi-auth";
 import { enqueueJob } from "../lib/jobs";
 import { writeAudit } from "../lib/audit";
+import { publishEvent } from "../lib/events";
 
 const router = Router();
 const DEVICE_ID = "attendx-pi";
@@ -124,6 +125,13 @@ router.post("/pi/heartbeat", requirePiToken, async (req, res): Promise<void> => 
     previousTokenValidUntil: new Date(now.getTime() + PREVIOUS_TOKEN_GRACE_MS),
     tokenExpiresAt: expiresAt,
   }).where(eq(piDevicesTable.id, piReq.piDeviceId));
+  publishEvent("pi.heartbeat", {
+    deviceId: piReq.piDeviceId,
+    status: parsed.data.status,
+    cpuTempC: parsed.data.cpuTempC ?? null,
+    queueDepth: parsed.data.queueDepth,
+    at: now.toISOString(),
+  });
 
   const recentTelemetry = await db.select({ id: jobsTable.id }).from(jobsTable).where(and(
     eq(jobsTable.type, "fan_telemetry"),

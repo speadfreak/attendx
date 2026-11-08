@@ -69,8 +69,12 @@ router.get("/dashboard/recent-activity", requireAuth, async (_req, res): Promise
   })));
 });
 
-router.get("/dashboard/attendance-trend", requireAuth, async (_req, res): Promise<void> => {
-  const days = 7;
+router.get("/dashboard/attendance-trend", requireAuth, async (req, res): Promise<void> => {
+  const range = String(req.query.range ?? "week");
+  let days = 7;
+  if (range === "month") days = 30;
+  else if (range === "week") days = 7;
+  else if (range === "today") days = 1;
   const trend = [];
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date();
@@ -96,6 +100,51 @@ router.get("/dashboard/attendance-trend", requireAuth, async (_req, res): Promis
   }
   res.json(trend);
 });
+
+// ── "Who's in the building right now" occupancy ─────────────────
+router.get("/dashboard/occupancy", requireAuth, async (_req, res): Promise<void> => {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
+
+  const rows = await db
+    .select({
+      id: attendanceLogsTable.id,
+      studentId: attendanceLogsTable.studentId,
+      studentName: studentsTable.name,
+      classroomId: attendanceLogsTable.classroomId,
+      classroomName: classroomsTable.name,
+      status: attendanceLogsTable.status,
+      method: attendanceLogsTable.method,
+      markedAt: attendanceLogsTable.markedAt,
+      checkedOutAt: attendanceLogsTable.checkedOutAt,
+    })
+    .from(attendanceLogsTable)
+    .leftJoin(studentsTable, eq(attendanceLogsTable.studentId, studentsTable.id))
+    .leftJoin(classroomsTable, eq(attendanceLogsTable.classroomId, classroomsTable.id))
+    .where(and(gte(attendanceLogsTable.markedAt, todayStart), lte(attendanceLogsTable.markedAt, todayEnd)));
+
+  const inside = rows
+    .filter((r) => (r.status === "present" || r.status === "late") && !r.checkedOutAt)
+    .map((r) => ({
+      studentId: r.studentId,
+      studentName: r.studentName ?? "Unknown",
+      classroomName: r.classroomName,
+      status: r.status,
+      method: r.method,
+      since: r.markedAt.toISOString(),
+    }));
+  const checkedOut = rows.filter((r) => r.checkedOutAt).length;
+
+  res.json({
+    count: inside.length,
+    checkedOut,
+    capacity: Number(rows.length + checkedOut),
+    people: inside,
+  });
+});
+
 
 router.get("/dashboard/classroom-summary", requireAuth, async (_req, res): Promise<void> => {
   const todayStart = new Date();

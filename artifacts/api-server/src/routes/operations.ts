@@ -1,19 +1,24 @@
 import { Router, type Request } from "express";
-import { and, desc, eq, gte } from "drizzle-orm";
+import { and, desc, eq, gte, lte } from "drizzle-orm";
 import {
   db,
   adminsTable,
   auditLogsTable,
   attendanceLogsTable,
   classroomsTable,
+  faceEncodingsTable,
   matchReviewsTable,
   studentsTable,
+  classroomSeatsTable,
 } from "@workspace/db";
 import { z } from "zod/v4";
-import { requireAuth } from "../lib/auth";
+import { requireAuth, requireStaff, requireAdminLevel } from "../lib/auth";
 import { enqueueJob } from "../lib/jobs";
 import { writeAudit } from "../lib/audit";
 import { getSystemSettings, setSettings, setSystemSetting } from "../lib/system-settings";
+import { findClosestFaceMatchAll } from "../lib/face-matching";
+import { publishEvent } from "../lib/events";
+import { getSmsTemplates } from "../lib/sms-templates";
 
 const router = Router();
 const adminId = (req: Request) => (req as Request & { admin?: { adminId: number } }).admin?.adminId;
@@ -23,11 +28,12 @@ const settingsInput = z.object({
 }).refine((value) => Object.keys(value).length > 0, "At least one setting is required");
 const fanInput = z.object({ mode: z.enum(["auto", "on", "off"]) });
 const decisionInput = z.object({
-  decision: z.enum(["approve", "reject"]),
+  decision: z.enum(["approve", "reject", "reassign"]),
+  studentId: z.number().int().positive().nullable().optional(),
   note: z.string().trim().max(500).nullable().optional(),
 });
 
-router.get("/audit-logs", requireAuth, async (req, res): Promise<void> => {
+router.get("/audit-logs", requireAdminLevel, async (req, res): Promise<void> => {
   const rawLimit = Number(req.query.limit ?? 100);
   const limit = Number.isFinite(rawLimit) ? Math.min(200, Math.max(1, Math.floor(rawLimit))) : 100;
   const rows = await db.select({
@@ -50,7 +56,7 @@ router.get("/system/settings", requireAuth, async (_req, res): Promise<void> => 
   res.json(await getSystemSettings());
 });
 
-router.patch("/system/settings", requireAuth, async (req, res): Promise<void> => {
+router.patch("/system/settings", requireAdminLevel, async (req, res): Promise<void> => {
   const parsed = settingsInput.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -66,7 +72,7 @@ router.patch("/system/settings", requireAuth, async (req, res): Promise<void> =>
   res.json(await getSystemSettings());
 });
 
-router.post("/system/fan-override", requireAuth, async (req, res): Promise<void> => {
+router.post("/system/fan-override", requireAdminLevel, async (req, res): Promise<void> => {
   const parsed = fanInput.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -88,12 +94,13 @@ router.post("/system/fan-override", requireAuth, async (req, res): Promise<void>
   res.status(201).json(job);
 });
 
-router.get("/reviews", requireAuth, async (_req, res): Promise<void> => {
+router.get("/reviews", requireStaff, async (_req, res): Promise<void> => {
   const rows = await db
     .select({
       id: matchReviewsTable.id,
       studentId: matchReviewsTable.studentId,
       studentName: studentsTable.name,
+      studentRef: studentsTable.studentId,
       classroomId: matchReviewsTable.classroomId,
       classroomName: classroomsTable.name,
       confidence: matchReviewsTable.confidence,
@@ -107,10 +114,74 @@ router.get("/reviews", requireAuth, async (_req, res): Promise<void> => {
     .where(eq(matchReviewsTable.status, "pending"))
     .orderBy(matchReviewsTable.createdAt)
     .limit(100);
-  res.json(rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() })));
+
+  // Seat-position tie-breaker hint: expected seat of the suggested student
+  const seatRows = await db
+    .select({ studentId: classroomSeatsTable.studentId, seatLabel: classroomSeatsTable.seatLabel, classroomId: classroomSeatsTable.classroomId })
+    .from(classroomSeatsTable);
+  const seatFor = (studentId: number | null, classroomId: number | null) =>
+    seatRows.find((s) => s.studentId === studentId && (!classroomId || s.classroomId === classroomId))?.seatLabel ?? null;
+
+  res.json(rows.map((row) => ({
+    ...row,
+    createdAt: row.createdAt.toISOString(),
+    expectedSeat: seatFor(row.studentId, row.classroomId),
+    hasFaceData: true,
+  })));
 });
 
-router.post("/reviews/:id/decision", requireAuth, async (req, res): Promise<void> => {
+
+// ── Top-3 candidate matches for an ambiguous face capture ───────
+router.get("/reviews/:id/candidates", requireStaff, async (req, res): Promise<void> => {
+  const reviewId = Number(req.params.id);
+  if (!Number.isInteger(reviewId)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [review] = await db.select().from(matchReviewsTable).where(eq(matchReviewsTable.id, reviewId)).limit(1);
+  if (!review) { res.status(404).json({ error: "Review not found" }); return; }
+
+  let descriptor: number[] | null = null;
+  if (Array.isArray(review.descriptor)) descriptor = review.descriptor as number[];
+
+  const encodings = await db
+    .select({ studentId: faceEncodingsTable.studentId, encoding: faceEncodingsTable.encoding })
+    .from(faceEncodingsTable);
+
+  let candidates: Array<{ studentId: number; name: string; studentRef: string; distance: number; confidence: number }> = [];
+  if (descriptor) {
+    const matches = findClosestFaceMatchAll(descriptor, encodings);
+    const studentsById = new Map<number, { name: string; studentRef: string }>();
+    if (matches.length) {
+      const rows = await db
+        .select({ id: studentsTable.id, name: studentsTable.name, studentRef: studentsTable.studentId })
+        .from(studentsTable);
+      for (const r of rows) studentsById.set(r.id, { name: r.name, studentRef: r.studentRef });
+    }
+    candidates = matches.map((m) => ({
+      studentId: m.studentId,
+      name: studentsById.get(m.studentId)?.name ?? "Unknown",
+      studentRef: studentsById.get(m.studentId)?.studentRef ?? String(m.studentId),
+      distance: Math.round(m.distance * 1000) / 1000,
+      confidence: Math.round(m.confidence * 1000) / 1000,
+    }));
+  }
+
+  // expected seat of the suggested student (tie-breaker hint only)
+  const [seat] = review.studentId
+    ? await db
+        .select({ seatLabel: classroomSeatsTable.seatLabel })
+        .from(classroomSeatsTable)
+        .where(eq(classroomSeatsTable.studentId, review.studentId))
+        .limit(1)
+    : [];
+
+  res.json({
+    reviewId,
+    expectedSeat: seat?.seatLabel ?? null,
+    candidates,
+    hasDescriptor: !!descriptor,
+  });
+});
+
+router.post("/reviews/:id/decision", requireStaff, async (req, res): Promise<void> => {
   const reviewId = Number(req.params.id);
   if (!Number.isInteger(reviewId) || reviewId <= 0) {
     res.status(400).json({ error: "Invalid review id" });
@@ -136,6 +207,48 @@ router.post("/reviews/:id/decision", requireAuth, async (req, res): Promise<void
   const reviewedAt = new Date();
   const settings = await getSystemSettings();
   const purgeAt = new Date(reviewedAt.getTime() + settings.reviewRetentionDays * 24 * 60 * 60 * 1000);
+
+  if (parsed.data.decision === "reassign") {
+    if (!parsed.data.studentId) {
+      res.status(400).json({ error: "studentId is required when reassigning" });
+      return;
+    }
+    const [target] = await db.select().from(studentsTable).where(eq(studentsTable.id, parsed.data.studentId)).limit(1);
+    if (!target) { res.status(404).json({ error: "Reassign target student not found" }); return; }
+    const startOfDay = new Date(reviewedAt);
+    startOfDay.setHours(0, 0, 0, 0);
+    const [existingAttendance] = await db
+      .select({ id: attendanceLogsTable.id, status: attendanceLogsTable.status })
+      .from(attendanceLogsTable)
+      .where(and(eq(attendanceLogsTable.studentId, target.id), gte(attendanceLogsTable.markedAt, startOfDay)))
+      .limit(1);
+    if (existingAttendance) {
+      attendance = { id: existingAttendance.id, status: existingAttendance.status, alreadyMarked: true, studentId: target.id };
+    } else {
+      const status = reviewedAt.getHours() > 8 || (reviewedAt.getHours() === 8 && reviewedAt.getMinutes() > 15) ? "late" : "present";
+      const [created] = await db.insert(attendanceLogsTable).values({
+        studentId: target.id,
+        classroomId: target.classroomId,
+        status,
+        method: "face",
+        source: "gate-camera",
+        confidence: review.confidence,
+        notes: `reassigned from review #${reviewId}`,
+      }).returning();
+      attendance = { id: created.id, status, alreadyMarked: false, studentId: target.id };
+      if (status === "late") {
+        await enqueueJob({ type: "send_sms", worker: "api", payload: { studentId: target.id, status } });
+      }
+    }
+    await db.update(matchReviewsTable).set({ studentId: target.id }).where(eq(matchReviewsTable.id, reviewId));
+    await writeAudit({
+      actorAdminId: adminId(req),
+      action: "face_match.reassigned",
+      targetType: "match_review",
+      targetId: reviewId,
+      payload: { from: review.studentId, to: target.id, confidence: review.confidence },
+    });
+  }
 
   if (parsed.data.decision === "approve") {
     if (!review.studentId) {
@@ -182,7 +295,7 @@ router.post("/reviews/:id/decision", requireAuth, async (req, res): Promise<void
   }
 
   await db.update(matchReviewsTable).set({
-    status: parsed.data.decision === "approve" ? "approved" : "rejected",
+    status: parsed.data.decision === "approve" ? "approved" : parsed.data.decision === "reassign" ? "reassigned" : "rejected",
     descriptor: null,
     reviewedByAdminId: adminId(req) ?? null,
     reviewNote: parsed.data.note ?? null,
@@ -197,6 +310,8 @@ router.post("/reviews/:id/decision", requireAuth, async (req, res): Promise<void
     targetId: reviewId,
     payload: { studentId: review.studentId, confidence: review.confidence },
   });
+
+  publishEvent("review.decided", { reviewId, decision: parsed.data.decision, studentId: review.studentId });
 
   const [updatedReview] = await db
     .select({
@@ -222,7 +337,7 @@ router.post("/reviews/:id/decision", requireAuth, async (req, res): Promise<void
   });
 });
 
-router.get("/dashboard/confidence-heatmap", requireAuth, async (_req, res): Promise<void> => {
+router.get("/dashboard/confidence-heatmap", requireAdminLevel, async (_req, res): Promise<void> => {
   const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const [lowConfidenceRows, committedRows] = await Promise.all([
     db.select({
@@ -298,6 +413,72 @@ router.get("/dashboard/confidence-heatmap", requireAuth, async (_req, res): Prom
     ...row,
     lowConfidenceRate: row.totalMatches ? row.lowConfidenceMatches / row.totalMatches : 0,
   })).sort((a, b) => b.day.localeCompare(a.day)));
+});
+
+// ── End-of-day absent sweep: wire the absent SMS template in ────
+router.post("/attendance/absent-sweep", requireAdminLevel, async (req, res): Promise<void> => {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
+
+  const allStudents = await db.select({ id: studentsTable.id, name: studentsTable.name, classroomId: studentsTable.classroomId }).from(studentsTable);
+  const presentToday = await db
+    .select({ studentId: attendanceLogsTable.studentId })
+    .from(attendanceLogsTable)
+    .where(and(gte(attendanceLogsTable.markedAt, todayStart), lte(attendanceLogsTable.markedAt, todayEnd)));
+  const presentSet = new Set(presentToday.map((p) => p.studentId));
+  const missing = allStudents.filter((s) => !presentSet.has(s.id));
+
+  let smsQueued = 0;
+  for (const student of missing) {
+    const [log] = await db.insert(attendanceLogsTable).values({
+      studentId: student.id,
+      classroomId: student.classroomId,
+      status: "absent",
+      method: "manual",
+      source: "manual",
+      notes: "absent sweep",
+    }).returning();
+    await enqueueJob({ type: "send_sms", worker: "api", payload: { studentId: student.id, status: "absent" } });
+    smsQueued++;
+    publishEvent("attendance.created", { studentId: student.id, studentName: student.name, status: "absent", method: "manual" });
+    await writeAudit({
+      actorAdminId: adminId(req),
+      action: "attendance.absent_sweep.marked",
+      targetType: "attendance",
+      targetId: log.id,
+      payload: { studentId: student.id },
+    });
+  }
+
+  res.json({ markedAbsent: missing.length, smsQueued, students: missing.map((m) => ({ id: m.id, name: m.name })) });
+});
+
+// ── SMS template management ─────────────────────────────────────
+router.get("/sms-templates", requireAuth, async (_req, res): Promise<void> => {
+  res.json(await getSmsTemplates());
+});
+
+router.put("/sms-templates", requireAdminLevel, async (req, res): Promise<void> => {
+  const parsed = z.object({
+    present: z.string().min(1).max(400).optional(),
+    late: z.string().min(1).max(400).optional(),
+    absent: z.string().min(1).max(400).optional(),
+  }).refine((v) => Object.keys(v).length > 0, "At least one template is required").safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+
+  for (const [key, value] of Object.entries(parsed.data)) {
+    await setSystemSetting(`sms_template_${key}`, value);
+  }
+  await writeAudit({
+    actorAdminId: adminId(req),
+    action: "sms.templates.updated",
+    targetType: "system_settings",
+    payload: { keys: Object.keys(parsed.data) },
+  });
+  publishEvent("settings.updated", { smsTemplates: Object.keys(parsed.data) });
+  res.json(await getSmsTemplates());
 });
 
 export default router;

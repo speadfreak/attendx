@@ -1,15 +1,17 @@
 import { Router } from "express";
-import { db, studentsTable, faceEncodingsTable, attendanceLogsTable } from "@workspace/db";
-import { eq, and, gte } from "drizzle-orm";
+import { db, studentsTable, faceEncodingsTable, attendanceLogsTable, matchReviewsTable, classroomSeatsTable } from "@workspace/db";
+import { eq, and, gte, sql } from "drizzle-orm";
 import { z } from "zod/v4";
-import { requireAuth } from "../lib/auth";
+import { requireAuth, requireStaff } from "../lib/auth";
 import { enqueueJob } from "../lib/jobs";
 import { writeAudit } from "../lib/audit";
-import { findClosestFaceMatch } from "../lib/face-matching";
+import { findClosestFaceMatch, findClosestFaceMatchAll } from "../lib/face-matching";
+import { getSystemSettings } from "../lib/system-settings";
+import { publishEvent } from "../lib/events";
 
 const router = Router();
 
-router.post("/face/encode", requireAuth, async (req, res): Promise<void> => {
+router.post("/face/encode", requireStaff, async (req, res): Promise<void> => {
   const { studentId, faceDescriptor } = req.body;
   if (!studentId) { res.status(400).json({ error: "studentId required" }); return; }
   const parsedDescriptor = z.array(z.number().finite()).length(128).safeParse(faceDescriptor);
@@ -32,13 +34,15 @@ router.post("/face/encode", requireAuth, async (req, res): Promise<void> => {
   res.json({ success: true, message: `Face data saved for ${student.name}` });
 });
 
-router.post("/face/recognize", requireAuth, async (req, res): Promise<void> => {
+router.post("/face/recognize", requireStaff, async (req, res): Promise<void> => {
   const { faceDescriptor, classroomId } = req.body;
   const parsedDescriptor = z.array(z.number().finite()).length(128).safeParse(faceDescriptor);
   if (!parsedDescriptor.success) {
     res.status(400).json({ error: "A valid 128-value face descriptor is required" });
     return;
   }
+
+  const settings = await getSystemSettings();
 
   const allEncodings = await db
     .select({ studentId: faceEncodingsTable.studentId, encoding: faceEncodingsTable.encoding })
@@ -51,9 +55,12 @@ router.post("/face/recognize", requireAuth, async (req, res): Promise<void> => {
 
   const bestMatch = findClosestFaceMatch(parsedDescriptor.data, allEncodings);
 
-  const THRESHOLD = faceDescriptor ? 0.55 : 0.05;
+  // Hard floor: below this distance confidence is meaningless
+  const ABSOLUTE_FLOOR = 0.30;
+  // Accept threshold from system settings (default 0.72)
+  const ACCEPT_THRESHOLD = settings.confidenceThreshold;
 
-  if (!bestMatch || bestMatch.distance > THRESHOLD) {
+  if (!bestMatch || bestMatch.confidence < ABSOLUTE_FLOOR) {
     res.status(404).json({ error: "No matching student found" });
     return;
   }
@@ -63,6 +70,14 @@ router.post("/face/recognize", requireAuth, async (req, res): Promise<void> => {
   const [student] = await db.select().from(studentsTable).where(eq(studentsTable.id, bestMatch.studentId));
   if (!student) { res.status(404).json({ error: "Student not found" }); return; }
 
+  // Expected seat tie-breaker hint (never auto-applied)
+  const [seat] = await db
+    .select({ seatLabel: classroomSeatsTable.seatLabel })
+    .from(classroomSeatsTable)
+    .where(eq(classroomSeatsTable.studentId, student.id))
+    .limit(1);
+  const expectedSeat = seat?.seatLabel ?? null;
+
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const existing = await db
@@ -71,10 +86,54 @@ router.post("/face/recognize", requireAuth, async (req, res): Promise<void> => {
     .where(and(eq(attendanceLogsTable.studentId, student.id), gte(attendanceLogsTable.markedAt, todayStart)));
 
   if (existing.length > 0) {
-    res.json({ studentId: student.id, studentName: student.name, confidence, attendanceId: existing[0].id, alreadyMarked: true, status: existing[0].status });
+    res.json({
+      studentId: student.id,
+      studentName: student.name,
+      confidence,
+      expectedSeat,
+      attendanceId: existing[0].id,
+      alreadyMarked: true,
+      status: existing[0].status,
+    });
     return;
   }
 
+  // ── Ambiguous match: below accept threshold → send to review queue ──
+  if (confidence < ACCEPT_THRESHOLD) {
+    const now = new Date();
+    const [review] = await db.insert(matchReviewsTable).values({
+      studentId: student.id,
+      classroomId: classroomId ? Number(classroomId) : student.classroomId,
+      descriptor: parsedDescriptor.data,
+      confidence,
+      source: "webcam",
+      status: "pending",
+      purgeAt: new Date(now.getTime() + settings.reviewRetentionDays * 24 * 60 * 60 * 1000),
+    }).returning();
+
+    const candidates = findClosestFaceMatchAll(parsedDescriptor.data, allEncodings, 3);
+    publishEvent("review.created", {
+      reviewId: review.id,
+      studentId: student.id,
+      studentName: student.name,
+      confidence,
+      expectedSeat,
+    });
+
+    res.status(202).json({
+      sentToReview: true,
+      reviewId: review.id,
+      studentId: student.id,
+      studentName: student.name,
+      confidence,
+      expectedSeat,
+      candidates,
+      message: `Ambiguous match (${(confidence * 100).toFixed(0)}%) — ${student.name} sent to review queue.`,
+    });
+    return;
+  }
+
+  // ── Confident match: commit attendance ──
   const now = new Date();
   const isLate = now.getHours() > 8 || (now.getHours() === 8 && now.getMinutes() > 15);
   const status = isLate ? "late" : "present";
@@ -100,7 +159,26 @@ router.post("/face/recognize", requireAuth, async (req, res): Promise<void> => {
     payload: { studentId: student.id, source: "webcam", confidence, status },
   });
 
-  res.json({ studentId: student.id, studentName: student.name, confidence, attendanceId: log.id, alreadyMarked: false, status });
+  publishEvent("attendance.created", {
+    studentId: student.id,
+    studentName: student.name,
+    status,
+    method: "face",
+    source: "webcam",
+    confidence,
+    classroomId: log.classroomId,
+    markedAt: log.markedAt.toISOString(),
+  });
+
+  res.json({
+    studentId: student.id,
+    studentName: student.name,
+    confidence,
+    expectedSeat,
+    attendanceId: log.id,
+    alreadyMarked: false,
+    status,
+  });
 });
 
 export default router;

@@ -45,3 +45,32 @@ export function findClosestFaceMatch(
   }
   return best;
 }
+
+export interface RankedFaceMatch extends FaceMatch {
+  rank: number;
+}
+
+/** Top-N candidate matches for an ambiguous capture (review queue / tie-breaker hints). */
+export function findClosestFaceMatchAll(
+  descriptor: number[],
+  storedDescriptors: StoredFaceDescriptor[],
+  limit = 3,
+): RankedFaceMatch[] {
+  if (descriptor.length !== 128) return [];
+  const all: FaceMatch[] = [];
+  for (const row of storedDescriptors) {
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(row.encoding);
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(decoded) || decoded.length !== 128 || decoded.some((value) => !Number.isFinite(value))) {
+      continue;
+    }
+    const distance = euclideanDistance(descriptor, decoded as number[]);
+    all.push({ studentId: row.studentId, distance, confidence: descriptorConfidence(distance) });
+  }
+  all.sort((a, b) => a.distance - b.distance);
+  return all.slice(0, limit).map((m, i) => ({ ...m, rank: i + 1 }));
+}

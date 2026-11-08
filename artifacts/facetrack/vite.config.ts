@@ -53,6 +53,16 @@ export default defineConfig({
       strict: true,
       deny: ["**/.*"],
     },
+    // Dev convenience: proxy /api to the API server so the same-origin
+    // relative paths used in production work identically in dev.
+    proxy: process.env.VITE_API_PROXY_TARGET
+      ? {
+          "/api": {
+            target: process.env.VITE_API_PROXY_TARGET,
+            changeOrigin: true,
+          },
+        }
+      : undefined,
   },
   preview: {
     port,

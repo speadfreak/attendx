@@ -41,7 +41,7 @@ export default function LoginPage() {
       onError: (error) => {
         gsap.to(formCardRef.current, {
           x: -12, duration: 0.07, ease: "none", repeat: 5, yoyo: true,
-          onComplete: () => gsap.set(formCardRef.current, { x: 0 })
+          onComplete: () => { gsap.set(formCardRef.current, { x: 0 }); }
         });
         toast({ title: "Access Denied", description: error.message || "Invalid credentials", variant: "destructive" });
       }

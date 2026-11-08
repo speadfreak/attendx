@@ -10,11 +10,12 @@ import {
   UpdateAttendanceBody,
   GetTodayAttendanceQueryParams,
 } from "@workspace/api-zod";
-import { requireAuth } from "../lib/auth";
+import { publishEvent } from "../lib/events";
+import { requireAuth, requireStaff, requireAdminLevel } from "../lib/auth";
 
 const router = Router();
 
-router.get("/attendance/records/clear-preview", requireAuth, async (req, res): Promise<void> => {
+router.get("/attendance/records/clear-preview", requireAdminLevel, async (req, res): Promise<void> => {
   const source = req.query.source;
   if (source !== "manual" && source !== "automated") {
     res.status(400).json({ error: "source must be manual or automated" });
@@ -27,7 +28,7 @@ router.get("/attendance/records/clear-preview", requireAuth, async (req, res): P
   res.json({ source, count: Number(result.total) });
 });
 
-router.delete("/attendance/records", requireAuth, async (req, res): Promise<void> => {
+router.delete("/attendance/records", requireAdminLevel, async (req, res): Promise<void> => {
   const source = req.body?.source;
   const expectedCount = Number(req.body?.expectedCount);
   if ((source !== "manual" && source !== "automated") || !Number.isInteger(expectedCount) || expectedCount < 0) {
@@ -155,7 +156,7 @@ router.get("/attendance/today", requireAuth, async (req, res): Promise<void> => 
   res.json(rows.map(formatLog));
 });
 
-router.post("/attendance", requireAuth, async (req, res): Promise<void> => {
+router.post("/attendance", requireStaff, async (req, res): Promise<void> => {
   const parsed = CreateAttendanceBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -173,6 +174,7 @@ router.post("/attendance", requireAuth, async (req, res): Promise<void> => {
     source: "manual",
     confidence: null,
   }).returning();
+  publishEvent("attendance.created", { studentId: log.studentId, studentName: student.name, status: log.status, method: "manual", source: "manual", markedAt: log.markedAt.toISOString() });
 
   if (log.status === "late" || log.status === "absent") {
     await enqueueJob({
@@ -195,7 +197,7 @@ router.post("/attendance", requireAuth, async (req, res): Promise<void> => {
   res.status(201).json(formatLog(r));
 });
 
-router.patch("/attendance/:id", requireAuth, async (req, res): Promise<void> => {
+router.patch("/attendance/:id", requireStaff, async (req, res): Promise<void> => {
   const params = UpdateAttendanceParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });

@@ -3,7 +3,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { LiveEventsProvider } from "@/hooks/useLiveEvents";
 import { Layout } from "@/components/Layout";
+import { CommandPalette } from "@/components/CommandPalette";
+import { ShieldOff } from "lucide-react";
 import NotFound from "@/pages/not-found";
 
 import LoginPage from "@/pages/LoginPage";
@@ -15,11 +18,36 @@ import ReportsPage from "@/pages/ReportsPage";
 import SmsLogsPage from "@/pages/SmsLogsPage";
 import AdminsPage from "@/pages/AdminsPage";
 import OperationsPage from "@/pages/OperationsPage";
+import ReviewQueuePage from "@/pages/ReviewQueuePage";
+import QrTerminalPage from "@/pages/QrTerminalPage";
+import QrManagerPage from "@/pages/QrManagerPage";
+import SmsTemplatesPage from "@/pages/SmsTemplatesPage";
+import AuditPage from "@/pages/AuditPage";
 
 const queryClient = new QueryClient();
 
-function ProtectedRoute({ component: Component, ...rest }: any) {
-  const { isAuthenticated, isLoading } = useAuth();
+function Forbidden() {
+  return (
+    <div className="min-h-[50vh] flex flex-col items-center justify-center gap-4 text-center">
+      <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+        <ShieldOff className="w-7 h-7 text-red-400" />
+      </div>
+      <div>
+        <h2 className="text-xl font-bold text-white/80">Access restricted</h2>
+        <p className="text-sm text-white/40 mt-1">Your role doesn't have access to this surface. Ask a super admin if you need it.</p>
+      </div>
+    </div>
+  );
+}
+
+function ProtectedRoute({
+  component: Component,
+  roles,
+}: {
+  component: React.ComponentType;
+  roles?: Array<"super_admin" | "admin" | "teacher">;
+}) {
+  const { isAuthenticated, isLoading, admin } = useAuth();
 
   if (isLoading) {
     return (
@@ -31,9 +59,17 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
 
   if (!isAuthenticated) return <Redirect to="/login" />;
 
+  if (roles && admin && roles.length && !roles.includes(admin.role as "super_admin" | "admin" | "teacher")) {
+    return (
+      <Layout>
+        <Forbidden />
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
-      <Component {...rest} />
+      <Component />
     </Layout>
   );
 }
@@ -47,12 +83,17 @@ function Router() {
       </Route>
       <Route path="/dashboard">{() => <ProtectedRoute component={DashboardPage} />}</Route>
       <Route path="/attendance">{() => <ProtectedRoute component={AttendancePage} />}</Route>
+      <Route path="/qr-terminal">{() => <ProtectedRoute component={QrTerminalPage} />}</Route>
+      <Route path="/qr-manager">{() => <ProtectedRoute component={QrManagerPage} />}</Route>
       <Route path="/students">{() => <ProtectedRoute component={StudentsPage} />}</Route>
       <Route path="/classrooms">{() => <ProtectedRoute component={ClassroomsPage} />}</Route>
+      <Route path="/review-queue">{() => <ProtectedRoute component={ReviewQueuePage} />}</Route>
       <Route path="/reports">{() => <ProtectedRoute component={ReportsPage} />}</Route>
       <Route path="/sms-logs">{() => <ProtectedRoute component={SmsLogsPage} />}</Route>
-      <Route path="/admins">{() => <ProtectedRoute component={AdminsPage} />}</Route>
-      <Route path="/operations">{() => <ProtectedRoute component={OperationsPage} />}</Route>
+      <Route path="/sms-templates">{() => <ProtectedRoute component={SmsTemplatesPage} roles={["super_admin", "admin"]} />}</Route>
+      <Route path="/audit">{() => <ProtectedRoute component={AuditPage} roles={["super_admin", "admin"]} />}</Route>
+      <Route path="/admins">{() => <ProtectedRoute component={AdminsPage} roles={["super_admin", "admin"]} />}</Route>
+      <Route path="/operations">{() => <ProtectedRoute component={OperationsPage} roles={["super_admin", "admin"]} />}</Route>
       <Route component={NotFound} />
     </Switch>
   );
@@ -63,7 +104,10 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <AuthProvider>
-          <Router />
+          <LiveEventsProvider>
+            <Router />
+            <CommandPalette />
+          </LiveEventsProvider>
         </AuthProvider>
         <Toaster />
       </TooltipProvider>

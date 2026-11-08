@@ -13,6 +13,7 @@ import { requirePiToken, type PiAuthenticatedRequest } from "../lib/pi-auth";
 import { findClosestFaceMatch } from "../lib/face-matching";
 import { getSystemSettings } from "../lib/system-settings";
 import { enqueueJob } from "../lib/jobs";
+import { publishEvent } from "../lib/events";
 import { writeAudit } from "../lib/audit";
 
 const router = Router();
@@ -169,6 +170,7 @@ router.post("/attendance/bulk-match", requirePiToken, async (req, res): Promise<
       source: "gate-camera",
       confidence: candidate.confidence,
     }).returning();
+    publishEvent("attendance.created", { studentId: student.id, studentName: student.name, status, method: "face", source: "gate-camera", confidence: candidate.confidence, bulk: true, markedAt: attendance.markedAt.toISOString() });
     alreadyMarked.set(student.id, attendance.id);
     committed++;
     result.push({
