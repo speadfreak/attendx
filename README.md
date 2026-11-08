@@ -23,7 +23,7 @@
 - Retryable (network / 5xx / 429) vs permanent failure classification: retryable jobs requeue up to 3 attempts, permanent failures fail fast with actionable detail
 
 ### 🎨 Branding
-- Custom AttendX emblem applied across the app: hero logo, sidebar/mobile emblem, favicon-32/192, apple-touch-icon — zero legacy asset references remain
+- Custom AttendX emblem applied across the app: sidebar/mobile emblem, favicon-32/192, apple-touch-icon — the login page keeps its original hero image (`/hero.jpg`)
 
 ## What's inside (Phase 3)
 
