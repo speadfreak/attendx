@@ -12,6 +12,7 @@ import { z } from "zod/v4";
 import { requirePiToken, type PiAuthenticatedRequest } from "../lib/pi-auth";
 import { findClosestFaceMatch } from "../lib/face-matching";
 import { getSystemSettings } from "../lib/system-settings";
+import { arrivalRulesFromSettings, resolveArrivalStatus, localDayBounds } from "../lib/attendance-rules";
 import { enqueueJob } from "../lib/jobs";
 import { publishEvent } from "../lib/events";
 import { writeAudit } from "../lib/audit";
@@ -35,6 +36,7 @@ router.post("/attendance/bulk-match", requirePiToken, async (req, res): Promise<
   }
 
   const settings = await getSystemSettings();
+  const rules = arrivalRulesFromSettings(settings);
   const allEncodings = await db
     .select({
       studentId: faceEncodingsTable.studentId,
@@ -122,8 +124,7 @@ router.post("/attendance/bulk-match", requirePiToken, async (req, res): Promise<
     .filter(([, value]) => value.count >= 2)
     .map(([studentId, value]) => ({ studentId, confidence: value.confidence }));
   const now = new Date();
-  const startOfDay = new Date(now);
-  startOfDay.setHours(0, 0, 0, 0);
+  const { startUtc: startOfDay } = localDayBounds(now, rules.timezone);
   const result: Array<{
     studentId: number;
     studentName: string;
@@ -161,7 +162,7 @@ router.post("/attendance/bulk-match", requirePiToken, async (req, res): Promise<
       });
       continue;
     }
-    const status = now.getHours() > 8 || (now.getHours() === 8 && now.getMinutes() > 15) ? "late" : "present";
+    const status = resolveArrivalStatus(now, rules);
     const [attendance] = await db.insert(attendanceLogsTable).values({
       studentId: student.id,
       classroomId: parsed.data.classroomId ?? student.classroomId,

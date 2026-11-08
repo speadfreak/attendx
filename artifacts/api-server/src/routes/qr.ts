@@ -7,6 +7,7 @@ import { verifyQrToken, hashQrToken } from "../lib/qr";
 import { issueForStudents } from "../lib/qr-issue";
 import { writeAudit } from "../lib/audit";
 import { publishEvent } from "../lib/events";
+import { getArrivalRules, resolveArrivalStatus, localDayBounds } from "../lib/attendance-rules";
 
 /**
  * QR attendance system.
@@ -32,8 +33,8 @@ const issueInput = z.object({
   note: z.string().max(300).optional(),
 });
 
-function attendanceStatusForNow(now = new Date()): "present" | "late" {
-  return now.getHours() > 8 || (now.getHours() === 8 && now.getMinutes() > 15) ? "late" : "present";
+function attendanceStatusForNow(now: Date, rules: Awaited<ReturnType<typeof getArrivalRules>>): "present" | "late" {
+  return resolveArrivalStatus(now, rules);
 }
 
 // ── Issue / rotate QR badges ────────────────────────────────────
@@ -214,6 +215,7 @@ router.post("/qr/scan", requireStaff, async (req, res): Promise<void> => {
   const token = parsed.data.token.trim();
   const terminalId = parsed.data.terminalId || "web";
   const now = new Date();
+  const rules = await getArrivalRules();
 
   const logScan = (result: string, studentId: number | null, issueId: number | null, status: string | null, detail: Record<string, unknown> = {}) =>
     db.insert(qrScanLogsTable).values({ studentId, issueId, terminalId, result, status, detail: { ...detail, at: now.toISOString() } }).returning();
@@ -271,9 +273,9 @@ router.post("/qr/scan", requireStaff, async (req, res): Promise<void> => {
     return;
   }
 
-  // 3. Duplicate protection — one attendance per badge per day
-  const dayStart = new Date(now);
-  dayStart.setHours(0, 0, 0, 0);
+  // 3. Duplicate protection — one attendance per badge per SCHOOL day
+  //    (day boundaries follow the configured attendance timezone)
+  const { startUtc: dayStart } = localDayBounds(now, rules.timezone);
   const [existing] = await db.select().from(attendanceLogsTable)
     .where(and(eq(attendanceLogsTable.studentId, sid), gte(attendanceLogsTable.markedAt, dayStart)))
     .limit(1);
@@ -293,8 +295,8 @@ router.post("/qr/scan", requireStaff, async (req, res): Promise<void> => {
     return;
   }
 
-  // 4. Commit attendance
-  const status = attendanceStatusForNow(now);
+  // 4. Commit attendance — present/late decided by the admin's entrance rules
+  const status = attendanceStatusForNow(now, rules);
   const [log] = await db.insert(attendanceLogsTable).values({
     studentId: sid,
     classroomId: parsed.data.classroomId ?? student.classroomId,

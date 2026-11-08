@@ -84,6 +84,17 @@ Run the push command only after confirming `DATABASE_URL` points at the intended
 - **Face recognition**: descriptors extracted in the browser (face-api.js), matched server-side — no GPU/native deps.
 - **PDF export**: rendered client-side (jsPDF).
 
+## Phase 4 — attendance time rules & gate integrity
+
+**Attendance time rules** (Operations → System Settings, admin-level): `entranceTime` (arrivals at/before it → present), `lateCutoffTime` (after it → late; parent SMS queued), `absenceCutoffTime` (the absent sweep refuses to run before it passes — pass `{"force":true}` to override), and `attendanceTimezone` (IANA, default `Africa/Addis_Ababa`). Every present/late decision (webcam face, gate camera batch, QR door terminal, review approve/reassign) and all "today" boundaries now follow the school's timezone instead of the server clock (which is UTC on Vercel).
+
+**Gate Integrity** (Operations → Gate Integrity card): the Pi agent batches Arduino pass events (`ultrasonic` HC-SR04 + `ir_beam` break-beam) to `POST /api/gate/sensor-events` (Pi token auth). Epoch-aligned windows (`gateWindowSeconds`, default 60 s) are compared three ways: camera-matched attendance (`source=gate-camera`) vs ultrasonic vs IR. `gateDiscrepancyPct` (default 10%) raises:
+
+- `missed_detections` — camera lower than BOTH physical sensors beyond the threshold (students walked through unmatched).
+- `sensor_conflict` — the two sensors disagree with each other (hardware fault, not attendance).
+
+Validation runs inline after each ingestion, from the manual **Run validation** button, and as a recovery pass in the daily cron. It only auto-runs during `gateActiveFrom`–`gateActiveTo` (school timezone). **Simulate discrepancy** (demo mode) injects clearly-tagged synthetic events into the last completed window — alerts, notifications, and audit entries are marked `[DEMO]`/`simulated` and never touch real attendance. New tables: `gate_sensor_events`, `gate_integrity_alerts` (schema already pushed). No new environment variables are required for Phase 4.
+
 ## Step-by-step deployment
 
 1. Push this repo to GitHub, then vercel.com → **Add New → Project** → import `attendx`.

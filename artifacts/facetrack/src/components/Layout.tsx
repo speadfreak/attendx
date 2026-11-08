@@ -186,8 +186,8 @@ export function Layout({ children }: { children: ReactNode }) {
             <div className="absolute inset-0 rounded-xl bg-purple-600/30 blur-md" />
             <img
               ref={logoImgRef}
-              src="/logo.jpg"
-              alt="AttendX"
+              src="/attendx-emblem.png"
+              alt="AttendX emblem"
               className="relative w-9 h-9 rounded-xl object-cover"
               style={{ filter: "drop-shadow(0 0 8px rgba(155,91,255,0.7))" }}
             />
@@ -269,7 +269,7 @@ export function Layout({ children }: { children: ReactNode }) {
       >
         <div className="p-4 flex items-center justify-between border-b border-white/5">
           <div className="flex items-center gap-2">
-            <img src="/logo.jpg" alt="AttendX" className="w-7 h-7 rounded-lg object-cover" style={{ filter: "drop-shadow(0 0 6px rgba(155,91,255,0.6))" }} />
+            <img src="/attendx-emblem.png" alt="AttendX emblem" className="w-7 h-7 rounded-lg object-cover" style={{ filter: "drop-shadow(0 0 6px rgba(155,91,255,0.6))" }} />
             <h1 className="font-black text-white tracking-wider text-sm" style={{ fontFamily: "'Orbitron', monospace" }}>
               ATTEND<span className="text-purple-400">X</span>
             </h1>
@@ -326,7 +326,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <Button variant="ghost" size="icon" onClick={() => setMobileOpen(true)} className="text-white/50 -ml-2 h-8 w-8">
               <Menu size={18} />
             </Button>
-            <img src="/logo.jpg" alt="AttendX" className="w-6 h-6 rounded-md object-cover" style={{ filter: "drop-shadow(0 0 4px rgba(155,91,255,0.6))" }} />
+            <img src="/attendx-emblem.png" alt="AttendX emblem" className="w-6 h-6 rounded-md object-cover" style={{ filter: "drop-shadow(0 0 4px rgba(155,91,255,0.6))" }} />
             <span className="font-black text-sm text-white tracking-wider" style={{ fontFamily: "'Orbitron', monospace" }}>
               ATTEND<span className="text-purple-400">X</span>
             </span>

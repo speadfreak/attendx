@@ -154,7 +154,7 @@ export interface NotificationFeed {
   items: Array<{
     id: string;
     severity: "critical" | "warning" | "info";
-    category: "review" | "device" | "job" | "qr" | "system";
+    category: "review" | "device" | "job" | "qr" | "system" | "gate";
     title: string;
     detail: string;
     at: string;
@@ -247,6 +247,116 @@ export interface BulkEnrollResult {
   qrIssued: number;
 }
 
+// ── Gate integrity (Phase 4) ────────────────────────────────────
+
+export type GateVerdict = "ok" | "missed_detections" | "sensor_conflict";
+export type GateSimulateMode = "missed_detections" | "sensor_conflict";
+
+export interface GateIntegrityCurrent {
+  gateId: string;
+  windowStart: string;
+  windowEnd: string;
+  partialSecondsLeft: number;
+  camera: number;
+  ultrasonic: number;
+  ir: number;
+  verdict: GateVerdict;
+  discrepancyPct: number;
+  windowSeconds: number;
+  withinGateHours: boolean;
+  timezone: string;
+  gateActiveFrom: string;
+  gateActiveTo: string;
+}
+
+export interface GateWindowPoint {
+  windowStart: string;
+  windowEnd: string;
+  camera: number;
+  ultrasonic: number;
+  ir: number;
+  alerts: string[];
+}
+
+export interface GateWindowSeries {
+  windowSeconds: number;
+  discrepancyPct: number;
+  series: GateWindowPoint[];
+}
+
+export interface GateAlertRow {
+  id: number;
+  gateId: string;
+  windowStart: string;
+  windowEnd: string;
+  cameraCount: number;
+  ultrasonicCount: number;
+  irCount: number;
+  alertType: GateSimulateMode;
+  resolved: boolean;
+  resolvedAt: string | null;
+  resolveNote: string | null;
+  simulated: boolean;
+  createdAt: string;
+}
+
+export interface GateSensorEvent {
+  id: number;
+  sensor: "ultrasonic" | "ir_beam";
+  occurredAt: string;
+  simulated: boolean;
+  piDeviceId: string | null;
+}
+
+export interface GateAlertDetail extends GateAlertRow {
+  detail: Record<string, unknown>;
+  sensorEvents: GateSensorEvent[];
+}
+
+export interface GateValidationResult {
+  ran: boolean;
+  windowsEvaluated: number;
+  alertsCreated: Array<{ id: number; alertType: string; windowStart: string; simulated: boolean }>;
+}
+
+export interface GateSimulateResult {
+  simulated: boolean;
+  mode: GateSimulateMode;
+  injected: number;
+  validation: Record<string, unknown>;
+  alertIds: number[];
+}
+
+// ── System settings (attendance time rules + gate integrity) ────
+
+export interface SystemSettingsExtended {
+  confidenceThreshold: number;
+  reviewRetentionDays: number;
+  fanMode: "auto" | "on" | "off";
+  entranceTime: string;
+  lateCutoffTime: string;
+  absenceCutoffTime: string;
+  attendanceTimezone: string;
+  gateDiscrepancyPct: number;
+  gateWindowSeconds: number;
+  gateActiveFrom: string;
+  gateActiveTo: string;
+  updatedAt: string | null;
+}
+
+export interface SystemSettingsPatch {
+  confidenceThreshold?: number;
+  reviewRetentionDays?: number;
+  entranceTime?: string;
+  lateCutoffTime?: string;
+  absenceCutoffTime?: string;
+  attendanceTimezone?: string;
+  gateDiscrepancyPct?: number;
+  gateWindowSeconds?: number;
+  gateActiveFrom?: string;
+  gateActiveTo?: string;
+}
+
 // ── Endpoint wrappers ───────────────────────────────────────────
 
 export const api = {
@@ -304,4 +414,20 @@ export const api = {
     put<{ present: string; late: string; absent: string }>("/sms-templates", templates),
 
   absentSweep: () => post<{ markedAbsent: number; smsQueued: number }>("/attendance/absent-sweep"),
+
+  // Gate integrity
+  gateCurrent: () => get<GateIntegrityCurrent>("/gate/integrity/current"),
+  gateWindows: (minutes = 60) => get<GateWindowSeries>(`/gate/integrity/windows?minutes=${minutes}`),
+  gateAlerts: (resolved?: boolean) =>
+    get<GateAlertRow[]>(`/gate/integrity/alerts${resolved === undefined ? "" : `?resolved=${resolved}`}`),
+  gateAlertDetail: (id: number) => get<GateAlertDetail>(`/gate/integrity/alerts/${id}`),
+  gateResolveAlert: (id: number, note?: string) =>
+    post<{ ok: boolean }>(`/gate/integrity/alerts/${id}/resolve`, { note: note?.trim() || undefined }),
+  gateRunValidation: () => post<GateValidationResult>("/gate/integrity/run", {}),
+  gateSimulate: (mode?: GateSimulateMode) =>
+    post<GateSimulateResult>("/gate/integrity/simulate", mode ? { mode } : {}),
+
+  // System settings (attendance time rules + gate integrity)
+  systemSettings: () => get<SystemSettingsExtended>("/system/settings"),
+  updateSystemSettings: (changes: SystemSettingsPatch) => patch<SystemSettingsExtended>("/system/settings", changes),
 };

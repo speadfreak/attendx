@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { Bell, ShieldAlert, Server, Briefcase, QrCode, Info } from "lucide-react";
+import { Bell, ShieldAlert, Server, Briefcase, QrCode, Info, DoorOpen } from "lucide-react";
 import { api, type NotificationFeed } from "@/lib/api";
 import { useLiveEvents } from "@/hooks/useLiveEvents";
 import { formatDistanceToNow } from "date-fns";
@@ -19,6 +19,7 @@ const CATEGORY_ICON: Record<string, React.ElementType> = {
   job: Briefcase,
   qr: QrCode,
   system: Info,
+  gate: DoorOpen,
 };
 
 const SEVERITY_DOT: Record<string, string> = {

@@ -7,6 +7,7 @@ import { enqueueJob } from "../lib/jobs";
 import { writeAudit } from "../lib/audit";
 import { findClosestFaceMatch, findClosestFaceMatchAll } from "../lib/face-matching";
 import { getSystemSettings } from "../lib/system-settings";
+import { arrivalRulesFromSettings, resolveArrivalStatus, localDayBounds } from "../lib/attendance-rules";
 import { publishEvent } from "../lib/events";
 
 const router = Router();
@@ -43,6 +44,7 @@ router.post("/face/recognize", requireStaff, async (req, res): Promise<void> => 
   }
 
   const settings = await getSystemSettings();
+  const rules = arrivalRulesFromSettings(settings);
 
   const allEncodings = await db
     .select({ studentId: faceEncodingsTable.studentId, encoding: faceEncodingsTable.encoding })
@@ -78,8 +80,8 @@ router.post("/face/recognize", requireStaff, async (req, res): Promise<void> => 
     .limit(1);
   const expectedSeat = seat?.seatLabel ?? null;
 
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
+  // "Today" means the school's local day in the configured timezone (Phase 4)
+  const { startUtc: todayStart } = localDayBounds(new Date(), rules.timezone);
   const existing = await db
     .select()
     .from(attendanceLogsTable)
@@ -135,8 +137,7 @@ router.post("/face/recognize", requireStaff, async (req, res): Promise<void> => 
 
   // ── Confident match: commit attendance ──
   const now = new Date();
-  const isLate = now.getHours() > 8 || (now.getHours() === 8 && now.getMinutes() > 15);
-  const status = isLate ? "late" : "present";
+  const status = resolveArrivalStatus(now, rules);
 
   const [log] = await db.insert(attendanceLogsTable).values({
     studentId: student.id,

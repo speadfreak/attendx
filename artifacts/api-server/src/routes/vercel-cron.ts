@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import { processOneServerJob } from "../lib/jobs";
 import { purgeExpiredRejectedReviews } from "../lib/retention";
+import { runGateValidation } from "../lib/gate-integrity";
 
 const router = Router();
 
@@ -34,7 +35,12 @@ router.get("/internal/cron", async (req: Request, res: Response): Promise<void> 
   }
 
   const purgedReviews = await purgeExpiredRejectedReviews();
-  res.json({ ok: true, processedJobs, purgedReviews });
+
+  // Phase 4: recovery pass for gate-integrity windows that may have been
+  // missed if no sensor batches arrived during active gate hours.
+  const gateValidation = await runGateValidation();
+
+  res.json({ ok: true, processedJobs, purgedReviews, gateValidation });
 });
 
 export default router;

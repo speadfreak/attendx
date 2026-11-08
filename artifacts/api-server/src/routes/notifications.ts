@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, matchReviewsTable, piDevicesTable, jobsTable, qrScanLogsTable, studentsTable } from "@workspace/db";
+import { db, matchReviewsTable, piDevicesTable, jobsTable, qrScanLogsTable, studentsTable, gateIntegrityAlertsTable } from "@workspace/db";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 
@@ -13,7 +13,7 @@ const router = Router();
 export interface NotificationItem {
   id: string;
   severity: "critical" | "warning" | "info";
-  category: "review" | "device" | "job" | "qr" | "system";
+  category: "review" | "device" | "job" | "qr" | "gate" | "system";
   title: string;
   detail: string;
   at: string;
@@ -103,6 +103,37 @@ router.get("/notifications", requireAuth, async (_req, res): Promise<void> => {
       detail: `Terminal "${a.terminalId}" rejected a badge scan`,
       at: a.createdAt.toISOString(),
       link: "/qr-manager",
+    });
+  }
+
+  // 5. Gate integrity alerts (unresolved, last 24h) — Phase 4
+  const gateAlerts = await db
+    .select({
+      id: gateIntegrityAlertsTable.id,
+      alertType: gateIntegrityAlertsTable.alertType,
+      windowStart: gateIntegrityAlertsTable.windowStart,
+      cameraCount: gateIntegrityAlertsTable.cameraCount,
+      ultrasonicCount: gateIntegrityAlertsTable.ultrasonicCount,
+      irCount: gateIntegrityAlertsTable.irCount,
+      simulated: gateIntegrityAlertsTable.simulated,
+    })
+    .from(gateIntegrityAlertsTable)
+    .where(and(
+      eq(gateIntegrityAlertsTable.resolved, false),
+      gte(gateIntegrityAlertsTable.createdAt, new Date(now - 24 * 3600 * 1000)),
+    ))
+    .orderBy(desc(gateIntegrityAlertsTable.windowStart))
+    .limit(6);
+  for (const a of gateAlerts) {
+    const label = a.alertType === "missed_detections" ? "Possible missed detections" : "Sensor conflict";
+    items.push({
+      id: `gate-${a.id}`,
+      severity: a.alertType === "missed_detections" ? "critical" : "warning",
+      category: "gate",
+      title: a.simulated ? `[DEMO] Gate: ${label}` : `Gate integrity: ${label}`,
+      detail: `Window ${a.windowStart.toISOString().slice(11, 16)} UTC · camera ${a.cameraCount} · ultrasonic ${a.ultrasonicCount} · IR ${a.irCount}`,
+      at: a.windowStart.toISOString(),
+      link: "/operations",
     });
   }
 

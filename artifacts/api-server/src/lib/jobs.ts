@@ -2,7 +2,7 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { db, jobsTable, studentsTable, classroomsTable } from "@workspace/db";
 import { logger } from "./logger";
 import { writeAudit } from "./audit";
-import { sendSms } from "./sms";
+import { sendSms, SmsDeliveryError } from "./sms";
 import { buildStatusMessage } from "./sms-templates";
 import { publishEvent } from "./events";
 
@@ -91,35 +91,73 @@ async function runServerJob(job: ClaimedServerJob): Promise<void> {
       classroomName = cls?.name ?? null;
     }
 
+    // Late/absent SMS go out with the arrival/absence time formatted in the
+    // school's timezone (Phase 4 time rules), not the server clock.
     const message = await buildStatusMessage(
       status as "late" | "absent",
       student.name,
       classroomName,
     );
-    const deliveryStatus = await sendSms({
-      studentId: student.id,
-      parentPhone: student.parentPhone,
-      message,
-    });
+
+    try {
+      await sendSms({
+        studentId: student.id,
+        parentPhone: student.parentPhone,
+        message,
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      const retryable = error instanceof SmsDeliveryError && error.retryable && job.attempts < 3;
+      if (retryable) {
+        await db
+          .update(jobsTable)
+          .set({
+            status: "pending",
+            error: `Retrying SMS (attempt ${job.attempts}/3): ${detail}`,
+          })
+          .where(eq(jobsTable.id, job.id));
+        publishEvent("job.updated", { jobId: job.id, type: job.type, status: "pending", worker: "api", error: detail });
+        logger.warn({ jobId: job.id, attempt: job.attempts, err: error }, "SMS delivery retriable — requeued");
+        return;
+      }
+      await db
+        .update(jobsTable)
+        .set({
+          status: "failed",
+          result: { deliveryStatus: "failed", provider: error instanceof SmsDeliveryError ? error.provider : "twilio", providerCode: error instanceof SmsDeliveryError ? error.code : null },
+          error: `SMS delivery failed: ${detail}`,
+          completedAt: new Date(),
+        })
+        .where(eq(jobsTable.id, job.id));
+      publishEvent("job.updated", { jobId: job.id, type: job.type, status: "failed", worker: "api", error: detail });
+      await writeAudit({
+        action: "sms.job.failed",
+        targetType: "job",
+        targetId: job.id,
+        payload: { studentId: student.id, providerError: detail },
+      });
+      logger.error({ err: error, jobId: job.id }, "API worker SMS job failed");
+      return;
+    }
 
     await db
       .update(jobsTable)
       .set({
-        status: deliveryStatus === "sent" ? "done" : "failed",
-        result: { deliveryStatus },
-        error: deliveryStatus === "failed" ? "SMS provider reported a delivery failure" : null,
+        status: "done",
+        result: { deliveryStatus: "sent" },
+        error: null,
         completedAt: new Date(),
       })
       .where(eq(jobsTable.id, job.id));
 
-    publishEvent("job.updated", { jobId: job.id, type: job.type, status: deliveryStatus === "sent" ? "done" : "failed", worker: "api" });
-    publishEvent("sms.sent", { studentId: student.id, status: deliveryStatus, smsStatus: status });
+    publishEvent("job.updated", { jobId: job.id, type: job.type, status: "done", worker: "api" });
+    publishEvent("sms.sent", { studentId: student.id, status, smsStatus: "sent" });
 
     await writeAudit({
       action: "sms.job.processed",
       targetType: "job",
       targetId: job.id,
-      payload: { deliveryStatus, studentId: student.id },
+      payload: { deliveryStatus: "sent", studentId: student.id },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

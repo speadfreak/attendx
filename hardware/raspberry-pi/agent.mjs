@@ -15,6 +15,14 @@ const TOKEN_FILE = process.env.ATTENDX_TOKEN_FILE ?? "/var/lib/attendx/pi-token"
 const MODEL_URL = process.env.ATTENDX_MODEL_URL ?? "https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.14/model";
 const SPOOL_FILE = process.env.ATTENDX_SPOOL_FILE ?? "/var/lib/attendx/spool.sqlite";
 const ARDUINO_PORT = process.env.ATTENDX_ARDUINO_PORT ?? "/dev/ttyACM0";
+// Phase 4 — Gate Integrity Validator: dedicated Arduino running
+// AttendXGateValidator.ino on its OWN USB serial port (the fan controller
+// keeps ARDUINO_PORT). Set ATTENDX_GATE_PORT=none to disable the link.
+const GATE_PORT = process.env.ATTENDX_GATE_PORT ?? "/dev/ttyACM1";
+const GATE_BAUD = Number(process.env.ATTENDX_GATE_BAUD ?? 9600);
+const GATE_ID = process.env.ATTENDX_GATE_ID ?? "gate-1";
+const GATE_FLUSH_MS = Number(process.env.ATTENDX_GATE_FLUSH_MS ?? 10_000);
+const GATE_BUFFER_CAP = 500;
 const CLASSROOM_ID = process.env.ATTENDX_CLASSROOM_ID ? Number(process.env.ATTENDX_CLASSROOM_ID) : null;
 const CAPTURE_EVERY_MS = 900;
 const FRAMES_PER_BATCH = 3;
@@ -121,6 +129,92 @@ function enqueueOffline(kind, payload, jobId = null) {
   `).run(MAX_SPOOL_ITEMS);
 }
 
+// ── Gate Integrity Validator serial link (Phase 4) ──────────────
+// The gate Arduino pushes JSON pass-event lines asynchronously, so unlike
+// the fan controller (request/response), this port stays OPEN and the
+// agent listens continuously. Events are buffered in memory, flushed to
+// /api/gate/sensor-events in batches, and spooled to SQLite when offline.
+const gateBuffer = [];
+let gateListenerActive = false;
+let gateRetryTimer = null;
+
+function scheduleGateRetry(reason) {
+  gateListenerActive = false;
+  if (gateRetryTimer) return;
+  gateRetryTimer = setTimeout(() => {
+    gateRetryTimer = null;
+    openGateListener();
+  }, 15_000);
+  if (reason) writeLog("ERROR", reason);
+}
+
+function handleGateLine(line) {
+  const trimmed = line.trim();
+  if (!trimmed) return;
+  let event;
+  try {
+    event = JSON.parse(trimmed);
+  } catch {
+    return;
+  }
+  if (!event || event.event !== "pass") return;
+  if (event.sensor !== "ultrasonic" && event.sensor !== "ir_beam") return;
+  gateBuffer.push({
+    sensor: event.sensor,
+    ts: new Date().toISOString(),
+    deviceTs: Number.isFinite(event.ts) ? event.ts : null,
+  });
+  if (gateBuffer.length > GATE_BUFFER_CAP) gateBuffer.splice(0, gateBuffer.length - GATE_BUFFER_CAP);
+  writeLog("INFO", `Gate pass event buffered (${event.sensor}, queue=${gateBuffer.length})`);
+}
+
+function openGateListener() {
+  if (GATE_PORT === "none" || gateListenerActive) return;
+  const port = new SerialPort({ path: GATE_PORT, baudRate: GATE_BAUD, autoOpen: false });
+  let pending = "";
+  port.on("open", () => {
+    gateListenerActive = true;
+    writeLog("INFO", `Gate validator serial link open on ${GATE_PORT}`);
+  });
+  port.on("data", (buffer) => {
+    pending += buffer.toString("utf8");
+    let newlineAt;
+    while ((newlineAt = pending.indexOf("\n")) >= 0) {
+      const line = pending.slice(0, newlineAt);
+      pending = pending.slice(newlineAt + 1);
+      handleGateLine(line);
+    }
+    if (pending.length > 512) pending = "";
+  });
+  port.on("error", (error) => {
+    scheduleGateRetry(`Gate serial error: ${error.message}`);
+    try { port.close(() => {}); } catch {}
+  });
+  port.on("close", () => {
+    if (gateRetryTimer === null) scheduleGateRetry("Gate serial link closed — retrying");
+  });
+  port.open((error) => {
+    if (error) {
+      scheduleGateRetry(
+        `Gate validator unavailable on ${GATE_PORT}: ${error.message} (set ATTENDX_GATE_PORT=none to disable)`
+      );
+    }
+  });
+}
+
+async function flushGateEvents() {
+  if (!gateBuffer.length) return;
+  const events = gateBuffer.splice(0, 200);
+  const payload = { gateId: GATE_ID, events };
+  try {
+    await apiRequest("/gate/sensor-events", { method: "POST", body: payload });
+    writeLog("INFO", `Gate events delivered: ${events.length}`);
+  } catch (error) {
+    enqueueOffline("gate-events", payload);
+    writeLog("ERROR", `Gate events buffered locally: ${error.message}`);
+  }
+}
+
 async function heartbeat(status = "connected") {
   const response = await apiRequest("/pi/heartbeat", {
     method: "POST",
@@ -129,7 +223,7 @@ async function heartbeat(status = "connected") {
       localIp: localIp(),
       uptimeSeconds: Math.floor(os.uptime()),
       cpuTempC: cpuTempC(),
-      queueDepth: queuedCount(),
+      queueDepth: queuedCount() + gateBuffer.length,
     },
   });
   if (typeof response.nextToken === "string") saveToken(response.nextToken);
@@ -277,6 +371,8 @@ async function drainOutbox() {
     try {
       if (record.kind === "bulk-match") {
         await apiRequest("/attendance/bulk-match", { method: "POST", body: payload });
+      } else if (record.kind === "gate-events") {
+        await apiRequest("/gate/sensor-events", { method: "POST", body: payload });
       } else if (record.kind === "job-complete") {
         await apiRequest(`/jobs/${record.job_id}/complete`, { method: "POST", body: payload });
       } else {
@@ -298,8 +394,11 @@ async function main() {
   ]);
   writeLog("INFO", "AttendX Pi agent ready; raw frames remain on the device.");
 
+  if (GATE_PORT !== "none") openGateListener();
+
   let nextHeartbeat = 0;
   let nextCapture = 0;
+  let nextGateFlush = 0;
   let frames = [];
   while (true) {
     const now = Date.now();
@@ -318,6 +417,15 @@ async function main() {
       if (response.job && await processJob(response.job)) process.exit(0);
     } catch (error) {
       if (!String(error.message).includes("401")) writeLog("ERROR", `Pi job polling failed: ${error.message}`);
+    }
+
+    if (Date.now() >= nextGateFlush) {
+      nextGateFlush = Date.now() + GATE_FLUSH_MS;
+      try {
+        await flushGateEvents();
+      } catch (error) {
+        writeLog("ERROR", `Gate event flush failed: ${error.message}`);
+      }
     }
 
     if (Date.now() >= nextCapture) {

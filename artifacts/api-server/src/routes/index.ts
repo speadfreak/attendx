@@ -18,6 +18,7 @@ import eventsRouter from "./events";
 import notificationsRouter from "./notifications";
 import reportsRouter from "./reports";
 import searchRouter from "./search";
+import gateRouter from "./gate";
 
 const router: IRouter = Router();
 
@@ -40,5 +41,6 @@ router.use(eventsRouter);
 router.use(notificationsRouter);
 router.use(reportsRouter);
 router.use(searchRouter);
+router.use(gateRouter);
 
 export default router;

@@ -40,6 +40,8 @@ const INVALIDATION_MAP: Record<string, string[][]> = {
   "qr.scan": [["qr"], ["notifications"], ["dashboard"]],
   "sms.sent": [["sms-logs"], ["notifications"]],
   "settings.updated": [["settings"], ["sms-templates"]],
+  "gate.alert": [["gate"], ["notifications"]],
+  "gate.integrity": [["gate"], ["notifications"]],
 };
 
 export function LiveEventsProvider({ children }: { children: ReactNode }) {
@@ -71,6 +73,7 @@ export function LiveEventsProvider({ children }: { children: ReactNode }) {
         void queryClient.invalidateQueries({ queryKey: ["notifications"] });
         void queryClient.invalidateQueries({ queryKey: ["attendance"] });
         void queryClient.invalidateQueries({ queryKey: ["occupancy"] });
+        void queryClient.invalidateQueries({ queryKey: ["gate"] });
       }, 10000);
     };
 

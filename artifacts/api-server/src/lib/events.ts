@@ -20,6 +20,8 @@ export interface LiveEvent {
     | "qr.scan"
     | "sms.sent"
     | "settings.updated"
+    | "gate.alert"
+    | "gate.integrity"
     | "heartbeat";
   payload: Record<string, unknown>;
   at: string;

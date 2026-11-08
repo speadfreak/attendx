@@ -15,16 +15,28 @@ import { z } from "zod/v4";
 import { requireAuth, requireStaff, requireAdminLevel } from "../lib/auth";
 import { enqueueJob } from "../lib/jobs";
 import { writeAudit } from "../lib/audit";
-import { getSystemSettings, setSettings, setSystemSetting } from "../lib/system-settings";
+import { getSystemSettings, setSettings, setSystemSetting, hhmmToMinutes, isValidTimezone } from "../lib/system-settings";
+import { arrivalRulesFromSettings, resolveArrivalStatus, isPastAbsenceCutoff, localDayBounds } from "../lib/attendance-rules";
 import { findClosestFaceMatchAll } from "../lib/face-matching";
 import { publishEvent } from "../lib/events";
 import { getSmsTemplates } from "../lib/sms-templates";
 
 const router = Router();
 const adminId = (req: Request) => (req as Request & { admin?: { adminId: number } }).admin?.adminId;
+const timeField = z.string().regex(/^([01]?\d|2[0-3]):([0-5]\d)$/, "Expected HH:mm (24h), e.g. 08:15");
 const settingsInput = z.object({
   confidenceThreshold: z.number().min(0.1).max(0.99).optional(),
   reviewRetentionDays: z.number().int().min(1).max(365).optional(),
+  // ── Phase 4 attendance time rules ──
+  entranceTime: timeField.optional(),
+  lateCutoffTime: timeField.optional(),
+  absenceCutoffTime: timeField.optional(),
+  attendanceTimezone: z.string().trim().min(2).max(64).optional(),
+  // ── Phase 4 gate integrity ──
+  gateDiscrepancyPct: z.number().min(1).max(100).optional(),
+  gateWindowSeconds: z.number().int().min(15).max(300).optional(),
+  gateActiveFrom: timeField.optional(),
+  gateActiveTo: timeField.optional(),
 }).refine((value) => Object.keys(value).length > 0, "At least one setting is required");
 const fanInput = z.object({ mode: z.enum(["auto", "on", "off"]) });
 const decisionInput = z.object({
@@ -62,6 +74,28 @@ router.patch("/system/settings", requireAdminLevel, async (req, res): Promise<vo
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  if (parsed.data.attendanceTimezone && !isValidTimezone(parsed.data.attendanceTimezone)) {
+    res.status(400).json({ error: `Unknown IANA timezone: ${parsed.data.attendanceTimezone}` });
+    return;
+  }
+  // Sensible ordering: entrance → late → absence must move forward together
+  const current = await getSystemSettings();
+  const minutes = {
+    entranceTime: parsed.data.entranceTime ?? current.entranceTime,
+    lateCutoffTime: parsed.data.lateCutoffTime ?? current.lateCutoffTime,
+    absenceCutoffTime: parsed.data.absenceCutoffTime ?? current.absenceCutoffTime,
+  };
+  const entrance = hhmmToMinutes(minutes.entranceTime) ?? 0;
+  const late = hhmmToMinutes(minutes.lateCutoffTime) ?? 0;
+  const absence = hhmmToMinutes(minutes.absenceCutoffTime) ?? 0;
+  if (entrance > late) {
+    res.status(400).json({ error: "entranceTime must be at or before lateCutoffTime" });
+    return;
+  }
+  if (late > absence) {
+    res.status(400).json({ error: "lateCutoffTime must be at or before absenceCutoffTime" });
+    return;
+  }
   await setSettings(parsed.data);
   await writeAudit({
     actorAdminId: adminId(req),
@@ -69,6 +103,7 @@ router.patch("/system/settings", requireAdminLevel, async (req, res): Promise<vo
     targetType: "system_settings",
     payload: parsed.data,
   });
+  publishEvent("settings.updated", { keys: Object.keys(parsed.data) });
   res.json(await getSystemSettings());
 });
 
@@ -206,6 +241,7 @@ router.post("/reviews/:id/decision", requireStaff, async (req, res): Promise<voi
   let attendance: Record<string, unknown> | null = null;
   const reviewedAt = new Date();
   const settings = await getSystemSettings();
+  const rules = arrivalRulesFromSettings(settings);
   const purgeAt = new Date(reviewedAt.getTime() + settings.reviewRetentionDays * 24 * 60 * 60 * 1000);
 
   if (parsed.data.decision === "reassign") {
@@ -215,8 +251,7 @@ router.post("/reviews/:id/decision", requireStaff, async (req, res): Promise<voi
     }
     const [target] = await db.select().from(studentsTable).where(eq(studentsTable.id, parsed.data.studentId)).limit(1);
     if (!target) { res.status(404).json({ error: "Reassign target student not found" }); return; }
-    const startOfDay = new Date(reviewedAt);
-    startOfDay.setHours(0, 0, 0, 0);
+    const { startUtc: startOfDay } = localDayBounds(reviewedAt, rules.timezone);
     const [existingAttendance] = await db
       .select({ id: attendanceLogsTable.id, status: attendanceLogsTable.status })
       .from(attendanceLogsTable)
@@ -225,7 +260,7 @@ router.post("/reviews/:id/decision", requireStaff, async (req, res): Promise<voi
     if (existingAttendance) {
       attendance = { id: existingAttendance.id, status: existingAttendance.status, alreadyMarked: true, studentId: target.id };
     } else {
-      const status = reviewedAt.getHours() > 8 || (reviewedAt.getHours() === 8 && reviewedAt.getMinutes() > 15) ? "late" : "present";
+      const status = resolveArrivalStatus(reviewedAt, rules);
       const [created] = await db.insert(attendanceLogsTable).values({
         studentId: target.id,
         classroomId: target.classroomId,
@@ -255,8 +290,7 @@ router.post("/reviews/:id/decision", requireStaff, async (req, res): Promise<voi
       res.status(400).json({ error: "This match has no suggested student and cannot be approved" });
       return;
     }
-    const startOfDay = new Date(reviewedAt);
-    startOfDay.setHours(0, 0, 0, 0);
+    const { startUtc: startOfDay } = localDayBounds(reviewedAt, rules.timezone);
     const [existingAttendance] = await db
       .select({ id: attendanceLogsTable.id, status: attendanceLogsTable.status })
       .from(attendanceLogsTable)
@@ -265,13 +299,10 @@ router.post("/reviews/:id/decision", requireStaff, async (req, res): Promise<voi
         gte(attendanceLogsTable.markedAt, startOfDay),
       ))
       .limit(1);
-
     if (existingAttendance) {
       attendance = { id: existingAttendance.id, status: existingAttendance.status, alreadyMarked: true };
     } else {
-      const status = reviewedAt.getHours() > 8 || (reviewedAt.getHours() === 8 && reviewedAt.getMinutes() > 15)
-        ? "late"
-        : "present";
+      const status = resolveArrivalStatus(reviewedAt, rules);
       const [created] = await db.insert(attendanceLogsTable).values({
         studentId: review.studentId,
         classroomId: review.classroomId,
@@ -417,10 +448,23 @@ router.get("/dashboard/confidence-heatmap", requireAdminLevel, async (_req, res)
 
 // ── End-of-day absent sweep: wire the absent SMS template in ────
 router.post("/attendance/absent-sweep", requireAdminLevel, async (req, res): Promise<void> => {
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const todayEnd = new Date();
-  todayEnd.setHours(23, 59, 59, 999);
+  const rules = arrivalRulesFromSettings(await getSystemSettings());
+  const now = new Date();
+
+  // Phase 4: the sweep only fires once local time passes absenceCutoffTime —
+  // "no record yet" before that point is NOT an absence. force bypasses the
+  // guard for end-of-day manual runs.
+  const force = req.body?.force === true;
+  if (!force && !isPastAbsenceCutoff(now, rules)) {
+    res.status(409).json({
+      error: `Absence sweep is locked until ${rules.absenceCutoffTime} (${rules.timezone}) — students may still be arriving. Send {"force": true} to override.`,
+      absenceCutoffTime: rules.absenceCutoffTime,
+      timezone: rules.timezone,
+    });
+    return;
+  }
+
+  const { startUtc: todayStart, endUtc: todayEnd } = localDayBounds(now, rules.timezone);
 
   const allStudents = await db.select({ id: studentsTable.id, name: studentsTable.name, classroomId: studentsTable.classroomId }).from(studentsTable);
   const presentToday = await db

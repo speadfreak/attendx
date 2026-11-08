@@ -17,6 +17,23 @@ The app/API must be reachable from the Pi. The rotating token is stored only in 
 
 The Pi worker accepts only `worker-status`, `restart-worker`, `camera-status`, and `recent-logs` for maintenance. It uses fixed argument arrays and never evaluates shell input. Fan jobs use the Arduino serial protocol described in `../arduino/README.md`.
 
+## Gate Integrity Validator (Phase 4)
+
+A second Arduino runs `../arduino/AttendXGateValidator.ino` on its **own USB serial port** (default `/dev/ttyACM1` — the fan controller keeps `ATTENDX_ARDUINO_PORT`). The agent holds this port open permanently, parses the JSON pass-event lines the sketch emits, buffers them in memory, and flushes batches to `POST /api/gate/sensor-events` every 10 s (offline batches go to the same SQLite outbox).
+
+Wiring summary (see the sketch header for the full table):
+
+| Signal | Uno pin |
+| --- | --- |
+| HC-SR04 TRIG | D7 |
+| HC-SR04 ECHO | D8 |
+| IR break-beam receiver OUT | D2 (HIGH = beam clear) |
+| Status LED | D13 (onboard) |
+
+Firmware serial commands: `STATUS`, `THRESH <cm>` (ultrasonic trigger, default 80), `GAPU <ms>` (ultrasonic debounce, default 2000), `GAPI <ms>` (IR debounce, default 1000).
+
+Agent env additions: `ATTENDX_GATE_PORT=/dev/ttyACM1` (set `none` to disable), `ATTENDX_GATE_BAUD=9600`, `ATTENDX_GATE_ID=gate-1`, `ATTENDX_GATE_FLUSH_MS=10000`. The server raises `missed_detections` (camera trailed BOTH physical sensors) or `sensor_conflict` (the two sensors disagree) alerts per validation window — see Operations → Gate Integrity.
+
 ## Manual checks
 
 - `hostname -I` and `avahi-resolve-host-name attendx-pi.local` show the Pi's local address.

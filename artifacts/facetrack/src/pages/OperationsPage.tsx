@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { format } from "date-fns";
 import {
-  Activity, AlertCircle, Check, CheckCircle2, ChevronRight, Clipboard,
-  Cpu, Fan, Fingerprint, KeyRound, LoaderCircle, LockKeyhole, Network,
-  RefreshCw, RotateCcw, Server, ShieldAlert, ShieldCheck, Thermometer,
-  Trash2, ScrollText, X, XCircle,
+  CartesianGrid, Legend, Line, LineChart, ReferenceDot, ResponsiveContainer, Tooltip, XAxis, YAxis,
+} from "recharts";
+import {
+  Activity, AlertCircle, Camera, Check, CheckCircle2, ChevronRight, Clipboard,
+  Cpu, Fan, Fingerprint, FlaskConical, KeyRound, LoaderCircle, LockKeyhole, Network,
+  RefreshCw, RotateCcw, Server, ShieldAlert, ShieldCheck, ShieldX, Thermometer,
+  Timer, Trash2, ScrollText, TriangleAlert, Waves, X, XCircle, Zap,
 } from "lucide-react";
 import {
   getGetDashboardStatsQueryKey,
@@ -22,7 +26,6 @@ import {
   useDecideMatchReview,
   useGetConfidenceHeatmap,
   useGetPiStatus,
-  useGetSystemSettings,
   useKillPiSessions,
   useListJobs,
   useListMatchReviews,
@@ -31,9 +34,15 @@ import {
   usePreviewAttendanceClear,
   useRetryJob,
   useSetFanOverride,
-  useUpdateSystemSettings,
 } from "../../../../lib/api-client-react/src/generated/api";
 import type { PiPairingResponse } from "../../../../lib/api-client-react/src/generated/api.schemas";
+import { api } from "@/lib/api";
+import type {
+  GateAlertDetail, GateAlertRow, GateSensorEvent, GateSimulateMode, GateVerdict,
+} from "@/lib/api";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
 const panel = "rounded-2xl border border-violet-200/10 bg-[#191323] shadow-[0_14px_40px_rgba(18,8,30,0.18)]";
 const label = "text-[11px] font-semibold uppercase tracking-[0.15em] text-violet-200/55";
@@ -41,6 +50,7 @@ const quiet = "text-sm text-violet-100/55";
 const actionClass = "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-violet-200/15 bg-violet-200/[0.06] px-3.5 text-sm font-medium text-violet-50 transition-colors hover:bg-violet-200/[0.12] disabled:pointer-events-none disabled:opacity-45";
 const accentAction = "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-violet-400 px-3.5 text-sm font-semibold text-[#1b1026] transition-colors hover:bg-violet-300 disabled:pointer-events-none disabled:opacity-45";
 const dangerAction = "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-rose-300/20 bg-rose-400/10 px-3.5 text-sm font-semibold text-rose-200 transition-colors hover:bg-rose-400/15 disabled:pointer-events-none disabled:opacity-45";
+const inputClass = "min-h-10 w-full rounded-lg border border-violet-200/15 bg-[#110d18] px-3 text-sm text-violet-50 outline-none placeholder:text-violet-100/30 focus:border-violet-300/45 focus:ring-2 focus:ring-violet-300/15";
 
 function formatTime(value?: string | null) {
   if (!value) return "Not reported";
@@ -55,6 +65,33 @@ function ageLabel(value?: string | null) {
   if (seconds < 60) return `Last heartbeat ${seconds}s ago`;
   if (seconds < 3600) return `Last heartbeat ${Math.floor(seconds / 60)}m ago`;
   return `Last heartbeat ${Math.floor(seconds / 3600)}h ago`;
+}
+
+function clockLabel(value: string, withSeconds = false) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return format(date, withSeconds ? "HH:mm:ss" : "HH:mm");
+}
+
+function joinList(values: string[]) {
+  if (values.length <= 1) return values[0] ?? "";
+  return `${values.slice(0, -1).join(", ")} and ${values[values.length - 1]}`;
+}
+
+function summarizeGateWindow(cameraCount: number, events: GateSensorEvent[]) {
+  const parts: string[] = [];
+  for (const sensor of ["ultrasonic", "ir_beam"] as const) {
+    const times = events
+      .filter((event) => event.sensor === sensor)
+      .map((event) => `${clockLabel(event.occurredAt, true)}${event.simulated ? " (simulated)" : ""}`);
+    if (times.length > 0) {
+      parts.push(`${sensor === "ultrasonic" ? "Ultrasonic" : "IR beam"} fired at ${joinList(times)}`);
+    }
+  }
+  const faces = `${cameraCount} face${cameraCount === 1 ? "" : "s"}`;
+  return parts.length === 0
+    ? `No sensor triggers were recorded — camera matched ${faces} in this window.`
+    : `${parts.join("; ")} — camera matched ${faces} in this window.`;
 }
 
 function ErrorNotice({ message, onRetry }: { message: string; onRetry?: () => void }) {
@@ -83,36 +120,74 @@ function SectionHeading({ eyebrow, title, detail }: { eyebrow: string; title: st
 
 export default function OperationsPage() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const { admin } = useAuth();
+  const canAdmin = admin?.role === "super_admin" || admin?.role === "admin";
   const piQuery = useGetPiStatus({ query: { queryKey: getGetPiStatusQueryKey(), refetchInterval: 15_000 } });
   const jobsQuery = useListJobs({ query: { queryKey: getListJobsQueryKey(), refetchInterval: 20_000 } });
   const reviewsQuery = useListMatchReviews({ query: { queryKey: getListMatchReviewsQueryKey(), refetchInterval: 30_000 } });
-  const settingsQuery = useGetSystemSettings();
+  // The generated client predates the attendance time rules; the hand-typed
+  // wrapper in lib/api.ts types the full settings payload including the new fields.
+  const settingsQuery = useQuery({ queryKey: getGetSystemSettingsQueryKey(), queryFn: api.systemSettings });
   const heatmapQuery = useGetConfidenceHeatmap();
   const auditQuery = useListAuditLogs({ limit: 50 }, { query: { queryKey: getListAuditLogsQueryKey({ limit: 50 }), refetchInterval: 30_000 } });
   const manualClearPreview = usePreviewAttendanceClear({ source: "manual" }, { query: { queryKey: getPreviewAttendanceClearQueryKey({ source: "manual" }), refetchInterval: 30_000 } });
   const automatedClearPreview = usePreviewAttendanceClear({ source: "automated" }, { query: { queryKey: getPreviewAttendanceClearQueryKey({ source: "automated" }), refetchInterval: 30_000 } });
+  const gateCurrentQuery = useQuery({ queryKey: ["gate", "current"], queryFn: api.gateCurrent, refetchInterval: 10_000 });
+  const gateWindowsQuery = useQuery({ queryKey: ["gate", "windows"], queryFn: () => api.gateWindows(60), refetchInterval: 15_000 });
+  const gateAlertsQuery = useQuery({ queryKey: ["gate", "alerts"], queryFn: () => api.gateAlerts(), refetchInterval: 15_000 });
   const clearRecordsMutation = useClearAttendanceRecords();
   const pairMutation = usePairPiDevice();
   const actionMutation = useCreatePiAction();
   const killMutation = useKillPiSessions();
   const retryMutation = useRetryJob();
   const decisionMutation = useDecideMatchReview();
-  const settingsMutation = useUpdateSystemSettings();
+  const settingsMutation = useMutation({ mutationFn: api.updateSystemSettings });
   const fanMutation = useSetFanOverride();
+  const gateRunMutation = useMutation({ mutationFn: api.gateRunValidation });
+  const gateSimulateMutation = useMutation({ mutationFn: (mode: GateSimulateMode) => api.gateSimulate(mode) });
+  const gateResolveMutation = useMutation({ mutationFn: (vars: { id: number; note?: string }) => api.gateResolveAlert(vars.id, vars.note) });
 
   const [deviceName, setDeviceName] = useState("");
   const [pairing, setPairing] = useState<PiPairingResponse | null>(null);
   const [copied, setCopied] = useState(false);
   const [threshold, setThreshold] = useState("");
   const [retention, setRetention] = useState("");
+  const [entranceTime, setEntranceTime] = useState("");
+  const [lateCutoffTime, setLateCutoffTime] = useState("");
+  const [absenceCutoffTime, setAbsenceCutoffTime] = useState("");
+  const [attendanceTimezone, setAttendanceTimezone] = useState("");
+  const [gateDiscrepancy, setGateDiscrepancy] = useState("");
+  const [gateWindow, setGateWindow] = useState("");
+  const [gateActiveFrom, setGateActiveFrom] = useState("");
+  const [gateActiveTo, setGateActiveTo] = useState("");
   const [feedback, setFeedback] = useState("");
   const [actionFeedback, setActionFeedback] = useState("");
   const [decisionNote, setDecisionNote] = useState("");
+  const [selectedAlertId, setSelectedAlertId] = useState<number | null>(null);
+  const [resolveNote, setResolveNote] = useState("");
+  const [simulateOpen, setSimulateOpen] = useState(false);
+  const [simulateMode, setSimulateMode] = useState<GateSimulateMode>("missed_detections");
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+
+  const gateDetailQuery = useQuery({
+    queryKey: ["gate", "alert", selectedAlertId],
+    queryFn: () => api.gateAlertDetail(selectedAlertId as number),
+    enabled: selectedAlertId != null,
+  });
 
   useEffect(() => {
     if (!settingsQuery.data) return;
     setThreshold(String(settingsQuery.data.confidenceThreshold));
     setRetention(String(settingsQuery.data.reviewRetentionDays));
+    setEntranceTime(settingsQuery.data.entranceTime);
+    setLateCutoffTime(settingsQuery.data.lateCutoffTime);
+    setAbsenceCutoffTime(settingsQuery.data.absenceCutoffTime);
+    setAttendanceTimezone(settingsQuery.data.attendanceTimezone);
+    setGateDiscrepancy(String(settingsQuery.data.gateDiscrepancyPct));
+    setGateWindow(String(settingsQuery.data.gateWindowSeconds));
+    setGateActiveFrom(settingsQuery.data.gateActiveFrom);
+    setGateActiveTo(settingsQuery.data.gateActiveTo);
   }, [settingsQuery.data]);
 
   const device = piQuery.data?.device;
@@ -126,6 +201,46 @@ export default function OperationsPage() {
     () => jobsQuery.data?.jobs.find((job) => job.payload.action === "recent-logs" && job.result),
     [jobsQuery.data],
   );
+
+  const gate = gateCurrentQuery.data;
+  useEffect(() => {
+    if (!gate) return;
+    setSecondsLeft(gate.partialSecondsLeft);
+    const timer = setInterval(() => {
+      setSecondsLeft((current) => (current == null ? null : Math.max(0, current - 1)));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [gate]);
+
+  const gateSeriesData = useMemo(
+    () => (gateWindowsQuery.data?.series ?? []).map((point) => ({
+      time: clockLabel(point.windowStart),
+      camera: point.camera,
+      ultrasonic: point.ultrasonic,
+      ir: point.ir,
+    })),
+    [gateWindowsQuery.data],
+  );
+  const gateAlertDots = useMemo(() => {
+    const seen = new Set<string>();
+    const dots: Array<{ time: string; y: number; mode: string }> = [];
+    for (const point of gateWindowsQuery.data?.series ?? []) {
+      if (point.alerts.length === 0) continue;
+      const time = clockLabel(point.windowStart);
+      if (seen.has(time)) continue;
+      seen.add(time);
+      dots.push({ time, y: point.camera, mode: point.alerts[0] });
+    }
+    return dots;
+  }, [gateWindowsQuery.data]);
+  const gateAlertRows = useMemo(() => {
+    const rows = [...(gateAlertsQuery.data ?? [])];
+    rows.sort((a, b) => {
+      if (a.resolved !== b.resolved) return a.resolved ? 1 : -1;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+    return rows.slice(0, 8);
+  }, [gateAlertsQuery.data]);
 
   const invalidateOperations = () => {
     void queryClient.invalidateQueries({ queryKey: getGetPiStatusQueryKey() });
@@ -192,19 +307,76 @@ export default function OperationsPage() {
     event.preventDefault();
     const confidenceThreshold = Number(threshold);
     const reviewRetentionDays = Number(retention);
+    const gateDiscrepancyPct = Number(gateDiscrepancy);
+    const gateWindowSeconds = Number(gateWindow);
+    const hhmm = (value: string) => /^\d{2}:\d{2}$/.test(value);
     if (!Number.isFinite(confidenceThreshold) || confidenceThreshold < 0.1 || confidenceThreshold > 0.99 ||
         !Number.isInteger(reviewRetentionDays) || reviewRetentionDays < 1 || reviewRetentionDays > 365) {
       setFeedback("Use a confidence threshold from 0.10–0.99 and retention from 1–365 days.");
       return;
     }
+    if (!hhmm(entranceTime) || !hhmm(lateCutoffTime) || !hhmm(absenceCutoffTime) || !hhmm(gateActiveFrom) ||
+        !hhmm(gateActiveTo) || !attendanceTimezone.trim() ||
+        !Number.isInteger(gateDiscrepancyPct) || gateDiscrepancyPct < 1 || gateDiscrepancyPct > 100 ||
+        !Number.isInteger(gateWindowSeconds) || gateWindowSeconds < 15 || gateWindowSeconds > 300) {
+      setFeedback("Attendance time rules and gate integrity values are incomplete (threshold 1–100%, window 15–300 seconds, valid IANA timezone).");
+      return;
+    }
     setFeedback("");
-    settingsMutation.mutate({ data: { confidenceThreshold, reviewRetentionDays } }, {
+    settingsMutation.mutate({
+      confidenceThreshold,
+      reviewRetentionDays,
+      entranceTime,
+      lateCutoffTime,
+      absenceCutoffTime,
+      attendanceTimezone: attendanceTimezone.trim(),
+      gateDiscrepancyPct,
+      gateWindowSeconds,
+      gateActiveFrom,
+      gateActiveTo,
+    }, {
       onSuccess: () => {
-        setFeedback("Review settings saved.");
+        setFeedback("Review, attendance time, and gate settings saved.");
         void queryClient.invalidateQueries({ queryKey: getGetSystemSettingsQueryKey() });
         void queryClient.invalidateQueries({ queryKey: getGetConfidenceHeatmapQueryKey() });
       },
-      onError: () => setFeedback("Settings were not saved. Review the values and retry."),
+      onError: (error) => {
+        // Server-side ordering/timezone validation is surfaced verbatim.
+        toast({ title: "Settings were not saved", description: error.message, variant: "destructive" });
+      },
+    });
+  };
+
+  const runGateValidation = () => {
+    gateRunMutation.mutate(undefined, {
+      onSuccess: (result) => {
+        toast({ title: `Validation ran: ${result.windowsEvaluated} windows, ${result.alertsCreated.length} alert${result.alertsCreated.length === 1 ? "" : "s"}` });
+        void queryClient.invalidateQueries({ queryKey: ["gate"] });
+      },
+      onError: (error) => toast({ title: "Validation could not run", description: error.message, variant: "destructive" }),
+    });
+  };
+
+  const simulateGate = (mode: GateSimulateMode) => {
+    gateSimulateMutation.mutate(mode, {
+      onSuccess: () => {
+        toast({ title: "Simulated mismatch injected (demo)" });
+        setSimulateOpen(false);
+        void queryClient.invalidateQueries({ queryKey: ["gate"] });
+      },
+      onError: (error) => toast({ title: "Simulation failed", description: error.message, variant: "destructive" }),
+    });
+  };
+
+  const resolveGateAlert = () => {
+    if (selectedAlertId == null) return;
+    gateResolveMutation.mutate({ id: selectedAlertId, note: resolveNote.trim() || undefined }, {
+      onSuccess: () => {
+        toast({ title: "Alert marked resolved" });
+        setResolveNote("");
+        void queryClient.invalidateQueries({ queryKey: ["gate"] });
+      },
+      onError: (error) => toast({ title: "Could not resolve alert", description: error.message, variant: "destructive" }),
     });
   };
 
@@ -369,6 +541,153 @@ export default function OperationsPage() {
         </article>
       </section>
 
+      <section aria-label="Gate integrity">
+        <article className={`${panel} p-5 sm:p-6`}>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <SectionHeading eyebrow="Gate integrity" title="Gate Integrity" detail="Camera and entrance-sensor cross-checks for the gate corridor." />
+            <div className="flex flex-wrap items-center gap-2">
+              {gate && <GateVerdictBadge verdict={gate.verdict} />}
+              {gate && secondsLeft != null && (
+                <span className="inline-flex items-center gap-1.5 rounded-md border border-violet-200/15 bg-violet-200/[0.06] px-2.5 py-1 font-mono text-xs text-violet-100/70" data-testid="gate-window-countdown">
+                  <Timer size={13} className="text-violet-200/60" />Window ends in {secondsLeft}s
+                </span>
+              )}
+              {gate && !gate.withinGateHours && (
+                <span className="inline-flex items-center gap-1.5 rounded-md border border-violet-100/10 bg-violet-100/[0.04] px-2.5 py-1 text-xs text-violet-100/50" data-testid="gate-outside-hours">
+                  <AlertCircle size={13} />Outside gate hours ({gate.gateActiveFrom}–{gate.gateActiveTo} {gate.timezone})
+                </span>
+              )}
+            </div>
+          </div>
+          {gateCurrentQuery.isLoading ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">{[1, 2, 3].map((item) => <Skeleton key={item} className="h-[92px]" />)}</div>
+          ) : gateCurrentQuery.isError ? (
+            <ErrorNotice message="Gate integrity data is temporarily unavailable." onRetry={() => void gateCurrentQuery.refetch()} />
+          ) : !gate ? null : (
+            <>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <GateCounter icon={Camera} title="Camera detections" value={gate.camera} tone="violet" sub="faces matched in the current window" />
+                <GateCounter icon={Waves} title="Ultrasonic triggers" value={gate.ultrasonic} tone="emerald" sub="motion pulses in the current window" />
+                <GateCounter icon={Zap} title="IR beam breaks" value={gate.ir} tone="cyan" sub="beam crossings in the current window" />
+              </div>
+              <p className="mt-2 text-[11px] text-violet-100/45">
+                Alert when camera trails both sensors by &gt;{gate.discrepancyPct}% or sensors disagree by &gt;{gate.discrepancyPct}%.
+              </p>
+              <div className="mt-4 rounded-xl border border-violet-100/[0.08] bg-[#110d18] p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="flex items-center gap-2 text-xs font-semibold text-violet-50"><Activity size={14} className="text-violet-300" />Rolling window counts</p>
+                  <span className="text-[10px] text-violet-100/40">last 60 minutes · {gate.windowSeconds}s windows</span>
+                </div>
+                {gateWindowsQuery.isLoading ? <Skeleton className="mt-3 h-44" /> :
+                  gateWindowsQuery.isError ? <div className="mt-3"><ErrorNotice message="Window history could not be loaded." onRetry={() => void gateWindowsQuery.refetch()} /></div> :
+                    gateSeriesData.length === 0 ? (
+                      <p className="mt-3 rounded-lg border border-dashed border-violet-200/15 px-4 py-6 text-center text-xs text-violet-100/45">No gate windows recorded yet.</p>
+                    ) : (
+                      <div className="mt-3 h-44">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={gateSeriesData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(155,91,255,0.08)" vertical={false} />
+                            <XAxis dataKey="time" stroke="rgba(255,255,255,0.2)" tick={{ fontSize: 10 }} tickMargin={6} minTickGap={24} />
+                            <YAxis stroke="rgba(255,255,255,0.2)" tick={{ fontSize: 10 }} allowDecimals={false} />
+                            <Tooltip
+                              contentStyle={{ backgroundColor: "#0d0515", borderColor: "rgba(155,91,255,0.25)", borderRadius: 10 }}
+                              itemStyle={{ color: "#e2d9f3", fontSize: 11 }}
+                            />
+                            <Legend wrapperStyle={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }} />
+                            <Line type="monotone" dataKey="camera" name="Camera" stroke="#a78bfa" strokeWidth={2} dot={false} />
+                            <Line type="monotone" dataKey="ultrasonic" name="Ultrasonic" stroke="#34d399" strokeWidth={2} dot={false} />
+                            <Line type="monotone" dataKey="ir" name="IR beam" stroke="#22d3ee" strokeWidth={2} dot={false} />
+                            {gateAlertDots.map((dot) => (
+                              <ReferenceDot
+                                key={`${dot.time}-${dot.mode}`}
+                                x={dot.time}
+                                y={dot.y}
+                                r={5}
+                                fill={dot.mode === "sensor_conflict" ? "#f87171" : "#fbbf24"}
+                                stroke="#17111f"
+                                strokeWidth={1.5}
+                              />
+                            ))}
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+              </div>
+              {canAdmin && (
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <button type="button" className={actionClass} onClick={() => void gateCurrentQuery.refetch()} disabled={gateCurrentQuery.isFetching} aria-label="Refresh gate integrity">
+                    <RefreshCw size={14} className={gateCurrentQuery.isFetching ? "animate-spin" : ""} />Refresh
+                  </button>
+                  <button type="button" className={dangerAction} onClick={() => setSimulateOpen((open) => !open)} disabled={gateSimulateMutation.isPending} aria-expanded={simulateOpen} data-testid="button-gate-simulate">
+                    {gateSimulateMutation.isPending ? <LoaderCircle size={14} className="animate-spin" /> : <FlaskConical size={14} />}Simulate discrepancy
+                  </button>
+                  <button type="button" className={actionClass} onClick={runGateValidation} disabled={gateRunMutation.isPending} data-testid="button-gate-run">
+                    {gateRunMutation.isPending ? <LoaderCircle size={14} className="animate-spin" /> : <RefreshCw size={14} />}Run validation now
+                  </button>
+                </div>
+              )}
+              {canAdmin && simulateOpen && (
+                <div className="mt-3 rounded-xl border border-amber-200/20 bg-amber-200/[0.05] p-3" role="group" aria-label="Simulation mode">
+                  <p className="text-xs font-semibold text-amber-100">Choose the mismatch to inject</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {(["missed_detections", "sensor_conflict"] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setSimulateMode(mode)}
+                        aria-pressed={simulateMode === mode}
+                        className={`min-h-9 rounded-lg border px-3 text-xs font-medium transition-colors ${simulateMode === mode ? "border-amber-300/35 bg-amber-300/10 text-amber-100" : "border-violet-100/10 bg-violet-100/[0.025] text-violet-100/60 hover:bg-violet-100/[0.06]"}`}
+                        data-testid={`button-gate-mode-${mode}`}
+                      >
+                        {mode.replaceAll("_", " ")}
+                      </button>
+                    ))}
+                    <button type="button" className={accentAction} onClick={() => simulateGate(simulateMode)} disabled={gateSimulateMutation.isPending} data-testid="button-gate-simulate-inject">
+                      {gateSimulateMutation.isPending ? <LoaderCircle size={15} className="animate-spin" /> : <FlaskConical size={15} />}Inject demo data
+                    </button>
+                  </div>
+                  <p className="mt-2 text-[11px] leading-relaxed text-amber-100/60">Injects synthetic sensor events for demonstration. Alerts created this way are tagged DEMO until they are resolved.</p>
+                </div>
+              )}
+              <div className="mt-4 border-t border-violet-100/[0.08] pt-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-violet-50">Recent alerts</p>
+                  <span className="text-[10px] text-violet-100/40">unresolved first · showing {gateAlertRows.length}</span>
+                </div>
+                {gateAlertsQuery.isLoading ? <div className="mt-2 space-y-2"><Skeleton className="h-12" /><Skeleton className="h-12" /></div> :
+                  gateAlertsQuery.isError ? <div className="mt-2"><ErrorNotice message="Gate alerts could not be loaded." onRetry={() => void gateAlertsQuery.refetch()} /></div> :
+                    gateAlertRows.length === 0 ? (
+                      <div className="mt-2 rounded-xl border border-dashed border-violet-200/15 px-4 py-6 text-center">
+                        <ShieldCheck size={20} className="mx-auto text-emerald-200/65" />
+                        <p className="mt-2 text-sm font-medium text-violet-50">No gate alerts</p>
+                        <p className={`mt-1 ${quiet}`}>Sensor mismatches will appear here as they are detected.</p>
+                      </div>
+                    ) : (
+                      <div className="mt-2 space-y-2">
+                        {gateAlertRows.map((alert) => (
+                          <GateAlertItem key={alert.id} alert={alert} onOpen={() => setSelectedAlertId(alert.id)} />
+                        ))}
+                      </div>
+                    )}
+              </div>
+              <GateAlertDialog
+                open={selectedAlertId != null}
+                detail={gateDetailQuery.data}
+                loading={gateDetailQuery.isLoading || gateDetailQuery.isFetching}
+                error={gateDetailQuery.isError}
+                onRetry={() => void gateDetailQuery.refetch()}
+                canAdmin={canAdmin}
+                note={resolveNote}
+                onNoteChange={setResolveNote}
+                onResolve={resolveGateAlert}
+                resolving={gateResolveMutation.isPending}
+                onClose={() => { setSelectedAlertId(null); setResolveNote(""); }}
+              />
+            </>
+          )}
+        </article>
+      </section>
+
       <section className="grid gap-4 xl:grid-cols-[1.3fr_0.9fr]">
         <article className={`${panel} p-5 sm:p-6`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -503,7 +822,7 @@ export default function OperationsPage() {
         </article>
 
         <article className={`${panel} p-5 sm:p-6`}>
-          <SectionHeading eyebrow="Recognition policy" title="Review settings" detail="Tune the threshold and how long rejected reviews are retained." />
+          <SectionHeading eyebrow="Recognition policy" title="Review settings" detail="Tune recognition, attendance time rules, and gate integrity thresholds." />
           {settingsQuery.isLoading ? <div className="space-y-3"><Skeleton className="h-20" /><Skeleton className="h-10" /></div> :
             settingsQuery.isError ? <ErrorNotice message="System settings could not be loaded." onRetry={() => void settingsQuery.refetch()} /> :
               <form onSubmit={saveSettings} className="space-y-5">
@@ -523,9 +842,54 @@ export default function OperationsPage() {
                   </div>
                   <p className="mt-1.5 text-[11px] text-violet-100/40">Allowed range: 1 to 365 days.</p>
                 </div>
-                <button type="submit" className={accentAction} disabled={settingsMutation.isPending || !settingsQuery.data}>
+                <div className="border-t border-violet-100/[0.08] pt-4">
+                  <p className="text-xs font-semibold text-violet-100/75">Attendance time rules</p>
+                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label htmlFor="entrance-time" className="mb-1.5 block text-[11px] text-violet-100/55">Entrance time (present until)</label>
+                      <input id="entrance-time" data-testid="input-entrance-time" type="time" value={entranceTime} onChange={(event) => setEntranceTime(event.target.value)} className={`${inputClass} font-mono`} />
+                    </div>
+                    <div>
+                      <label htmlFor="late-cutoff-time" className="mb-1.5 block text-[11px] text-violet-100/55">Late cutoff (late until)</label>
+                      <input id="late-cutoff-time" data-testid="input-late-cutoff-time" type="time" value={lateCutoffTime} onChange={(event) => setLateCutoffTime(event.target.value)} className={`${inputClass} font-mono`} />
+                    </div>
+                    <div>
+                      <label htmlFor="absence-cutoff-time" className="mb-1.5 block text-[11px] text-violet-100/55">Absence cutoff (absent sweep unlocks)</label>
+                      <input id="absence-cutoff-time" data-testid="input-absence-cutoff-time" type="time" value={absenceCutoffTime} onChange={(event) => setAbsenceCutoffTime(event.target.value)} className={`${inputClass} font-mono`} />
+                    </div>
+                    <div>
+                      <label htmlFor="attendance-timezone" className="mb-1.5 block text-[11px] text-violet-100/55">Timezone (IANA)</label>
+                      <input id="attendance-timezone" data-testid="input-attendance-timezone" type="text" value={attendanceTimezone} onChange={(event) => setAttendanceTimezone(event.target.value)} maxLength={64} placeholder="Africa/Addis_Ababa" className={inputClass} />
+                    </div>
+                  </div>
+                  <p className="mt-2 text-[11px] leading-relaxed text-violet-100/40">Arrivals at or before the entrance time are marked present; arrivals after it are marked late and trigger the parent SMS. Students with no attendance record are only marked absent once the absence cutoff time unlocks the sweep.</p>
+                </div>
+                <div className="border-t border-violet-100/[0.08] pt-4">
+                  <p className="text-xs font-semibold text-violet-100/75">Gate integrity</p>
+                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label htmlFor="gate-discrepancy-pct" className="mb-1.5 block text-[11px] text-violet-100/55">Discrepancy threshold %</label>
+                      <input id="gate-discrepancy-pct" data-testid="input-gate-discrepancy-pct" type="number" min={1} max={100} step={1} value={gateDiscrepancy} onChange={(event) => setGateDiscrepancy(event.target.value)} className={`${inputClass} font-mono`} />
+                    </div>
+                    <div>
+                      <label htmlFor="gate-window-seconds" className="mb-1.5 block text-[11px] text-violet-100/55">Window seconds</label>
+                      <input id="gate-window-seconds" data-testid="input-gate-window-seconds" type="number" min={15} max={300} step={1} value={gateWindow} onChange={(event) => setGateWindow(event.target.value)} className={`${inputClass} font-mono`} />
+                    </div>
+                    <div>
+                      <label htmlFor="gate-active-from" className="mb-1.5 block text-[11px] text-violet-100/55">Gate active from</label>
+                      <input id="gate-active-from" data-testid="input-gate-active-from" type="time" value={gateActiveFrom} onChange={(event) => setGateActiveFrom(event.target.value)} className={`${inputClass} font-mono`} />
+                    </div>
+                    <div>
+                      <label htmlFor="gate-active-to" className="mb-1.5 block text-[11px] text-violet-100/55">Gate active to</label>
+                      <input id="gate-active-to" data-testid="input-gate-active-to" type="time" value={gateActiveTo} onChange={(event) => setGateActiveTo(event.target.value)} className={`${inputClass} font-mono`} />
+                    </div>
+                  </div>
+                  <p className="mt-2 text-[11px] leading-relaxed text-violet-100/40">Discrepancy threshold: 1–100%. Window seconds: 15–300. Outside the active hours the gate is not expected to report and no alerts are raised.</p>
+                </div>
+                <button type="submit" className={accentAction} disabled={settingsMutation.isPending || !settingsQuery.data || !canAdmin}>
                   {settingsMutation.isPending ? <LoaderCircle size={15} className="animate-spin" /> : <Check size={15} />}Save policy
                 </button>
+                {!canAdmin && <p className="text-[10px] text-violet-100/40">Read-only: only super admins and admins can change these settings.</p>}
                 {settingsQuery.data?.updatedAt && <p className="text-[10px] text-violet-100/35">Last updated {formatTime(settingsQuery.data.updatedAt)}</p>}
                 {settingsMutation.isError && <p className="text-xs text-rose-200">Settings update failed. Current server values are unchanged.</p>}
               </form>}
@@ -714,5 +1078,172 @@ function ConsoleAction({ icon: Icon, title, action, disabled, onRun }: {
       </span>
       {disabled ? <LoaderCircle size={14} className="animate-spin text-violet-100/40" /> : <ChevronRight size={14} className="text-violet-100/35 transition-transform group-hover:translate-x-0.5" />}
     </button>
+  );
+}
+
+function GateVerdictBadge({ verdict }: { verdict: GateVerdict }) {
+  if (verdict === "ok") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-300/20 bg-emerald-300/10 px-2.5 py-1 text-xs font-medium text-emerald-200" data-testid="gate-verdict">
+        <CheckCircle2 size={14} />In sync
+      </span>
+    );
+  }
+  if (verdict === "sensor_conflict") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-300/20 bg-amber-300/10 px-2.5 py-1 text-xs font-medium text-amber-100" data-testid="gate-verdict">
+        <TriangleAlert size={14} />Sensor conflict
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-md border border-rose-300/20 bg-rose-300/10 px-2.5 py-1 text-xs font-medium text-rose-200" data-testid="gate-verdict">
+      <ShieldX size={14} />Possible missed detections
+    </span>
+  );
+}
+
+function GateCounter({ icon: Icon, title, value, sub, tone }: {
+  icon: typeof Activity;
+  title: string;
+  value: number;
+  sub: string;
+  tone: "violet" | "emerald" | "cyan";
+}) {
+  const toneClass = tone === "violet" ? "text-violet-300" : tone === "emerald" ? "text-emerald-300" : "text-cyan-300";
+  return (
+    <div className="min-h-[92px] rounded-xl border border-violet-100/[0.08] bg-violet-100/[0.025] p-3" data-testid={`metric-gate-${title.toLowerCase().replaceAll(" ", "-")}`}>
+      <p className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-violet-100/40"><Icon size={12} className={toneClass} />{title}</p>
+      <p className="mt-1.5 font-mono text-2xl font-semibold tabular-nums text-violet-50">{value}</p>
+      <p className="mt-0.5 truncate text-[10px] text-violet-100/40">{sub}</p>
+    </div>
+  );
+}
+
+function GateAlertItem({ alert, onOpen }: { alert: GateAlertRow; onOpen: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={`flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-left transition-colors hover:bg-violet-100/[0.05] ${alert.resolved ? "border-violet-100/[0.06] bg-violet-100/[0.015] opacity-70" : "border-violet-100/[0.09] bg-violet-100/[0.025]"}`}
+      data-testid={`row-gate-alert-${alert.id}`}
+    >
+      <span className="flex min-w-0 flex-wrap items-center gap-2">
+        <span className={`rounded-md px-2 py-0.5 text-[10px] font-medium ${alert.alertType === "missed_detections" ? "bg-rose-300/10 text-rose-200" : "bg-amber-200/10 text-amber-100"}`}>
+          {alert.alertType.replaceAll("_", " ")}
+        </span>
+        {alert.simulated && (
+          <span className="inline-flex items-center gap-1 rounded-md border border-amber-300/25 bg-amber-300/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-200">
+            <FlaskConical size={10} />Demo
+          </span>
+        )}
+        <span className="font-mono text-xs text-violet-100/70">{clockLabel(alert.windowStart, true)} – {clockLabel(alert.windowEnd, true)}</span>
+      </span>
+      <span className="flex items-center gap-3">
+        <span className="font-mono text-[11px] text-violet-100/55">camera {alert.cameraCount} · ultrasonic {alert.ultrasonicCount} · IR {alert.irCount}</span>
+        {alert.resolved ? (
+          <span className="inline-flex items-center gap-1 text-[10px] text-emerald-200/75"><Check size={12} />resolved</span>
+        ) : (
+          <ChevronRight size={14} className="text-violet-100/35" />
+        )}
+      </span>
+    </button>
+  );
+}
+
+function GateAlertDialog({ open, detail, loading, error, onRetry, canAdmin, note, onNoteChange, onResolve, resolving, onClose }: {
+  open: boolean;
+  detail?: GateAlertDetail;
+  loading: boolean;
+  error: boolean;
+  onRetry: () => void;
+  canAdmin: boolean;
+  note: string;
+  onNoteChange: (value: string) => void;
+  onResolve: () => void;
+  resolving: boolean;
+  onClose: () => void;
+}) {
+  const events = useMemo(
+    () => [...(detail?.sensorEvents ?? [])].sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime()),
+    [detail],
+  );
+  return (
+    <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
+      <DialogContent className="max-w-lg border-violet-200/15 bg-[#191323] text-violet-50 sm:rounded-2xl">
+        <DialogHeader>
+          <DialogTitle className="text-violet-50" data-testid="gate-alert-dialog-title">
+            {detail ? `Window ${clockLabel(detail.windowStart, true)} – ${clockLabel(detail.windowEnd, true)}` : "Gate alert"}
+          </DialogTitle>
+          <DialogDescription className="text-violet-100/55">
+            {detail ? `${detail.alertType.replaceAll("_", " ")} on gate ${detail.gateId}${detail.simulated ? " · simulated demo data" : ""}` : "Sensor events recorded for this window."}
+          </DialogDescription>
+        </DialogHeader>
+        {error ? <ErrorNotice message="The alert detail could not be loaded." onRetry={onRetry} /> :
+          loading || !detail ? (
+            <div className="space-y-2"><Skeleton className="h-14" /><Skeleton className="h-16" /><Skeleton className="h-16" /></div>
+          ) : (
+            <div className="mt-1 space-y-4">
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-lg border border-violet-200/15 bg-violet-200/[0.06] px-2.5 py-2 text-center">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-violet-100/45">Camera</p>
+                  <p className="mt-0.5 font-mono text-lg font-semibold text-violet-50">{detail.cameraCount}</p>
+                </div>
+                <div className="rounded-lg border border-emerald-300/15 bg-emerald-300/[0.05] px-2.5 py-2 text-center">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-emerald-100/60">Ultrasonic</p>
+                  <p className="mt-0.5 font-mono text-lg font-semibold text-emerald-100">{detail.ultrasonicCount}</p>
+                </div>
+                <div className="rounded-lg border border-cyan-300/15 bg-cyan-300/[0.05] px-2.5 py-2 text-center">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-cyan-100/60">IR beam</p>
+                  <p className="mt-0.5 font-mono text-lg font-semibold text-cyan-100">{detail.irCount}</p>
+                </div>
+              </div>
+              <div>
+                <p className="mb-2 text-xs font-semibold text-violet-100/75">Sensor event timeline</p>
+                {events.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-violet-200/15 px-3 py-4 text-center text-xs text-violet-100/45">No sensor triggers were recorded in this window.</p>
+                ) : (
+                  <div className="max-h-52 space-y-2 overflow-auto pr-1">
+                    {events.map((event) => (
+                      <div
+                        key={event.id}
+                        className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 ${event.simulated ? "border-dashed border-amber-300/25 bg-amber-300/[0.05]" : "border-violet-100/[0.08] bg-violet-100/[0.025]"}`}
+                        data-testid={`gate-event-${event.id}`}
+                      >
+                        <span className="flex items-center gap-2.5">
+                          <span className={`h-1.5 w-1.5 rounded-full ${event.sensor === "ultrasonic" ? "bg-emerald-300" : "bg-cyan-300"}`} />
+                          <span className="font-mono text-xs text-violet-100/80">{clockLabel(event.occurredAt, true)}</span>
+                          <span className="text-xs text-violet-100/65">{event.sensor === "ultrasonic" ? "Ultrasonic" : "IR beam"}</span>
+                          {event.piDeviceId && <span className="font-mono text-[10px] text-violet-100/35">{event.piDeviceId}</span>}
+                        </span>
+                        {event.simulated && (
+                          <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-300/25 bg-amber-300/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-200">
+                            <FlaskConical size={10} />simulated
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="mt-1.5 text-[10px] text-violet-100/40">Camera-matched faces are summarized above; only ultrasonic and IR hardware events appear in the timeline.</p>
+              </div>
+              <p className="rounded-lg bg-violet-300/[0.06] px-3 py-2 text-xs leading-relaxed text-violet-100/70" data-testid="gate-alert-summary">{summarizeGateWindow(detail.cameraCount, events)}</p>
+              {detail.resolved ? (
+                <p className="flex flex-wrap items-center gap-1.5 text-xs text-emerald-200/80">
+                  <CheckCircle2 size={14} />Resolved{detail.resolvedAt ? ` ${formatTime(detail.resolvedAt)}` : ""}{detail.resolveNote ? ` · ${detail.resolveNote}` : ""}
+                </p>
+              ) : canAdmin ? (
+                <div className="space-y-2 border-t border-violet-100/[0.08] pt-3">
+                  <label htmlFor="gate-resolve-note" className="block text-xs font-medium text-violet-100/70">Resolution note <span className="font-normal">(optional)</span></label>
+                  <input id="gate-resolve-note" data-testid="input-gate-resolve-note" value={note} onChange={(event) => onNoteChange(event.target.value)} maxLength={300} placeholder="Context saved with the resolution" className={inputClass} />
+                  <button type="button" className={accentAction} onClick={onResolve} disabled={resolving} data-testid="button-gate-resolve">
+                    {resolving ? <LoaderCircle size={15} className="animate-spin" /> : <Check size={15} />}Mark resolved
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          )}
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -238,8 +238,8 @@ export default function LoginPage() {
         {/* AI Face Recognition Hero */}
         <img
           ref={logoRef}
-          src="/hero.jpg"
-          alt="AttendX AI"
+          src="/attendx-logo.png"
+          alt="AttendX - Intelligent Attendance Command Center"
           className="relative z-10 w-80 h-auto object-cover rounded-3xl select-none panther-logo"
           style={{ maxHeight: "75vh", objectPosition: "center top" }}
           draggable={false}
@@ -252,10 +252,9 @@ export default function LoginPage() {
           {/* Mobile logo */}
           <div className="lg:hidden flex justify-center mb-6">
             <img
-              src="/hero.jpg"
-              alt="AttendX"
-              className="w-24 h-32 object-cover rounded-2xl panther-logo"
-              style={{ objectPosition: "center top" }}
+              src="/attendx-emblem.png"
+              alt="AttendX emblem"
+              className="w-24 h-24 object-contain rounded-2xl panther-logo"
             />
           </div>
 
