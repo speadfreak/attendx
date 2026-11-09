@@ -2,7 +2,26 @@
 
 **Intelligent attendance command center** — AI face recognition + signed QR door terminals + parent SMS alerts, with a real-time dark-purple command center UI.
 
-![Phase](https://img.shields.io/badge/phase-4%20·%20gate%20integrity-blueviolet) ![stack](https://img.shields.io/badge/stack-Vite%20·%20Express%20·%20Drizzle%20·%20Postgres-purple)
+![Phase](https://img.shields.io/badge/phase-5%20·%20delivery%20%2B%20risk%20radar-blueviolet) ![stack](https://img.shields.io/badge/stack-Vite%20·%20Express%20·%20Drizzle%20·%20Postgres-purple)
+
+## What's new in Phase 5
+
+### 📡 SMS Delivery Health (the Twilio 21612 killer)
+- **Messaging Service routing**: sends through a Twilio **Messaging Service SID** (auto-detected by live diagnostics) instead of a raw US long-code `From` — the exact fix for Twilio `21612: Message cannot be sent with the current combination of 'To' and 'From'` when texting Ethiopian (+251) parents. Configurable at runtime in Operations → SMS Health (DB-backed, no redeploy) or via `TWILIO_MESSAGING_SERVICE_SID`.
+- **Channel strategies**: `sms only` · `whatsapp only` · **`auto` (SMS first → WhatsApp fallback)** with per-attempt logging (`provider: twilio:whatsapp` in sms_logs).
+- **Live Twilio diagnostics** (`GET /api/sms/diagnostics`): verifies credentials + balance, lists numbers & Messaging Services with pool sizes, checks real outbound pricing **for every country present in your parent phone data**, and returns prioritized FIX recommendations.
+- **One-click test send** (`POST /api/sms/test-send`) runs the exact production path and surfaces provider errors with an actionable **FIX** line (20003, 21211, 21408, 21606, 21608, 21610, 21612, 21614, 63007, 63016 …).
+- **E.164 normalization**: `09…`/`9…`/`00…`/`+…` inputs normalized against a configurable default country (+251) before sending.
+
+### 🛡 Absence Risk Radar
+- Explainable early-warning engine (`GET /api/analytics/absence-risk`): per-student risk score (0–100) over a rolling window from absence rate, consecutive misses, lateness, accelerating trend and "ghost" (no activity) signals — every score ships with human-readable reasons.
+- Dashboard card with level counts (low/watch/elevated/critical), animated risk bars and deep links into the student database.
+
+### 📷 QR Terminal camera controls
+- Camera device picker, front/back **flip**, and LED **torch** toggle on the door terminal; selection persists per kiosk. Compact flip control also added to the attendance webcam scanner.
+
+### 📱 Operations page, fully responsive
+- Mobile-first pass across every card: collapsing grids, horizontally scrollable tables, constrained dialogs, non-colliding action rows.
 
 ## What's new in Phase 4
 

@@ -16,6 +16,7 @@ import { requireAuth, requireStaff, requireAdminLevel } from "../lib/auth";
 import { enqueueJob } from "../lib/jobs";
 import { writeAudit } from "../lib/audit";
 import { getSystemSettings, setSettings, setSystemSetting, hhmmToMinutes, isValidTimezone } from "../lib/system-settings";
+import { invalidateSmsSettingsCache } from "../lib/sms";
 import { arrivalRulesFromSettings, resolveArrivalStatus, isPastAbsenceCutoff, localDayBounds } from "../lib/attendance-rules";
 import { findClosestFaceMatchAll } from "../lib/face-matching";
 import { publishEvent } from "../lib/events";
@@ -37,6 +38,12 @@ const settingsInput = z.object({
   gateWindowSeconds: z.number().int().min(15).max(300).optional(),
   gateActiveFrom: timeField.optional(),
   gateActiveTo: timeField.optional(),
+  // ── Phase 5 SMS delivery (Operations → SMS Health) ──
+  smsChannelMode: z.enum(["sms", "whatsapp", "auto"]).optional(),
+  // Empty string clears the stored value; MG… must be a full Twilio service SID
+  smsMessagingServiceSid: z.union([z.literal(""), z.string().trim().regex(/^MG[0-9a-fA-F]{32}$/, "Expected a Twilio Messaging Service SID (MG…)")]).optional(),
+  smsFromNumber: z.union([z.literal(""), z.string().trim().regex(/^\+[1-9]\d{6,14}$/, "Expected E.164, e.g. +18312826811")]).optional(),
+  smsDefaultCountry: z.string().trim().regex(/^\+[1-9]\d{0,2}$/, "Expected country code, e.g. +251").optional(),
 }).refine((value) => Object.keys(value).length > 0, "At least one setting is required");
 const fanInput = z.object({ mode: z.enum(["auto", "on", "off"]) });
 const decisionInput = z.object({
@@ -97,6 +104,7 @@ router.patch("/system/settings", requireAdminLevel, async (req, res): Promise<vo
     return;
   }
   await setSettings(parsed.data);
+  invalidateSmsSettingsCache();
   await writeAudit({
     actorAdminId: adminId(req),
     action: "system.settings.updated",

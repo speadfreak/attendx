@@ -19,6 +19,7 @@ import notificationsRouter from "./notifications";
 import reportsRouter from "./reports";
 import searchRouter from "./search";
 import gateRouter from "./gate";
+import smsToolsRouter from "./sms-tools";
 
 const router: IRouter = Router();
 
@@ -42,5 +43,6 @@ router.use(notificationsRouter);
 router.use(reportsRouter);
 router.use(searchRouter);
 router.use(gateRouter);
+router.use(smsToolsRouter);
 
 export default router;

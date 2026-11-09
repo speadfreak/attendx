@@ -296,7 +296,7 @@ export function Layout({ children }: { children: ReactNode }) {
       </aside>
 
       {/* ── Main ──────────────────────────────────────── */}
-      <main className="flex-1 flex flex-col min-h-screen overflow-hidden">
+      <main className="min-w-0 flex-1 flex flex-col min-h-screen overflow-hidden">
         {/* Desktop topbar */}
         <header className="hidden md:flex h-12 items-center px-5 justify-between shrink-0 border-b border-white/5 sticky top-0 z-30"
           style={{ background: "rgba(8,5,16,0.85)", backdropFilter: "blur(12px)" }}>

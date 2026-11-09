@@ -341,6 +341,10 @@ export interface SystemSettingsExtended {
   gateWindowSeconds: number;
   gateActiveFrom: string;
   gateActiveTo: string;
+  smsChannelMode: "sms" | "whatsapp" | "auto";
+  smsMessagingServiceSid: string | null;
+  smsFromNumber: string | null;
+  smsDefaultCountry: string;
   updatedAt: string | null;
 }
 
@@ -355,6 +359,84 @@ export interface SystemSettingsPatch {
   gateWindowSeconds?: number;
   gateActiveFrom?: string;
   gateActiveTo?: string;
+  smsChannelMode?: "sms" | "whatsapp" | "auto";
+  /** Twilio Messaging Service SID (MG…) — empty string clears */
+  smsMessagingServiceSid?: string;
+  /** E.164 sender — empty string clears */
+  smsFromNumber?: string;
+  smsDefaultCountry?: string;
+}
+
+// ── Absence Risk Radar (Phase 5) ─────────────────────────────────
+
+export type RiskLevel = "low" | "watch" | "elevated" | "critical";
+
+export interface StudentRisk {
+  studentId: number;
+  name: string;
+  studentCode: string;
+  classroomId: number | null;
+  classroomName: string | null;
+  score: number;
+  level: RiskLevel;
+  windowDays: number;
+  schoolDays: number;
+  absentDays: number;
+  lateDays: number;
+  absenceRate: number;
+  lateRate: number;
+  consecutiveAbsences: number;
+  trend: number;
+  lastPresentAt: string | null;
+  reasons: string[];
+}
+
+export interface AbsenceRiskSummary {
+  windowDays: number;
+  levelCounts: Record<RiskLevel, number>;
+  top: StudentRisk[];
+}
+
+// ── SMS Delivery Health (Phase 5) ─────────────────────────────
+
+export interface SmsConfigStatus {
+  twilioEnabled: boolean;
+  channelMode: "sms" | "whatsapp" | "auto";
+  hasMessagingService: boolean;
+  hasFromNumber: boolean;
+  messagingServiceSid: string | null;
+  fromNumber: string | null;
+}
+
+export interface SmsDiagnostics {
+  checkedAt: string;
+  twilio: {
+    enabled: boolean;
+    error: string | null;
+    accountStatus: string | null;
+    balance: string | null;
+    currency: string | null;
+  };
+  sender: {
+    messagingServiceSid: string | null;
+    messagingServiceName: string | null;
+    fromNumber: string | null;
+    channelMode: string;
+    defaultCountry: string;
+    numberInServicePool: boolean | null;
+  };
+  numbers: Array<{ phone: string; friendlyName: string; sms: boolean }>;
+  messagingServices: Array<{ sid: string; friendlyName: string; usecase: string | null; poolSize: number }>;
+  destinations: Array<{ prefix: string; country: string; reachable: boolean; pricePerSms: string | null; parents: number }>;
+  recommendations: Array<{ severity: "critical" | "warning" | "info"; title: string; detail: string }>;
+}
+
+export interface SmsTestSendResult {
+  ok: boolean;
+  normalizedTo: string;
+  sender: { via: "messaging-service" | "from-number"; messagingServiceSid: string | null; fromNumber: string | null };
+  attempts: Array<{ channel: string; ok: boolean; error: { message: string; code: string | null; fix: string | null } | null }>;
+  error: { message: string; code: string | null; fix: string | null } | null;
 }
 
 // ── Endpoint wrappers ───────────────────────────────────────────
@@ -430,4 +512,19 @@ export const api = {
   // System settings (attendance time rules + gate integrity)
   systemSettings: () => get<SystemSettingsExtended>("/system/settings"),
   updateSystemSettings: (changes: SystemSettingsPatch) => patch<SystemSettingsExtended>("/system/settings", changes),
+
+  // ── Absence Risk Radar ──
+  absenceRisk: (params?: { classroomId?: number; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.classroomId) q.set("classroomId", String(params.classroomId));
+    if (params?.limit) q.set("limit", String(params.limit));
+    const qs = q.toString();
+    return get<AbsenceRiskSummary>(`/analytics/absence-risk${qs ? `?${qs}` : ""}`);
+  },
+
+  // ── SMS Delivery Health ──
+  smsConfigStatus: () => get<SmsConfigStatus>("/sms/config-status"),
+  smsDiagnostics: () => get<SmsDiagnostics>("/sms/diagnostics"),
+  smsTestSend: (to: string, body?: string, channel?: "sms" | "whatsapp") =>
+    post<SmsTestSendResult>("/sms/test-send", { to, body, channel }),
 };

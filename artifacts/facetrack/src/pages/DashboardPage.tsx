@@ -10,6 +10,7 @@ import {
 } from "@workspace/api-client-react";
 import { api, type Occupancy } from "@/lib/api";
 import { GlowCard, SectionTitle, StatusBadge, StatusDot, MeshBackground, GlowEmpty } from "@/components/gx/Primitives";
+import { RiskRadarCard } from "@/components/RiskRadarCard";
 import { ChartSkeleton, FeedSkeletonRow, GlowSkeleton } from "@/components/gx/Skeletons";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -375,6 +376,9 @@ export default function DashboardPage() {
             )}
           </GlowCard>
         </div>
+
+        {/* ── Absence Risk Radar ── */}
+        <RiskRadarCard />
 
         {/* ── Quick Stats Row ── */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

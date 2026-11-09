@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   DoorOpen, QrCode, Camera, CheckCircle2, XCircle, Clock,
   ScanLine, Terminal, Volume2, VolumeX, RefreshCw, Keyboard, AlertTriangle,
+  SwitchCamera, Zap,
 } from "lucide-react";
 
 /**
@@ -32,6 +33,16 @@ interface FeedEntry {
 }
 
 const SCANNER_REGION_ID = "gx-qr-reader";
+const CAMERA_ID_KEY = "gx_terminal_camera_id";
+
+interface CameraDevice { id: string; label: string; }
+
+/** Live video track of the running scanner (torch constraints apply here). */
+function getScannerVideoTrack(): MediaStreamTrack | undefined {
+  const video = document.querySelector<HTMLVideoElement>(`#${SCANNER_REGION_ID} video`);
+  const stream = video?.srcObject;
+  return stream instanceof MediaStream ? stream.getVideoTracks()[0] : undefined;
+}
 
 function playTone(kind: "success" | "duplicate" | "error") {
   try {
@@ -73,6 +84,12 @@ export default function QrTerminalPage() {
 
   const [cameraState, setCameraState] = useState<"starting" | "ready" | "error" | "denied">("starting");
   const [cameraLabel, setCameraLabel] = useState<string>("");
+  const [devices, setDevices] = useState<CameraDevice[]>([]);
+  const [activeDeviceId, setActiveDeviceId] = useState<string>("");
+  const [torchSupported, setTorchSupported] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const switchingRef = useRef(false);
   const [muted, setMuted] = useState(false);
   const [manualToken, setManualToken] = useState("");
   const [verdict, setVerdict] = useState<Verdict>(null);
@@ -148,8 +165,29 @@ export default function QrTerminalPage() {
     }
   }, [terminalId, handleScanResponse]);
 
+  // torch is a non-standard Chromium capability — probe it off the typed capability set
+  const detectTorch = useCallback(() => {
+    setTorchSupported(false);
+    setTorchOn(false);
+    const probe = () => {
+      const track = getScannerVideoTrack();
+      const caps = track?.getCapabilities?.() as (MediaTrackCapabilities & { torch?: boolean }) | undefined;
+      if (caps?.torch === true) setTorchSupported(true);
+    };
+    probe();
+    window.setTimeout(probe, 500);
+  }, []);
+
+  // Best-effort LED kill (stream release also clears it, this is just explicit)
+  const forceTorchOff = useCallback(() => {
+    setTorchOn(false);
+    setTorchSupported(false);
+    const track = getScannerVideoTrack();
+    track?.applyConstraints({ advanced: [{ torch: false }] } as unknown as MediaTrackConstraints)?.catch(() => {});
+  }, []);
+
   // ── Camera scanner loop ────────────────────────────────
-  const startScanner = useCallback(async () => {
+  const startScanner = useCallback(async (deviceId?: string) => {
     setCameraState("starting");
     try {
       const scanners = await Html5Qrcode.getCameras();
@@ -157,9 +195,14 @@ export default function QrTerminalPage() {
         setCameraState("denied");
         return;
       }
-      // Prefer back camera (door tablet pointed at badges)
+      setDevices(scanners.map((c) => ({ id: c.id, label: c.label })));
+      // Resolution order: explicit pick → saved preference → back camera → first
       const back = scanners.find((c) => /back|rear|environment/i.test(c.label));
-      const chosen = back ?? scanners[0];
+      const savedId = localStorage.getItem(CAMERA_ID_KEY);
+      const saved = savedId ? scanners.find((c) => c.id === savedId) : undefined;
+      const chosen = (deviceId ? scanners.find((c) => c.id === deviceId) : undefined) ?? saved ?? back ?? scanners[0];
+      setActiveDeviceId(chosen.id);
+      localStorage.setItem(CAMERA_ID_KEY, chosen.id);
       setCameraLabel(chosen.label || "camera");
       const scanner = new Html5Qrcode(SCANNER_REGION_ID, { verbose: false });
       scannerRef.current = scanner;
@@ -172,18 +215,70 @@ export default function QrTerminalPage() {
         () => { /* per-frame no-decode; ignore */ },
       );
       setCameraState("ready");
+      detectTorch();
     } catch (err: any) {
       setCameraState(/permission/i.test(String(err)) ? "denied" : "error");
     }
-  }, [submitToken]);
+  }, [submitToken, detectTorch]);
 
   const stopScanner = useCallback(() => {
+    forceTorchOff();
     const s = scannerRef.current;
     if (s) {
       s.stop().then(() => s.clear()).catch(() => {});
       scannerRef.current = null;
     }
-  }, []);
+  }, [forceTorchOff]);
+
+  // Stop current scanner, then start with the selected device (guard: rapid toggles)
+  const switchCamera = useCallback(async (deviceId: string) => {
+    if (switchingRef.current || !deviceId || deviceId === activeDeviceId) return;
+    switchingRef.current = true;
+    setSwitching(true);
+    try {
+      forceTorchOff();
+      const s = scannerRef.current;
+      if (s) {
+        await s.stop().catch(() => {});
+        s.clear();
+        scannerRef.current = null;
+      }
+      await startScanner(deviceId);
+    } finally {
+      switchingRef.current = false;
+      setSwitching(false);
+    }
+  }, [activeDeviceId, startScanner, forceTorchOff]);
+
+  const flipCamera = useCallback(() => {
+    if (switchingRef.current || devices.length < 2) return;
+    const current = devices.find((d) => d.id === activeDeviceId);
+    const currentIsBack = current ? /back|rear|environment/i.test(current.label) : false;
+    // Pick the opposite facing if labels reveal it; otherwise cycle the list
+    const target = devices.find((d) => d.id !== activeDeviceId && /back|rear|environment/i.test(d.label) === !currentIsBack);
+    if (target) {
+      void switchCamera(target.id);
+      return;
+    }
+    const idx = devices.findIndex((d) => d.id === activeDeviceId);
+    const next = devices[(idx + 1) % devices.length];
+    if (next && next.id !== activeDeviceId) void switchCamera(next.id);
+  }, [devices, activeDeviceId, switchCamera]);
+
+  const toggleTorch = useCallback(async () => {
+    const track = getScannerVideoTrack();
+    if (!track) {
+      toast({ title: "Torch unavailable", description: "No active camera track.", variant: "destructive" });
+      return;
+    }
+    const next = !torchOn;
+    try {
+      await track.applyConstraints({ advanced: [{ torch: next }] } as unknown as MediaTrackConstraints);
+      setTorchOn(next);
+    } catch {
+      toast({ title: "Torch failed", description: "This camera does not support LED torch control.", variant: "destructive" });
+    }
+  }, [torchOn, toast]);
 
   useEffect(() => {
     void startScanner();
@@ -213,6 +308,11 @@ export default function QrTerminalPage() {
   useEffect(() => {
     api.qrTerminalStats(terminalId).then(setCounter).catch(() => {});
   }, [terminalId]);
+
+  const activeDevice = devices.find((d) => d.id === activeDeviceId);
+  const activeLabel = activeDevice
+    ? (activeDevice.label || `Camera ${devices.indexOf(activeDevice) + 1}`)
+    : (cameraLabel || "camera");
 
   const verdictStyles: Record<Exclude<Verdict, null>, { bg: string; ring: string; label: string; cls: string }> = {
     valid: { bg: "rgba(34,197,94,0.14)", ring: "rgba(34,197,94,0.55)", label: "WELCOME", cls: "text-emerald-400" },
@@ -324,8 +424,8 @@ export default function QrTerminalPage() {
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/90">
                     {cameraState === "starting" && (
                       <>
-                        <RefreshCw className="w-8 h-8 animate-spin text-purple-400" />
-                        <p className="text-xs text-white/50">Starting door camera…</p>
+                        <RefreshCw className={`w-8 h-8 text-purple-400 ${switching ? "" : "animate-spin"}`} />
+                        <p className="text-xs text-white/50">{switching ? "Switching camera…" : "Starting door camera…"}</p>
                       </>
                     )}
                     {cameraState === "denied" && (
@@ -360,6 +460,48 @@ export default function QrTerminalPage() {
                     </div>
                   </>
                 )}
+              </div>
+
+              {/* camera controls: picker · flip · torch */}
+              <div className="flex flex-wrap items-center gap-2 px-3 py-2.5 border-t border-purple-500/10">
+                {devices.length > 0 && (
+                  <select
+                    value={activeDeviceId}
+                    onChange={(e) => void switchCamera(e.target.value)}
+                    disabled={switching}
+                    aria-label="Select camera"
+                    className="bg-black/40 border border-purple-500/20 rounded-lg px-2.5 py-1.5 text-sm text-white/80 focus:outline-none focus:border-purple-500/50 disabled:opacity-50 max-w-[200px] sm:max-w-[260px]"
+                  >
+                    {devices.map((d, i) => (
+                      <option key={d.id} value={d.id} className="bg-black text-white">
+                        {d.label || `Camera ${i + 1}`}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <button
+                  onClick={flipCamera}
+                  disabled={switching || devices.length < 2}
+                  className="st-badge st-badge-cyan disabled:opacity-50"
+                  title="Flip front / back camera"
+                >
+                  <SwitchCamera size={11} /> flip
+                </button>
+                {torchSupported && (
+                  <button
+                    onClick={() => void toggleTorch()}
+                    disabled={switching || cameraState !== "ready"}
+                    aria-pressed={torchOn}
+                    className={`st-badge ${torchOn ? "st-badge-amber" : "st-badge-slate"} disabled:opacity-50`}
+                    title={torchOn ? "Turn torch off" : "Turn torch on"}
+                  >
+                    <Zap size={11} /> torch
+                  </button>
+                )}
+                {switching && <span className="text-[11px] text-white/40 font-mono">switching…</span>}
+                <span className="ml-auto text-[11px] text-white/40 font-mono truncate max-w-[45%]" title={activeLabel}>
+                  camera: {activeLabel}
+                </span>
               </div>
             </GlowCard>
 

@@ -16,7 +16,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Html5Qrcode } from "html5-qrcode";
 import {
   Camera, ScanFace, QrCode, Keyboard, Loader2, CheckCircle2, XCircle,
-  Clock, Brain, Activity, Gauge, Layers, RefreshCw, Zap, Video, MapPin,
+  Clock, Brain, Activity, Gauge, Layers, RefreshCw, Zap, Video, MapPin, SwitchCamera,
 } from "lucide-react";
 import { format } from "date-fns";
 import { loadModels, extractDescriptor, onLoadStatusChange, type LoadStatus } from "@/lib/faceApi";
@@ -70,13 +70,14 @@ interface FaceMatchResponse {
 
 /** One camera tile: video + overlay canvas + FPS telemetry. */
 function CameraTile({
-  deviceLabel, deviceId, scanning, onCapture, frameStat,
+  deviceLabel, deviceId, scanning, onCapture, frameStat, facing = "user",
 }: {
   deviceLabel: string;
   deviceId: string;
   scanning: boolean;
   onCapture: (video: HTMLVideoElement, canvas: HTMLCanvasElement) => void;
   frameStat: { fps: number; frames: number; last: FaceMatchResponse | null };
+  facing?: "user" | "environment";
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -89,7 +90,7 @@ function CameraTile({
       try {
         const s = await navigator.mediaDevices.getUserMedia({
           video: deviceId === "default"
-            ? { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }
+            ? { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } }
             : { deviceId: { exact: deviceId } },
         });
         if (cancelled) { s.getTracks().forEach((t) => t.stop()); return; }
@@ -104,7 +105,7 @@ function CameraTile({
       cancelled = true;
       streamRef.current?.getTracks().forEach((t) => t.stop());
     };
-  }, [deviceId]);
+  }, [deviceId, facing]);
 
   // Detection loop
   useEffect(() => {
@@ -229,6 +230,7 @@ export default function AttendancePage() {
   const [modelStatus, setModelStatus] = useState<LoadStatus>("idle");
   const [cameras, setCameras] = useState<Array<{ label: string; deviceId: string }>>([]);
   const [activeCams, setActiveCams] = useState<string[]>(["default"]);
+  const [primaryFacing, setPrimaryFacing] = useState<"user" | "environment">("user");
   const [selectedClassroomId, setSelectedClassroomId] = useState<string>("all");
   const [gridStat, setGridStat] = useState<Record<string, { fps: number; frames: number; last: FaceMatchResponse | null }>>({});
   const [scanResult, setScanResult] = useState<FaceMatchResponse | null>(null);
@@ -497,6 +499,15 @@ export default function AttendancePage() {
                   >
                     primary
                   </button>
+                  {activeCams.includes("default") && (
+                    <button
+                      onClick={() => setPrimaryFacing((f) => (f === "user" ? "environment" : "user"))}
+                      className="st-badge st-badge-cyan"
+                      title={primaryFacing === "user" ? "Flip primary camera to back" : "Flip primary camera to front"}
+                    >
+                      <SwitchCamera size={10} /> {primaryFacing === "user" ? "front" : "back"}
+                    </button>
+                  )}
                   {cameras.filter((c) => c.deviceId && c.deviceId !== "default").slice(0, 3).map((c) => (
                     <button
                       key={c.deviceId}
@@ -539,6 +550,7 @@ export default function AttendancePage() {
                         scanning={autoMode || modelStatus === "ready"}
                         onCapture={autoMode ? doCapture : () => {}}
                         frameStat={stat}
+                        facing={primaryFacing}
                       />
                     );
                   })}

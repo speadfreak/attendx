@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, studentsTable, classroomsTable, attendanceLogsTable, smsLogsTable } from "@workspace/db";
 import { eq, count, sql, gte, lte, and } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
+import { absenceRiskSummary } from "../lib/risk";
 
 const router = Router();
 
@@ -187,6 +188,20 @@ router.get("/dashboard/classroom-summary", requireAuth, async (_req, res): Promi
     };
   }));
 
+  res.json(summary);
+});
+
+/**
+ * ABSENCE RISK RADAR — predictive early-warning list.
+ * Explainable per-student risk scores over a rolling window.
+ * Query: ?classroomId=&limit= (defaults: whole school, top 8).
+ */
+router.get("/analytics/absence-risk", requireAuth, async (req, res): Promise<void> => {
+  const rawLimit = Number(req.query.limit ?? 8);
+  const limit = Number.isFinite(rawLimit) ? Math.min(50, Math.max(1, Math.floor(rawLimit))) : 8;
+  const rawClassroom = Number(req.query.classroomId);
+  const classroomId = Number.isInteger(rawClassroom) && rawClassroom > 0 ? rawClassroom : null;
+  const summary = await absenceRiskSummary(classroomId, limit);
   res.json(summary);
 });
 

@@ -51,7 +51,8 @@ Project-level env vars are shared by all services. Add them in Project → Setti
 | `CRON_SECRET` | Long random secret used to authenticate scheduled processing requests. |
 | `TWILIO_ACCOUNT_SID` | Optional; enables live SMS delivery. |
 | `TWILIO_AUTH_TOKEN` | Optional; enables live SMS delivery. |
-| `TWILIO_FROM_NUMBER` | Optional; enables live SMS delivery. |
+| `TWILIO_FROM_NUMBER` | Optional fallback sender (E.164). International delivery should use a Messaging Service instead. |
+| `TWILIO_MESSAGING_SERVICE_SID` | Optional; **recommended for international SMS** (e.g. Ethiopia). Sends via a Twilio Messaging Service instead of a raw From number — fixes Twilio error 21612. Can also be set at runtime in Operations → SMS Health (stored in the DB, no redeploy needed). |
 
 The three Twilio variables are optional; without them AttendX records simulated SMS delivery. If enabled, create fresh credentials in Vercel's secret UI — do not reuse credentials stored in any repository file.
 

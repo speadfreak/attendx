@@ -19,6 +19,15 @@ export const DEFAULT_SYSTEM_SETTINGS = {
   gateWindowSeconds: 60,
   gateActiveFrom: "06:00",
   gateActiveTo: "10:00",
+  // ── Phase 5: notification delivery (SMS Health) ─────────────────
+  // 'auto' = SMS first, WhatsApp fallback on channel-capable failures
+  // (e.g. Twilio 21612 international To/From rejection).
+  smsChannelMode: "auto" as const,
+  // Preferred sender: a Twilio Messaging Service SID (MG…) beats a raw
+  // From number — US long codes direct-dialing Ethiopia get 21612.
+  smsMessagingServiceSid: null as string | null,
+  smsFromNumber: null as string | null,
+  smsDefaultCountry: "+251",
 };
 
 export type FanMode = "auto" | "on" | "off";
@@ -40,6 +49,10 @@ export function isValidTimezone(timezone: string): boolean {
     return false;
   }
 }
+
+const MESSAGING_SERVICE_SID_RE = /^MG[0-9a-fA-F]{32}$/;
+const E164_RE = /^\+[1-9]\d{6,14}$/;
+const COUNTRY_CODE_RE = /^\+[1-9]\d{0,2}$/;
 
 function normalizedTime(value: string | undefined, fallback: string): string {
   if (typeof value !== "string") return fallback;
@@ -65,6 +78,15 @@ export async function getSystemSettings() {
   const fanMode: FanMode = rawFanMode === "on" || rawFanMode === "off" ? rawFanMode : "auto";
   const rawTimezone = values.get("attendanceTimezone") ?? DEFAULT_SYSTEM_SETTINGS.attendanceTimezone;
   const attendanceTimezone = isValidTimezone(rawTimezone) ? rawTimezone : DEFAULT_SYSTEM_SETTINGS.attendanceTimezone;
+  // ── SMS delivery settings (Phase 5) ──
+  const rawChannelMode = values.get("smsChannelMode");
+  const smsChannelMode = rawChannelMode === "whatsapp" || rawChannelMode === "sms" ? rawChannelMode : "auto";
+  const rawServiceSid = values.get("smsMessagingServiceSid");
+  const smsMessagingServiceSid = rawServiceSid && MESSAGING_SERVICE_SID_RE.test(rawServiceSid) ? rawServiceSid : null;
+  const rawFrom = values.get("smsFromNumber");
+  const smsFromNumber = rawFrom && E164_RE.test(rawFrom) ? rawFrom : null;
+  const rawDefaultCountry = values.get("smsDefaultCountry");
+  const smsDefaultCountry = rawDefaultCountry && COUNTRY_CODE_RE.test(rawDefaultCountry) ? rawDefaultCountry : DEFAULT_SYSTEM_SETTINGS.smsDefaultCountry;
   const latestUpdate = rows.reduce<Date | null>(
     (latest, row) => (!latest || row.updatedAt > latest ? row.updatedAt : latest),
     null,
@@ -82,6 +104,10 @@ export async function getSystemSettings() {
     gateWindowSeconds: normalizedPct(values.get("gateWindowSeconds"), DEFAULT_SYSTEM_SETTINGS.gateWindowSeconds, 15, 300),
     gateActiveFrom: normalizedTime(values.get("gateActiveFrom"), DEFAULT_SYSTEM_SETTINGS.gateActiveFrom),
     gateActiveTo: normalizedTime(values.get("gateActiveTo"), DEFAULT_SYSTEM_SETTINGS.gateActiveTo),
+    smsChannelMode,
+    smsMessagingServiceSid,
+    smsFromNumber,
+    smsDefaultCountry,
     updatedAt: latestUpdate?.toISOString() ?? null,
   };
 }

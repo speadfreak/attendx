@@ -41,6 +41,7 @@ import type {
   GateAlertDetail, GateAlertRow, GateSensorEvent, GateSimulateMode, GateVerdict,
 } from "@/lib/api";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { SmsHealthCard } from "@/components/SmsHealthCard";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
@@ -440,7 +441,7 @@ export default function OperationsPage() {
     Date.now() - new Date(device.lastSeenAt).getTime() <= piQuery.data.staleAfterSeconds * 1000);
 
   return (
-    <div className="mx-auto w-full max-w-[1480px] space-y-6 pb-10">
+    <div className="mx-auto w-full max-w-[1480px] min-w-0 space-y-4 sm:space-y-6 pb-10">
       <header className="relative overflow-hidden rounded-2xl border border-violet-200/10 bg-[radial-gradient(ellipse_at_top_right,rgba(139,92,246,0.16),transparent_48%),linear-gradient(120deg,#21172e,#17111f)] px-5 py-6 sm:px-7 sm:py-8">
         <div className="absolute -right-16 -top-24 h-64 w-64 rounded-full border border-violet-200/[0.07]" aria-hidden="true" />
         <div className="absolute -right-2 -top-9 h-36 w-36 rounded-full border border-violet-200/[0.08]" aria-hidden="true" />
@@ -468,8 +469,8 @@ export default function OperationsPage() {
 
       {feedback && (
         <div role="status" aria-live="polite" className="flex items-start justify-between gap-3 rounded-xl border border-violet-200/15 bg-violet-300/[0.06] px-4 py-3 text-sm text-violet-100/85">
-          <span>{feedback}</span>
-          <button type="button" onClick={() => setFeedback("")} aria-label="Dismiss notification" className="text-violet-100/55 hover:text-violet-50"><X size={16} /></button>
+          <span className="min-w-0 flex-1">{feedback}</span>
+          <button type="button" onClick={() => setFeedback("")} aria-label="Dismiss notification" className="shrink-0 text-violet-100/55 hover:text-violet-50"><X size={16} /></button>
         </div>
       )}
 
@@ -482,7 +483,7 @@ export default function OperationsPage() {
             </span>}
           </div>
           {piQuery.isLoading ? (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{[1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-[74px]" />)}</div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">{[1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-[74px]" />)}</div>
           ) : piQuery.isError ? <ErrorNotice message="Device health is temporarily unavailable." onRetry={() => void piQuery.refetch()} /> :
             !device ? (
               <div className="rounded-xl border border-dashed border-violet-200/15 p-5 text-center">
@@ -492,7 +493,7 @@ export default function OperationsPage() {
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <Metric icon={Activity} title="Heartbeat" value={ageLabel(device.lastSeenAt)} sub={device.lastSeenAt ? formatTime(device.lastSeenAt) : undefined} />
                   <Metric icon={Network} title="Local address" value={device.localIp || "Not reported"} />
                   <Metric icon={Thermometer} title="CPU temperature" value={device.cpuTempC == null ? "Not reported" : `${device.cpuTempC.toFixed(1)}°C`} />
@@ -578,12 +579,12 @@ export default function OperationsPage() {
                   <p className="flex items-center gap-2 text-xs font-semibold text-violet-50"><Activity size={14} className="text-violet-300" />Rolling window counts</p>
                   <span className="text-[10px] text-violet-100/40">last 60 minutes · {gate.windowSeconds}s windows</span>
                 </div>
-                {gateWindowsQuery.isLoading ? <Skeleton className="mt-3 h-44" /> :
+                {gateWindowsQuery.isLoading ? <Skeleton className="mt-3 h-48 sm:h-56" /> :
                   gateWindowsQuery.isError ? <div className="mt-3"><ErrorNotice message="Window history could not be loaded." onRetry={() => void gateWindowsQuery.refetch()} /></div> :
                     gateSeriesData.length === 0 ? (
                       <p className="mt-3 rounded-lg border border-dashed border-violet-200/15 px-4 py-6 text-center text-xs text-violet-100/45">No gate windows recorded yet.</p>
                     ) : (
-                      <div className="mt-3 h-44">
+                      <div className="mt-3 h-48 sm:h-56">
                         <ResponsiveContainer width="100%" height="100%">
                           <LineChart data={gateSeriesData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(155,91,255,0.08)" vertical={false} />
@@ -697,10 +698,10 @@ export default function OperationsPage() {
             </button>
           </div>
           {jobsQuery.isLoading ? (
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{[1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-[65px]" />)}</div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">{[1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-[65px]" />)}</div>
           ) : jobsQuery.isError ? <ErrorNotice message="The job queue could not be loaded." onRetry={() => void jobsQuery.refetch()} /> :
             <>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
                 {(["pending", "running", "failed", "done"] as const).map((status) => (
                   <div key={status} className={`rounded-xl border px-3 py-2.5 ${status === "failed" && (jobsQuery.data?.counts.failed ?? 0) > 0 ? "border-rose-300/15 bg-rose-300/[0.05]" : "border-violet-100/[0.08] bg-violet-100/[0.025]"}`}>
                     <p className="text-[11px] capitalize text-violet-100/50">{status}</p>
@@ -714,26 +715,28 @@ export default function OperationsPage() {
                   {failedJobs.slice(0, 3).map((job) => (
                     <div key={job.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-rose-200/10 bg-rose-200/[0.035] px-3 py-2.5">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-violet-50">{job.type} <span className="font-mono text-xs text-violet-100/40">#{job.id}</span></p>
-                        <p className="mt-0.5 truncate text-xs text-rose-100/60">{job.error || "No error detail returned"} · {job.attempts} attempts</p>
+                        <p className="truncate text-sm font-medium text-violet-50" title={job.type}>{job.type} <span className="font-mono text-xs text-violet-100/40">#{job.id}</span></p>
+                        <p className="mt-0.5 truncate text-xs text-rose-100/60" title={job.error || "No error detail returned"}>{job.error || "No error detail returned"} · {job.attempts} attempts</p>
                       </div>
                       <button type="button" onClick={() => retryJob(job.id)} disabled={retryMutation.isPending} className={actionClass} data-testid={`button-retry-job-${job.id}`}><RotateCcw size={14} />Retry</button>
                     </div>
                   ))}
                 </div>
               )}
-              <div className="mt-4 overflow-hidden rounded-xl border border-violet-100/[0.08]">
-                <div className="grid grid-cols-[1.2fr_0.8fr_auto] gap-2 border-b border-violet-100/[0.08] bg-violet-100/[0.025] px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-violet-100/40">
-                  <span>Job</span><span>Worker</span><span>Status</span>
+              <div className="mt-4 overflow-x-auto rounded-xl border border-violet-100/[0.08]" role="region" aria-label="Recent jobs table" tabIndex={0}>
+                <div className="min-w-[480px]">
+                  <div className="grid grid-cols-[1.2fr_0.8fr_auto] gap-2 border-b border-violet-100/[0.08] bg-violet-100/[0.025] px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-violet-100/40">
+                    <span>Job</span><span>Worker</span><span>Status</span>
+                  </div>
+                  {recentJobs.length === 0 ? <p className="px-3 py-6 text-center text-xs text-violet-100/45">No jobs have been reported.</p> :
+                    recentJobs.map((job) => (
+                      <div key={job.id} data-testid={`row-job-${job.id}`} className="grid grid-cols-[1.2fr_0.8fr_auto] items-center gap-2 border-b border-violet-100/[0.05] px-3 py-2.5 last:border-0">
+                        <div className="min-w-0"><p className="truncate text-xs font-medium text-violet-50" title={job.type}>{job.type} <span className="font-mono text-[10px] text-violet-100/40">#{job.id}</span></p><p className="truncate text-[10px] text-violet-100/40">{formatTime(job.createdAt)}</p></div>
+                        <span className="truncate text-xs text-violet-100/55" title={job.worker || "—"}>{job.worker || "—"}</span>
+                        <span className={`rounded-md px-2 py-1 text-[10px] font-medium capitalize ${job.status === "failed" ? "bg-rose-300/10 text-rose-200" : job.status === "done" ? "bg-emerald-300/10 text-emerald-200" : "bg-violet-300/10 text-violet-100/70"}`}>{job.status}</span>
+                      </div>
+                    ))}
                 </div>
-                {recentJobs.length === 0 ? <p className="px-3 py-6 text-center text-xs text-violet-100/45">No jobs have been reported.</p> :
-                  recentJobs.map((job) => (
-                    <div key={job.id} data-testid={`row-job-${job.id}`} className="grid grid-cols-[1.2fr_0.8fr_auto] items-center gap-2 border-b border-violet-100/[0.05] px-3 py-2.5 last:border-0">
-                      <div className="min-w-0"><p className="truncate text-xs font-medium text-violet-50">{job.type} <span className="font-mono text-[10px] text-violet-100/40">#{job.id}</span></p><p className="truncate text-[10px] text-violet-100/40">{formatTime(job.createdAt)}</p></div>
-                      <span className="truncate text-xs text-violet-100/55">{job.worker || "—"}</span>
-                      <span className={`rounded-md px-2 py-1 text-[10px] font-medium capitalize ${job.status === "failed" ? "bg-rose-300/10 text-rose-200" : job.status === "done" ? "bg-emerald-300/10 text-emerald-200" : "bg-violet-300/10 text-violet-100/70"}`}>{job.status}</span>
-                    </div>
-                  ))}
               </div>
             </>}
         </article>
@@ -821,6 +824,8 @@ export default function OperationsPage() {
               )}
         </article>
 
+        <SmsHealthCard chrome="panel" />
+
         <article className={`${panel} p-5 sm:p-6`}>
           <SectionHeading eyebrow="Recognition policy" title="Review settings" detail="Tune recognition, attendance time rules, and gate integrity thresholds." />
           {settingsQuery.isLoading ? <div className="space-y-3"><Skeleton className="h-20" /><Skeleton className="h-10" /></div> :
@@ -902,7 +907,7 @@ export default function OperationsPage() {
           {heatmapQuery.isLoading ? <div className="space-y-2"><Skeleton className="h-10" /><Skeleton className="h-10" /><Skeleton className="h-10" /></div> :
             heatmapQuery.isError ? <ErrorNotice message="Confidence history could not be loaded." onRetry={() => void heatmapQuery.refetch()} /> :
               heatmapQuery.data?.length ? (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto" role="region" aria-label="Confidence heatmap table" tabIndex={0}>
                   <div className="min-w-[520px]">
                     <div className="grid grid-cols-[1.2fr_1fr_0.8fr_1fr] gap-2 border-b border-violet-100/[0.08] pb-2 text-[10px] font-semibold uppercase tracking-wider text-violet-100/40">
                       <span>Date</span><span>Classroom</span><span>Matches</span><span>Low confidence</span>
@@ -914,7 +919,7 @@ export default function OperationsPage() {
                         return (
                           <div key={`${point.day}-${point.classroomId ?? index}-${index}`} className="grid grid-cols-[1.2fr_1fr_0.8fr_1fr] items-center gap-2 py-2.5 text-xs">
                             <span className="text-violet-100/70">{formatTime(point.day)}</span>
-                            <span className="truncate text-violet-100/65">{point.classroomName || "Unassigned"}</span>
+                            <span className="truncate text-violet-100/65" title={point.classroomName || "Unassigned"}>{point.classroomName || "Unassigned"}</span>
                             <span className="font-mono text-violet-100/60">{point.lowConfidenceMatches}/{point.totalMatches}</span>
                             <span className={`inline-flex w-fit min-w-16 items-center justify-center rounded-md px-2 py-1 font-mono text-[11px] ${color}`}>{(rate * 100).toFixed(1)}%</span>
                           </div>
@@ -937,7 +942,7 @@ export default function OperationsPage() {
           {settingsQuery.isLoading ? <Skeleton className="h-20" /> :
             settingsQuery.isError ? <ErrorNotice message="Fan policy is unavailable until settings load." onRetry={() => void settingsQuery.refetch()} /> :
               <>
-                <div role="group" aria-label="Fan mode" className="grid grid-cols-3 gap-2">
+                <div role="group" aria-label="Fan mode" className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                   {(["auto", "on", "off"] as const).map((mode) => {
                     const selected = settingsQuery.data?.fanMode === mode;
                     return (
@@ -956,7 +961,7 @@ export default function OperationsPage() {
 
       <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <article className={`${panel} p-5 sm:p-6`}>
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <SectionHeading eyebrow="Accountability" title="Audit trail" detail="Recent admin decisions and automated attendance operations." />
             <button type="button" className={actionClass} onClick={() => void auditQuery.refetch()} disabled={auditQuery.isFetching}>
               <RefreshCw size={14} className={auditQuery.isFetching ? "animate-spin" : ""} />Refresh
@@ -969,10 +974,10 @@ export default function OperationsPage() {
                   {auditQuery.data.map((event) => (
                     <div key={event.id} className="grid grid-cols-[1fr_auto] gap-2 rounded-lg border border-violet-100/[0.08] bg-violet-100/[0.025] px-3 py-2.5 sm:grid-cols-[1fr_0.8fr_0.8fr_auto] sm:items-center">
                       <div className="min-w-0">
-                        <p className="truncate text-xs font-semibold text-violet-50">{event.action.replaceAll(".", " ")}</p>
-                        <p className="mt-0.5 truncate text-[10px] text-violet-100/40">{event.targetType}{event.targetId == null ? "" : ` · ${event.targetId}`}</p>
+                        <p className="truncate text-xs font-semibold text-violet-50" title={event.action.replaceAll(".", " ")}>{event.action.replaceAll(".", " ")}</p>
+                        <p className="mt-0.5 truncate text-[10px] text-violet-100/40" title={event.targetType}>{event.targetType}{event.targetId == null ? "" : ` · ${event.targetId}`}</p>
                       </div>
-                      <span className="truncate text-[11px] text-violet-100/55">{event.actorName || "System"}</span>
+                      <span className="truncate text-[11px] text-violet-100/55" title={event.actorName || "System"}>{event.actorName || "System"}</span>
                       <span className="truncate text-[10px] text-violet-100/40">{formatTime(event.createdAt)}</span>
                       <span className="font-mono text-[10px] text-violet-100/35">#{event.id}</span>
                     </div>
@@ -1031,8 +1036,8 @@ function Metric({ icon: Icon, title, value, sub }: { icon: typeof Activity; titl
   return (
     <div className="min-h-[76px] rounded-xl border border-violet-100/[0.08] bg-violet-100/[0.025] p-3" data-testid={`metric-${title.toLowerCase().replaceAll(" ", "-")}`}>
       <p className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-violet-100/40"><Icon size={12} />{title}</p>
-      <p className="mt-2 truncate text-sm font-semibold text-violet-50">{value}</p>
-      {sub && <p className="mt-0.5 truncate text-[10px] text-violet-100/40">{sub}</p>}
+      <p className="mt-2 truncate text-sm font-semibold text-violet-50" title={value}>{value}</p>
+      {sub && <p className="mt-0.5 truncate text-[10px] text-violet-100/40" title={sub}>{sub}</p>}
     </div>
   );
 }
@@ -1052,7 +1057,7 @@ function ClearRecordControl({ title, detail, count, loading, disabled, onRefresh
         <p className="text-xs font-semibold text-violet-50">{title}</p>
         <p className="mt-0.5 text-[10px] text-violet-100/45">{detail} · {loading ? "Counting…" : `${count ?? "—"} records`}</p>
       </div>
-      <div className="flex gap-2">
+      <div className="flex shrink-0 gap-2">
         <button type="button" className={actionClass} onClick={onRefresh} aria-label={`Refresh ${title} count`} disabled={loading || disabled}><RefreshCw size={13} /></button>
         <button type="button" className={dangerAction} onClick={onClear} disabled={disabled || loading || !count} data-testid={`button-clear-${title.toLowerCase().replaceAll(" ", "-")}`}>
           <Trash2 size={14} />Clear
@@ -1115,7 +1120,7 @@ function GateCounter({ icon: Icon, title, value, sub, tone }: {
     <div className="min-h-[92px] rounded-xl border border-violet-100/[0.08] bg-violet-100/[0.025] p-3" data-testid={`metric-gate-${title.toLowerCase().replaceAll(" ", "-")}`}>
       <p className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-violet-100/40"><Icon size={12} className={toneClass} />{title}</p>
       <p className="mt-1.5 font-mono text-2xl font-semibold tabular-nums text-violet-50">{value}</p>
-      <p className="mt-0.5 truncate text-[10px] text-violet-100/40">{sub}</p>
+      <p className="mt-0.5 truncate text-[10px] text-violet-100/40" title={sub}>{sub}</p>
     </div>
   );
 }
@@ -1170,7 +1175,7 @@ function GateAlertDialog({ open, detail, loading, error, onRetry, canAdmin, note
   );
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
-      <DialogContent className="max-w-lg border-violet-200/15 bg-[#191323] text-violet-50 sm:rounded-2xl">
+      <DialogContent className="max-h-[85vh] w-[calc(100vw-2rem)] max-w-lg overflow-y-auto border-violet-200/15 bg-[#191323] text-violet-50 sm:rounded-2xl">
         <DialogHeader>
           <DialogTitle className="text-violet-50" data-testid="gate-alert-dialog-title">
             {detail ? `Window ${clockLabel(detail.windowStart, true)} – ${clockLabel(detail.windowEnd, true)}` : "Gate alert"}
@@ -1184,7 +1189,7 @@ function GateAlertDialog({ open, detail, loading, error, onRetry, canAdmin, note
             <div className="space-y-2"><Skeleton className="h-14" /><Skeleton className="h-16" /><Skeleton className="h-16" /></div>
           ) : (
             <div className="mt-1 space-y-4">
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <div className="rounded-lg border border-violet-200/15 bg-violet-200/[0.06] px-2.5 py-2 text-center">
                   <p className="text-[10px] font-medium uppercase tracking-wider text-violet-100/45">Camera</p>
                   <p className="mt-0.5 font-mono text-lg font-semibold text-violet-50">{detail.cameraCount}</p>
@@ -1207,14 +1212,14 @@ function GateAlertDialog({ open, detail, loading, error, onRetry, canAdmin, note
                     {events.map((event) => (
                       <div
                         key={event.id}
-                        className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 ${event.simulated ? "border-dashed border-amber-300/25 bg-amber-300/[0.05]" : "border-violet-100/[0.08] bg-violet-100/[0.025]"}`}
+                        className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 ${event.simulated ? "border-dashed border-amber-300/25 bg-amber-300/[0.05]" : "border-violet-100/[0.08] bg-violet-100/[0.025]"}`}
                         data-testid={`gate-event-${event.id}`}
                       >
-                        <span className="flex items-center gap-2.5">
+                        <span className="flex min-w-0 flex-wrap items-center gap-2.5">
                           <span className={`h-1.5 w-1.5 rounded-full ${event.sensor === "ultrasonic" ? "bg-emerald-300" : "bg-cyan-300"}`} />
                           <span className="font-mono text-xs text-violet-100/80">{clockLabel(event.occurredAt, true)}</span>
                           <span className="text-xs text-violet-100/65">{event.sensor === "ultrasonic" ? "Ultrasonic" : "IR beam"}</span>
-                          {event.piDeviceId && <span className="font-mono text-[10px] text-violet-100/35">{event.piDeviceId}</span>}
+                          {event.piDeviceId && <span className="truncate font-mono text-[10px] text-violet-100/35" title={event.piDeviceId}>{event.piDeviceId}</span>}
                         </span>
                         {event.simulated && (
                           <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-300/25 bg-amber-300/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-200">
