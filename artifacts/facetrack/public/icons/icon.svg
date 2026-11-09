@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="AttendX Kiosk">
+  <!-- App tile: near-black warm base (matches index.html theme-color #0b0906),
+       self-contained so the mark reads on both light and dark launchers. -->
+  <rect width="512" height="512" rx="112" fill="#0b0906"/>
+  <rect x="18" y="18" width="476" height="476" rx="98" fill="none" stroke="#10b981" stroke-opacity="0.35" stroke-width="10"/>
+
+  <!-- Shield outline (attendance integrity) -->
+  <path d="M256 72 L400 122 V264 C400 344 340 404 256 440 C172 404 112 344 112 264 V122 Z"
+        fill="#0b0906" stroke="#34d399" stroke-width="22" stroke-linejoin="round"/>
+
+  <!-- QR finder pattern, top-left -->
+  <path fill="#f8fafc" fill-rule="evenodd" d="M188 150 h76 v76 h-76 Z M208 170 v36 h36 v-36 Z"/>
+  <rect x="218" y="180" width="16" height="16" fill="#0b0906"/>
+
+  <!-- QR finder pattern, top-right -->
+  <path fill="#f8fafc" fill-rule="evenodd" d="M248 150 h76 v76 h-76 Z M268 170 v36 h36 v-36 Z"/>
+  <rect x="278" y="180" width="16" height="16" fill="#0b0906"/>
+
+  <!-- QR finder pattern, bottom-left -->
+  <path fill="#f8fafc" fill-rule="evenodd" d="M188 210 h76 v76 h-76 Z M208 230 v36 h36 v-36 Z"/>
+  <rect x="218" y="240" width="16" height="16" fill="#0b0906"/>
+
+  <!-- Data modules -->
+  <g fill="#34d399">
+    <rect x="258" y="220" width="18" height="18"/>
+    <rect x="286" y="220" width="18" height="18"/>
+    <rect x="286" y="248" width="18" height="18"/>
+    <rect x="258" y="248" width="18" height="18" opacity="0.55"/>
+    <rect x="188" y="296" width="18" height="18"/>
+    <rect x="216" y="296" width="18" height="18" opacity="0.55"/>
+    <rect x="244" y="296" width="18" height="18"/>
+    <rect x="272" y="296" width="18" height="18" opacity="0.55"/>
+    <rect x="300" y="296" width="18" height="18"/>
+    <rect x="188" y="324" width="18" height="18" opacity="0.55"/>
+    <rect x="244" y="324" width="18" height="18"/>
+    <rect x="300" y="324" width="18" height="18" opacity="0.55"/>
+  </g>
+
+  <!-- Check mark across the shield (attendance recorded) -->
+  <path d="M226 268 L250 292 L296 238" fill="none" stroke="#f8fafc"
+        stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

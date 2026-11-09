@@ -20,6 +20,9 @@ import reportsRouter from "./reports";
 import searchRouter from "./search";
 import gateRouter from "./gate";
 import smsToolsRouter from "./sms-tools";
+import webhooksRouter from "./webhooks";
+import fraudRouter from "./fraud";
+import gatesRouter from "./gates";
 
 const router: IRouter = Router();
 
@@ -44,5 +47,8 @@ router.use(reportsRouter);
 router.use(searchRouter);
 router.use(gateRouter);
 router.use(smsToolsRouter);
+router.use(webhooksRouter);
+router.use(fraudRouter);
+router.use(gatesRouter);
 
 export default router;

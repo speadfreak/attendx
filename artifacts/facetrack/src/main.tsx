@@ -24,3 +24,26 @@ if (apiOrigin) {
 setAuthTokenGetter(() => localStorage.getItem("ft_token"));
 
 createRoot(document.getElementById("root")!).render(<App />);
+
+// ── Offline kiosk service worker (Phase 6) ──────────────────────
+// Registered only in production builds, after mount, and fully guarded —
+// a failed/unsupported SW never breaks the app (dev stays SW-free).
+if (import.meta.env.PROD) {
+  const registerSw = () => {
+    try {
+      if ("serviceWorker" in navigator) {
+        // BASE_URL ends with "/" so this resolves to /sw.js (or a base-path sw).
+        void navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {
+          /* SW registration is best-effort — kiosk works without it */
+        });
+      }
+    } catch {
+      /* service workers unavailable */
+    }
+  };
+  if (document.readyState === "complete") {
+    registerSw();
+  } else {
+    window.addEventListener("load", registerSw, { once: true });
+  }
+}

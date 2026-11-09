@@ -1,4 +1,5 @@
-import { type ReactNode, type HTMLAttributes } from "react";
+import { type ReactNode, type HTMLAttributes, type ComponentProps } from "react";
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -11,11 +12,14 @@ export function GlowCard({
   className,
   accent = false,
   hover = true,
+  variant,
   ...rest
 }: {
   children: ReactNode;
   accent?: boolean;
   hover?: boolean;
+  /** "gradient" adds the aurora gradient border + top sheen. Absent / "default" keeps original look. */
+  variant?: "default" | "gradient";
 } & HTMLAttributes<HTMLDivElement>) {
   return (
     <div
@@ -23,6 +27,7 @@ export function GlowCard({
         "gx-card",
         accent && "gx-card-accent",
         !hover && "gx-card-flat",
+        variant === "gradient" && "card-gradient-border gx-top-sheen",
         className,
       )}
       {...rest}
@@ -166,6 +171,127 @@ export function GlowEmpty({ icon, title, hint }: { icon: ReactNode; title: strin
       </div>
       <p className="text-sm text-white/45">{title}</p>
       {hint && <p className="text-xs text-white/25 mt-1">{hint}</p>}
+    </div>
+  );
+}
+
+/* ============================================================
+   PHASE 4 — AURORA PRIMITIVES (violet → fuchsia → rose → amber, teal accents)
+   ============================================================ */
+
+/**
+ * Full-viewport aurora backdrop: layered radial gradient washes plus three
+ * slowly drifting blurred blobs (violet / fuchsia / teal). Fixed and -z-10 so
+ * it sits behind page content; respects prefers-reduced-motion via CSS.
+ */
+export function AuroraBackground({
+  enabled = true,
+  className,
+}: {
+  enabled?: boolean;
+  className?: string;
+}) {
+  if (!enabled) return null;
+  return (
+    <div
+      aria-hidden="true"
+      className={cn(
+        "gx-aurora pointer-events-none fixed inset-0 -z-10 overflow-hidden",
+        className,
+      )}
+    >
+      <div className="gx-aurora-blob gx-aurora-blob-1" />
+      <div className="gx-aurora-blob gx-aurora-blob-2" />
+      <div className="gx-aurora-blob gx-aurora-blob-3" />
+    </div>
+  );
+}
+
+/**
+ * Primary CTA with an animated aurora gradient (violet → fuchsia → rose →
+ * deep amber), a hover shine sweep and the refined gx focus ring. All
+ * gradient stops keep ≥ 4.5:1 contrast with white text (WCAG AA).
+ * Accepts every native <button> prop; `loading` swaps content for a spinner.
+ */
+export function GradientButton({
+  children,
+  className,
+  style,
+  type = "button",
+  disabled,
+  loading = false,
+  loadingLabel = "Please wait...",
+  ...rest
+}: {
+  children: ReactNode;
+  loading?: boolean;
+  loadingLabel?: string;
+} & ComponentProps<"button">) {
+  return (
+    <button
+      type={type}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
+      style={{
+        backgroundImage:
+          "linear-gradient(115deg, #7C3AED 0%, #C026D3 34%, #E11D48 66%, #B45309 100%)",
+        boxShadow:
+          "0 0 22px rgba(155, 91, 255, 0.35), 0 10px 30px rgba(192, 38, 211, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.22)",
+        ...style,
+      }}
+      className={cn(
+        "group gx-gradient-pan gx-focus-ring relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-xl px-6 py-3",
+        "text-sm font-semibold uppercase tracking-widest text-white",
+        "transition-[transform,filter,box-shadow] duration-200 hover:brightness-110 active:scale-[0.98]",
+        "disabled:cursor-not-allowed disabled:opacity-70",
+        className,
+      )}
+      {...rest}
+    >
+      {loading ? (
+        <span className="inline-flex items-center justify-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          {loadingLabel}
+        </span>
+      ) : (
+        children
+      )}
+      {/* shine sweep */}
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 ease-out group-hover:translate-x-full"
+      />
+    </button>
+  );
+}
+
+/**
+ * Glass surface with the aurora gradient border and a subtle top sheen.
+ * Pair with `backdrop-blur-xl` (via className) for the full glassmorphism look.
+ */
+export function GradientCard({
+  children,
+  className,
+  style,
+  glow = true,
+  sheen = true,
+  ...rest
+}: {
+  children: ReactNode;
+  glow?: boolean;
+  sheen?: boolean;
+} & HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "card-gradient-border rounded-2xl",
+        sheen && "gx-top-sheen",
+        className,
+      )}
+      style={{ boxShadow: glow ? "var(--gx-glow-aurora)" : undefined, ...style }}
+      {...rest}
+    >
+      {children}
     </div>
   );
 }

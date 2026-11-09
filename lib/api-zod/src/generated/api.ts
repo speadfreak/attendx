@@ -344,6 +344,17 @@ export const ListSmsLogsResponseItem = zod.object({
   provider: zod.string(),
   sentAt: zod.string(),
   errorMessage: zod.string().nullable(),
+  // Phase 6: manual extension — re-add after orval regen
+  channel: zod.string().nullable().optional(),
+  errorCode: zod.string().nullable().optional(),
+  providerSid: zod.string().nullable().optional(),
+  statusUpdatedAt: zod.string().nullable().optional(),
+  errorHint: zod.object({
+    title: zod.string(),
+    fix: zod.string(),
+    retryable: zod.boolean(),
+    channelSwitchable: zod.boolean(),
+  }).nullable().optional(),
 });
 export const ListSmsLogsResponse = zod.array(ListSmsLogsResponseItem);
 

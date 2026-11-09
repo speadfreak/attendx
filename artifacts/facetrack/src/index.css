@@ -328,12 +328,22 @@
 }
 
 /* ============================================================
-   SCROLLBAR
+   SCROLLBAR + SELECTION (polished)
    ============================================================ */
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(155, 91, 255, 0.3); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(155, 91, 255, 0.6); }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: rgba(8, 3, 16, 0.45); }
+::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background: linear-gradient(180deg, rgba(155, 91, 255, 0.45), rgba(232, 66, 176, 0.38));
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(155, 91, 255, 0.75), rgba(232, 66, 176, 0.6));
+  background-clip: padding-box;
+}
+html { scrollbar-width: thin; scrollbar-color: rgba(155, 91, 255, 0.45) rgba(8, 3, 16, 0.45); }
+::selection { background: rgba(155, 91, 255, 0.38); color: #F5F3FF; }
 
 @layer utilities {
   .toggle-elevate::before, .toggle-elevate-2::before {
@@ -570,5 +580,159 @@
     border: 1px dashed #999 !important;
     background: #fff !important;
     color: #111 !important;
+  }
+}
+
+/* ============================================================
+   ATTENDX PHASE 4 — AURORA GRADIENT SYSTEM
+   Palette: violet → fuchsia → rose → amber, with teal accents.
+   Fully additive & namespaced (gx-* / aurora-*); the only thing
+   redefined above is the scrollbar/selection polish.
+   NOTE: .gx-top-sheen sets position:relative (so its ::before
+   anchors to the element) — avoid pairing it with absolute/fixed.
+   .gx-noise sets NO position — apply it to an element you have
+   positioned yourself (e.g. `absolute inset-0`).
+   ============================================================ */
+:root {
+  --aurora-violet: 155, 91, 255;
+  --aurora-fuchsia: 232, 66, 176;
+  --aurora-rose: 251, 92, 132;
+  --aurora-amber: 251, 176, 64;
+  --aurora-teal: 45, 212, 191;
+
+  --gx-glow-aurora: 0 0 24px rgba(155, 91, 255, 0.16), 0 0 56px rgba(232, 66, 176, 0.10), 0 12px 48px rgba(0, 0, 0, 0.45);
+  --gx-glow-aurora-strong: 0 0 34px rgba(155, 91, 255, 0.30), 0 0 72px rgba(232, 66, 176, 0.18), 0 16px 56px rgba(0, 0, 0, 0.50);
+  --gx-focus-ring: 0 0 0 1px rgba(12, 4, 24, 0.85), 0 0 0 3px rgba(192, 132, 252, 0.55), 0 0 20px rgba(155, 91, 255, 0.30);
+  --gx-border-aurora: linear-gradient(135deg,
+    rgba(155, 91, 255, 0.60) 0%,
+    rgba(232, 66, 176, 0.48) 28%,
+    rgba(251, 92, 132, 0.38) 52%,
+    rgba(251, 176, 64, 0.30) 74%,
+    rgba(45, 212, 191, 0.42) 100%);
+}
+
+/* ── Aurora gradient text (violet → fuchsia → rose → amber → teal) ──
+   All stops pass WCAG AA on the near-black app background. */
+.text-gradient {
+  background: linear-gradient(94deg, #DDD6FE 0%, #F0ABFC 30%, #FDA4AF 56%, #FCD34D 80%, #5EEAD4 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* ── Gradient border card: padding-box/border-box double background ── */
+.card-gradient-border {
+  --gx-aurora-surface: linear-gradient(165deg, rgba(24, 10, 44, 0.86) 0%, rgba(10, 4, 22, 0.92) 100%);
+  border: 1px solid transparent;
+  background:
+    var(--gx-aurora-surface) padding-box,
+    var(--gx-border-aurora) border-box;
+}
+/* keep the gradient border intact on glow-card hover */
+.gx-card.card-gradient-border:hover { border-color: transparent; }
+
+/* ── Subtle top light-line for gradient surfaces ── */
+.gx-top-sheen { position: relative; }
+.gx-top-sheen::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 12%; right: 12%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(240, 171, 252, 0.55), rgba(155, 91, 255, 0.55), transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ── Hairline aurora divider ── */
+.gx-hairline {
+  height: 1px;
+  background: linear-gradient(90deg,
+    rgba(155, 91, 255, 0.65),
+    rgba(232, 66, 176, 0.45) 35%,
+    rgba(251, 92, 132, 0.30) 60%,
+    rgba(45, 212, 191, 0.25) 80%,
+    transparent);
+}
+
+/* ── Film-grain noise overlay — apply to a positioned element ── */
+.gx-noise::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+}
+
+/* ── Aurora backdrop: layered radial washes + three drifting blobs.
+   Positioning (fixed, -z-10, overflow) is applied by the
+   AuroraBackground primitive via utilities; this class paints. ── */
+.gx-aurora {
+  background:
+    radial-gradient(60% 50% at 12% 8%, rgba(155, 91, 255, 0.12), transparent 70%),
+    radial-gradient(50% 45% at 88% 12%, rgba(232, 66, 176, 0.09), transparent 70%),
+    radial-gradient(55% 55% at 82% 92%, rgba(45, 212, 191, 0.07), transparent 70%),
+    radial-gradient(45% 45% at 8% 90%, rgba(251, 176, 64, 0.05), transparent 70%);
+}
+.gx-aurora-blob {
+  position: absolute;
+  width: 44vmax;
+  height: 44vmax;
+  border-radius: 50%;
+  filter: blur(90px);
+  will-change: transform;
+}
+.gx-aurora-blob-1 { background: radial-gradient(circle at 35% 35%, rgba(155, 91, 255, 0.30), transparent 62%); top: -16vmax; left: -10vmax; }
+.gx-aurora-blob-2 { background: radial-gradient(circle at 60% 40%, rgba(232, 66, 176, 0.22), transparent 62%); top: 22%; right: -18vmax; width: 38vmax; height: 38vmax; }
+.gx-aurora-blob-3 { background: radial-gradient(circle at 50% 60%, rgba(45, 212, 191, 0.16), transparent 62%); bottom: -18vmax; left: 20%; width: 40vmax; height: 40vmax; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .gx-aurora-blob-1 { animation: gx-aurora-drift-1 28s ease-in-out infinite alternate; }
+  .gx-aurora-blob-2 { animation: gx-aurora-drift-2 34s ease-in-out infinite alternate; }
+  .gx-aurora-blob-3 { animation: gx-aurora-drift-3 40s ease-in-out infinite alternate; }
+  .gx-gradient-pan {
+    background-size: 220% 220%;
+    animation: gx-gradient-pan 7s ease-in-out infinite;
+  }
+}
+@keyframes gx-aurora-drift-1 {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  50%  { transform: translate3d(7vmax, 5vmax, 0) scale(1.14); }
+  100% { transform: translate3d(-4vmax, 9vmax, 0) scale(0.94); }
+}
+@keyframes gx-aurora-drift-2 {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  50%  { transform: translate3d(-6vmax, 7vmax, 0) scale(1.10); }
+  100% { transform: translate3d(5vmax, -4vmax, 0) scale(0.96); }
+}
+@keyframes gx-aurora-drift-3 {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  50%  { transform: translate3d(6vmax, -6vmax, 0) scale(1.12); }
+  100% { transform: translate3d(-6vmax, 4vmax, 0) scale(0.90); }
+}
+@keyframes gx-gradient-pan {
+  0%, 100% { background-position: 0% 50%; }
+  50%      { background-position: 100% 50%; }
+}
+
+/* ── Refined focus ring (opt-in utility) ── */
+.gx-focus-ring:focus-visible {
+  outline: none;
+  box-shadow: var(--gx-focus-ring);
+}
+
+/* ── Hero image mask (fades the bottom into the page base) ── */
+.gx-hero-mask {
+  -webkit-mask-image: linear-gradient(to bottom, #000 58%, transparent 99%);
+  mask-image: linear-gradient(to bottom, #000 58%, transparent 99%);
+}
+
+/* ── Reduced motion: freeze decorative infinite loops app-wide ── */
+@media (prefers-reduced-motion: reduce) {
+  .scanning-line, .scanner-ring::before, .pulse-ring, .gx-kiosk-glow,
+  .animated-border::after, .gx-mesh::before, .gx-mesh::after, .gx-skeleton::after {
+    animation: none !important;
   }
 }

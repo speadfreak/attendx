@@ -13,3 +13,5 @@ export * from "./qr_issues";
 export * from "./qr_scan_logs";
 export * from "./classroom_seats";
 export * from "./gate";
+export * from "./gates";
+export * from "./fraud_signals";

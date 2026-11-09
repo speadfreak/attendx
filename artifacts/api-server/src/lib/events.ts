@@ -19,6 +19,7 @@ export interface LiveEvent {
     | "review.decided"
     | "qr.scan"
     | "sms.sent"
+    | "sms.status"
     | "settings.updated"
     | "gate.alert"
     | "gate.integrity"

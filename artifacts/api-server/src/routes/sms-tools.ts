@@ -3,7 +3,8 @@ import type { Request, Response } from "express";
 import { z } from "zod/v4";
 import { requireAuth, requireAdminLevel } from "../lib/auth";
 import { getSmsSenderConfig, normalizePhone, twilioEnabled, twilioSend, SmsDeliveryError, describeSmsProviderCode, invalidateSmsSettingsCache } from "../lib/sms";
-import { runSmsDiagnostics, type SmsDiagnostics } from "../lib/sms-diagnostics";
+import { runSmsDiagnostics } from "../lib/sms-diagnostics";
+import { pendingDeliveryCount } from "../lib/sms-reconcile";
 import { writeAudit } from "../lib/audit";
 
 const router = Router();
@@ -24,8 +25,10 @@ router.get("/sms/config-status", requireAuth, async (_req, res): Promise<void> =
 
 /** Full live diagnostics against the Twilio API (super_admin/admin only). */
 router.get("/sms/diagnostics", requireAdminLevel, async (_req, res): Promise<void> => {
-  const diagnostics: SmsDiagnostics = await runSmsDiagnostics();
-  res.json(diagnostics);
+  const diagnostics = await runSmsDiagnostics();
+  // Phase 6: pending-delivery count rides along so the SMS Health card and
+  // admin tooling see local queue truth next to the live Twilio probe.
+  res.json({ ...diagnostics, pendingDelivery: await pendingDeliveryCount() });
 });
 
 const testSendInput = z.object({

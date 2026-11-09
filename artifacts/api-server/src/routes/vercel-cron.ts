@@ -3,6 +3,8 @@ import { Router, type Request, type Response } from "express";
 import { processOneServerJob } from "../lib/jobs";
 import { purgeExpiredRejectedReviews } from "../lib/retention";
 import { runGateValidation } from "../lib/gate-integrity";
+import { reconcilePendingSms, type ReconcileSummary } from "../lib/sms-reconcile";
+import { logger } from "../lib/logger";
 
 const router = Router();
 
@@ -40,7 +42,17 @@ router.get("/internal/cron", async (req: Request, res: Response): Promise<void> 
   // missed if no sensor batches arrived during active gate hours.
   const gateValidation = await runGateValidation();
 
-  res.json({ ok: true, processedJobs, purgedReviews, gateValidation });
+  // Phase 6: safety net for missed Twilio status callbacks — ask Twilio
+  // directly for verdicts of messages still pending confirmation. Never
+  // let a reconcile failure fail the whole cron run.
+  let smsReconcile: ReconcileSummary | null = null;
+  try {
+    smsReconcile = await reconcilePendingSms();
+  } catch (err) {
+    logger.warn({ err }, "sms reconciliation failed during cron run");
+  }
+
+  res.json({ ok: true, processedJobs, purgedReviews, gateValidation, smsReconcile });
 });
 
 export default router;

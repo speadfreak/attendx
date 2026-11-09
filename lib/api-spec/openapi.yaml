@@ -1200,6 +1200,26 @@ components:
           type: string
         errorMessage:
           type: ["string", "null"]
+        # Phase 6: manual extension — re-add after orval regen
+        channel:
+          type: ["string", "null"]
+        errorCode:
+          type: ["string", "null"]
+        providerSid:
+          type: ["string", "null"]
+        statusUpdatedAt:
+          type: ["string", "null"]
+        errorHint:
+          type: ["object", "null"]
+          properties:
+            title:
+              type: string
+            fix:
+              type: string
+            retryable:
+              type: boolean
+            channelSwitchable:
+              type: boolean
       required:
         - id
         - studentId

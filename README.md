@@ -2,7 +2,43 @@
 
 **Intelligent attendance command center** — AI face recognition + signed QR door terminals + parent SMS alerts, with a real-time dark-purple command center UI.
 
-![Phase](https://img.shields.io/badge/phase-5%20·%20delivery%20%2B%20risk%20radar-blueviolet) ![stack](https://img.shields.io/badge/stack-Vite%20·%20Express%20·%20Drizzle%20·%20Postgres-purple)
+![Phase](https://img.shields.io/badge/phase-6%20·%20delivery%20honesty%20%2B%20offline%20kiosk-blueviolet) ![stack](https://img.shields.io/badge/stack-Vite%20·%20Express%20·%20Drizzle%20·%20Postgres-purple)
+
+## What's new in Phase 6
+
+### 📶 SMS delivery lifecycle (the honesty engine)
+- **Honest status taxonomy**: every Twilio send now logs as `queued` and upgrades through `sent → delivered / undelivered / failed` — plus `canceled` and `simulated` (Twilio disabled) in the SMS Logs UI. No more claiming "sent" for a message the carrier silently dropped (the async 21612 trap). Rows also expose `provider_sid`, `error_code`, `channel` (sms/whatsapp) and `status_updated_at`.
+- **Twilio status webhook** (`POST /api/webhooks/twilio/status`): every send carries a `StatusCallback` so Twilio pushes the real carrier verdict (+ error code/message) straight into sms_logs. HMAC-validated via `X-Twilio-Signature` when `TWILIO_AUTH_TOKEN` is set (fail-closed); unsigned calls are accepted only in dev/simulated mode when no token is configured. Statuses only move forward — regressive updates are ignored.
+- **Reconcile sweep** (`artifacts/api-server/src/lib/sms-reconcile.ts`): the safety net for missed webhooks — re-fetches the verdict from Twilio for rows still pending confirmation (`queued`/`sent` older than 45s). Runs every 60s on long-lived servers (skipped when `VERCEL` is set) and in the existing daily `/api/internal/cron` pass.
+- **SMS Health card**: `GET /api/sms-logs/health` returns `pendingDelivery` (sends still awaiting a carrier verdict) + per-status counts; `GET /api/sms/diagnostics` now includes `pendingDelivery` too. Every provider error ships with an actionable hint (e.g. `21612` → enable geographic permissions for the destination country, or route via a Messaging Service).
+- **New/changed env vars** (read in `artifacts/api-server/src/lib/sms.ts`):
+
+  | Env var | Purpose |
+  | --- | --- |
+  | `PUBLIC_BASE_URL` | Public HTTPS base URL of this deployment (e.g. `https://attendx.vercel.app`) — used to build each send's `StatusCallback` URL. **Required for real Twilio callbacks in production**; without it rows stay `queued` and rely on the reconcile sweep. |
+  | `TWILIO_STATUS_CALLBACK_BASE` | Legacy/alternate name for the same value (checked as fallback). |
+  | `TWILIO_AUTH_TOKEN` | Now also validates the status webhook (`X-Twilio-Signature`, HMAC-SHA1) and authenticates reconcile re-fetches. |
+
+### 📴 Offline PWA kiosk (facetrack)
+- **Installable**: hand-rolled zero-dependency service worker (`public/sw.js` — app-shell precache, network-first navigations, cache-first hashed assets, `/api/*` always hits the network) + `manifest.webmanifest` ("AttendX Kiosk", standalone display).
+- **Offline capture**: the QR terminal stamps every scan with **GPS (lat/lng/accuracy) + a unique nonce**; scans that fail to submit spool in **IndexedDB (`attendx-kiosk`)** instead of being lost.
+- **Auto-flush**: the spool drains via `POST /api/qr/scan/batch` on the `online` event, tab visibility change, or a 30s poll while items are pending. Server-side **nonce idempotency** means offline replays never double-count attendance. Sticky offline banner with a manual **Sync now** button on the terminal.
+
+### 📍 Geofenced QR
+- New **`gates` table**: physical gate registry (gate_id, name, lat/lng, `geofence_radius_m` default 150, `terminal_ids[]`). Gate registry CRUD at `/api/gates` — read is staff-level, create/update/delete require admin (audited).
+- Scans carrying GPS are validated by **haversine distance** with a generous buffer: `radius + 30m fixed jitter + reported GPS accuracy`. Violations log a `geofence-violation` verdict, answer **403**, and raise a fraud signal. Scans without GPS (or gates without coordinates) pass un-enforced.
+
+### 🕵 Proxy-fraud AI
+- New **`fraud_signals` table + inline engine** wired into every committed scan: `impossible_travel`, `burst_scan`, `badge_sharing`, `proxy_farm`, `geofence_violation` — deduped per (kind, key), with severity + score.
+- Triage API: `GET /api/fraud-signals` (filter by kind/status/severity), `GET /api/fraud-signals/summary`, `POST /api/fraud-signals/:id/decide` (acknowledge / resolve / dismiss, stamped from the JWT admin + audit trail). Open signals surface in the **notification center**.
+
+### 🗃 Schema migration
+- `lib/db/migrations/0007_phase6_sms_geo_fraud.sql` (idempotent) — creates `gates` + `fraud_signals`, adds the sms_logs delivery-lifecycle columns and the qr_scan_logs GPS/nonce/fraud columns:
+
+  ```sh
+  psql $DATABASE_URL -f lib/db/migrations/0007_phase6_sms_geo_fraud.sql
+  # or: DATABASE_URL="postgres://…" pnpm --filter @workspace/db run push
+  ```
 
 ## What's new in Phase 5
 

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, matchReviewsTable, piDevicesTable, jobsTable, qrScanLogsTable, studentsTable, gateIntegrityAlertsTable } from "@workspace/db";
+import { db, matchReviewsTable, piDevicesTable, jobsTable, qrScanLogsTable, studentsTable, gateIntegrityAlertsTable, fraudSignalsTable } from "@workspace/db";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 
@@ -134,6 +134,33 @@ router.get("/notifications", requireAuth, async (_req, res): Promise<void> => {
       detail: `Window ${a.windowStart.toISOString().slice(11, 16)} UTC · camera ${a.cameraCount} · ultrasonic ${a.ultrasonicCount} · IR ${a.irCount}`,
       at: a.windowStart.toISOString(),
       link: "/operations",
+    });
+  }
+
+  // 6. Open proxy-fraud signals (last 24h) — Phase 6
+  const fraudSignals = await db
+    .select({
+      id: fraudSignalsTable.id,
+      kind: fraudSignalsTable.kind,
+      severity: fraudSignalsTable.severity,
+      score: fraudSignalsTable.score,
+      studentName: studentsTable.name,
+      createdAt: fraudSignalsTable.createdAt,
+    })
+    .from(fraudSignalsTable)
+    .leftJoin(studentsTable, eq(fraudSignalsTable.studentId, studentsTable.id))
+    .where(and(eq(fraudSignalsTable.status, "open"), gte(fraudSignalsTable.createdAt, new Date(now - 24 * 3600 * 1000))))
+    .orderBy(desc(fraudSignalsTable.createdAt))
+    .limit(6);
+  for (const s of fraudSignals) {
+    items.push({
+      id: `fraud-${s.id}`,
+      severity: s.severity === "critical" || s.severity === "high" ? "critical" : s.severity === "medium" ? "warning" : "info",
+      category: "review",
+      title: `Proxy-fraud signal: ${s.kind}`,
+      detail: `${s.studentName ?? "Unknown student"} · score ${s.score}/100 · severity ${s.severity}`,
+      at: s.createdAt.toISOString(),
+      link: "/review-queue",
     });
   }
 

@@ -8,6 +8,19 @@ const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 const TWILIO_FROM_ENV = process.env.TWILIO_FROM_NUMBER;
 const TWILIO_MESSAGING_SERVICE_ENV = process.env.TWILIO_MESSAGING_SERVICE_SID;
 
+/**
+ * Public base URL of this deployment (e.g. https://attendx.vercel.app).
+ * When set, every send carries a StatusCallback so Twilio pushes the real
+ * carrier verdict (sent/delivered/undelivered/failed + error code) back to
+ * /api/webhooks/twilio/status — this is what keeps sms_logs honest after
+ * the async submission accepts a message that later fails (the 21612 trap).
+ */
+export const PUBLIC_BASE_URL = (
+  process.env.PUBLIC_BASE_URL ??
+  process.env.TWILIO_STATUS_CALLBACK_BASE ??
+  ""
+).replace(/\/$/, "");
+
 export type SmsChannelMode = "sms" | "whatsapp" | "auto";
 export type SmsChannel = "sms" | "whatsapp";
 
@@ -201,8 +214,8 @@ export function describeSmsProviderCode(code: string | null): SmsErrorHint | nul
       };
     case "21612":
       return {
-        title: "To/From combination not allowed (international)",
-        fix: "US/CA long codes direct-dialing many African/Asian destinations are rejected. FIX: send through a Messaging Service — Operations → SMS Health → set the Messaging Service SID (auto-detected for your account), or set TWILIO_MESSAGING_SERVICE_SID. Alternatively enable international SMS on the number, or use the WhatsApp channel.",
+        title: "Geo-permission block: this corridor is disabled on your Twilio account",
+        fix: "VERIFIED LIVE: even a Messaging Service does NOT bypass this. One-time 30-second fix: Twilio Console → Messaging → Settings → Geo Permissions → enable Ethiopia (ET) — https://console.twilio.com/us1/develop/sms/settings/geo-permissions . Also confirm the destination number is a verified caller ID while on a trial account. No code change is needed — AttendX retries nothing here because Twilio rejects the route itself.",
         retryable: false,
         channelSwitchable: true,
       };
@@ -239,13 +252,20 @@ export function describeSmsProviderCode(code: string | null): SmsErrorHint | nul
   }
 }
 
+export interface TwilioSendResult {
+  /** Twilio MessageSid (SM… / MM… for media) */
+  providerSid: string | null;
+  /** Twilio's initial status: queued | accepted | scheduled | … */
+  initialStatus: string | null;
+}
+
 export async function twilioSend(params: {
   to: string;
   body: string;
   channel: SmsChannel;
   messagingServiceSid: string | null;
   fromNumber: string | null;
-}): Promise<void> {
+}): Promise<TwilioSendResult> {
   const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
   const toAddr = params.channel === "whatsapp" ? `whatsapp:${params.to}` : params.to;
   const form = new URLSearchParams({ To: toAddr, Body: params.body });
@@ -259,6 +279,9 @@ export async function twilioSend(params: {
       code: null,
       fix: "Configure a sender in Operations → SMS Health.",
     });
+  }
+  if (PUBLIC_BASE_URL) {
+    form.set("StatusCallback", `${PUBLIC_BASE_URL}/api/webhooks/twilio/status`);
   }
 
   const auth = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString("base64");
@@ -303,11 +326,42 @@ export async function twilioSend(params: {
       },
     );
   }
+
+  const body = (await res.json()) as { sid?: string; status?: string };
+  return { providerSid: body.sid ?? null, initialStatus: body.status ?? null };
+}
+
+/**
+ * Map Twilio's async MessageStatus values onto AttendX's honest sms_logs taxonomy.
+ */
+export function mapTwilioStatus(twilioStatus: string): string | null {
+  switch (twilioStatus) {
+    case "queued":
+    case "accepted":
+    case "scheduled":
+      return "queued";
+    case "sent":
+      return "sent";
+    case "delivered":
+      return "delivered";
+    case "read":
+      return "delivered"; // WhatsApp read receipt — delivery confirmed
+    case "undelivered":
+      return "undelivered";
+    case "failed":
+      return "failed";
+    case "canceled":
+      return "failed";
+    default:
+      return null;
+  }
 }
 
 export interface SendSmsResult {
   channel: SmsChannel;
   provider: "twilio" | "simulation";
+  /** Twilio MessageSid when the send reached Twilio */
+  providerSid: string | null;
 }
 
 /**
@@ -329,7 +383,7 @@ export async function sendSms(params: {
   const to = normalizePhone(params.parentPhone, config.defaultCountry);
   const providerBase = twilioEnabled() ? "twilio" : "simulation";
 
-  const logFailure = async (provider: string, detail: string) => {
+  const logFailure = async (provider: string, detail: string, code: string | null = null, channel: SmsChannel | null = null) => {
     await db.insert(smsLogsTable).values({
       studentId,
       parentPhone: params.parentPhone,
@@ -337,6 +391,9 @@ export async function sendSms(params: {
       status: "failed",
       provider,
       errorMessage: detail,
+      errorCode: code,
+      channel,
+      statusUpdatedAt: new Date(),
     });
   };
 
@@ -355,28 +412,37 @@ export async function sendSms(params: {
     const channel = attempts[i];
     const provider = channel === "whatsapp" ? `${providerBase}:whatsapp` : providerBase;
     try {
+      let providerSid: string | null = null;
       if (twilioEnabled()) {
         logger.info({ studentId, channel }, "Sending notification via Twilio");
-        await twilioSend({
+        const result = await twilioSend({
           to,
           body: message,
           channel,
           messagingServiceSid: config.messagingServiceSid,
           fromNumber: config.fromNumber,
         });
-        logger.info({ studentId, channel }, "Twilio notification accepted");
+        providerSid = result.providerSid;
+        logger.info({ studentId, channel, providerSid, initialStatus: result.initialStatus }, "Twilio notification accepted");
       } else {
         logger.info({ studentId, channel }, "[SIMULATED] notification logged");
       }
+      // Honest status: Twilio has only SUBMITTED the message at this point.
+      // It can still fail at the carrier (async 21612 and friends) — the
+      // status webhook + reconciliation sweep upgrade this row to the real
+      // sent/delivered/undelivered/failed verdict.
       await db.insert(smsLogsTable).values({
         studentId,
         parentPhone: params.parentPhone,
         message,
-        status: "sent",
+        status: twilioEnabled() ? "queued" : "simulated",
         provider,
         errorMessage: null,
+        providerSid,
+        channel,
+        statusUpdatedAt: twilioEnabled() ? new Date() : null,
       });
-      return { channel, provider: providerBase };
+      return { channel, provider: providerBase, providerSid };
     } catch (err) {
       const delivery = err instanceof SmsDeliveryError
         ? err
@@ -387,7 +453,7 @@ export async function sendSms(params: {
       // and another attempt remains. Auth/config faults never fall through.
       const canFallback = i + 1 < attempts.length && (delivery.channelSwitchable || delivery.code === "63007");
       if (!canFallback) {
-        await logFailure(provider, delivery.message + (delivery.fix ? ` → FIX: ${delivery.fix}` : ""));
+        await logFailure(provider, delivery.message + (delivery.fix ? ` → FIX: ${delivery.fix}` : ""), delivery.code, channel);
         throw delivery;
       }
     }
@@ -395,7 +461,7 @@ export async function sendSms(params: {
 
   // Unreachable (loop always returns or throws) — kept for exhaustiveness.
   const detail = lastError?.message ?? "Notification failed";
-  await logFailure(providerBase, detail);
+  await logFailure(providerBase, detail, lastError?.code ?? null);
   throw lastError ?? new SmsDeliveryError(detail, { provider: providerBase });
 }
 

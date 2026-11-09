@@ -22,13 +22,17 @@ async function j<T>(path: string, opts?: RequestInit): Promise<T> {
   const res = await apiFetch(path, opts);
   if (!res.ok) {
     let message = `Request failed (${res.status})`;
+    let body: unknown = null;
     try {
-      const body = await res.json();
-      if (body?.error) message = body.error;
+      body = await res.json();
+      if ((body as { error?: string } | null)?.error) message = (body as { error: string }).error;
     } catch {
       /* ignore */
     }
-    throw new Error(message);
+    // Attach the parsed body + status so callers can recover server verdicts
+    // from non-2xx scan responses (e.g. geofence-violation carries its own
+    // result + distance message in the body, not in `error`).
+    throw Object.assign(new Error(message), { status: res.status, body });
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
@@ -100,10 +104,75 @@ export interface QrIssueResult {
   version: number;
 }
 
+/**
+ * Extra terminal-scan fields (Phase 6 offline kiosk + geofence).
+ * Field names mirror the server `scanInput` zod schema in
+ * artifacts/api-server/src/routes/qr.ts — note the server field is
+ * `accuracy` (GPS accuracy in meters).
+ */
+export interface QrScanExtras {
+  /** Client idempotency key — one nonce = one outcome ever (replays are safe). */
+  nonce?: string;
+  /** ISO timestamp of the scan moment (offline spool replays count at door time). */
+  scannedAt?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  accuracy?: number | null;
+}
+
+/** One item of the offline spool flush body (`{ scans: [...] }`). */
+export interface QrScanBatchItem extends QrScanExtras {
+  token: string;
+  terminalId?: string;
+  classroomId?: number;
+}
+
+/** Per-scan outcome inside a batch response (`ok === httpCode < 400`). */
+export interface QrScanBatchResultItem {
+  nonce: string | null;
+  ok: boolean;
+  result: string | null;
+  httpCode: number;
+  message: string | null;
+  studentName?: string | null;
+  attendanceId?: number | null;
+}
+
+export interface QrScanBatchResponse {
+  ok: boolean;
+  accepted: number;
+  total: number;
+  rejected: number;
+  results: QrScanBatchResultItem[];
+}
+
 export interface QrScanResponse {
   ok: boolean;
-  result: "valid" | "duplicate" | "expired" | "revoked" | "unknown-badge" | "stale-version" | "bad-signature" | "not-attendx-qr" | "malformed" | string;
+  result:
+    | "valid"
+    | "duplicate"
+    | "expired"
+    | "revoked"
+    | "unknown-badge"
+    | "stale-version"
+    | "bad-signature"
+    | "not-attendx-qr"
+    | "malformed"
+    | "student-gone"
+    | "geofence-violation"
+    | "too-old"
+    | "clock-skew"
+    | "server-error"
+    | string;
   alreadyMarked?: boolean;
+  /** True when the nonce was already processed — the original result is returned. */
+  replayed?: boolean;
+  /** Proxy-fraud AI score (0 = clean; > 0 = flagged for review). */
+  fraudScore?: number;
+  /** Anomaly kinds behind the fraud score. */
+  fraudSignals?: string[];
+  /** True when the scan was committed from the offline spool flush. */
+  spooled?: boolean;
   student?: { id: number; name: string; studentId: string; classroomId: number | null };
   attendance?: { id: number; status: string; markedAt?: string; checkedOutAt?: string | null };
   message: string;
@@ -429,6 +498,14 @@ export interface SmsDiagnostics {
   messagingServices: Array<{ sid: string; friendlyName: string; usecase: string | null; poolSize: number }>;
   destinations: Array<{ prefix: string; country: string; reachable: boolean; pricePerSms: string | null; parents: number }>;
   recommendations: Array<{ severity: "critical" | "warning" | "info"; title: string; detail: string }>;
+  /** Phase 6: sends still awaiting a carrier verdict (additive, may be absent on older API). */
+  pendingDelivery?: number;
+}
+
+/** GET /sms-logs/health — cheap local delivery stats powering the SMS Health card. */
+export interface SmsDeliveryHealth {
+  pendingDelivery: number;
+  byStatus: Record<string, number>;
 }
 
 export interface SmsTestSendResult {
@@ -440,6 +517,15 @@ export interface SmsTestSendResult {
 }
 
 // ── Endpoint wrappers ───────────────────────────────────────────
+
+/**
+ * Offline kiosk spool flush — POST /qr/scan/batch with `{ scans: [...] }`
+ * (server zod: `batchInput = z.object({ scans: z.array(scanInput).min(1).max(200) })`).
+ * Per-item outcomes arrive in `results[]` with `ok === httpCode < 400`.
+ */
+export function qrScanBatch(items: QrScanBatchItem[]): Promise<QrScanBatchResponse> {
+  return post<QrScanBatchResponse>("/qr/scan/batch", { scans: items });
+}
 
 export const api = {
   studentSummary: (id: number) => get<StudentSummary>(`/students/${id}/summary`),
@@ -472,8 +558,10 @@ export const api = {
   },
   qrScanLogs: (limit = 60) => get<QrScanLogRow[]>(`/qr/scan-logs?limit=${limit}`),
   qrStats: () => get<QrStats>("/qr/stats"),
-  qrScan: (token: string, terminalId: string, classroomId?: number) =>
-    post<QrScanResponse>("/qr/scan", { token, terminalId, classroomId }),
+  qrScan: (token: string, terminalId: string, classroomId?: number, extra?: QrScanExtras) =>
+    post<QrScanResponse>("/qr/scan", { token, terminalId, classroomId, ...extra }),
+  /** Offline kiosk spool flush (same endpoint as the standalone qrScanBatch). */
+  qrScanBatch: (items: QrScanBatchItem[]) => qrScanBatch(items),
   qrTerminalStats: (terminalId: string) => get<{ valid: number; duplicate: number; anomalies: number }>(`/qr/terminal-stats?terminalId=${encodeURIComponent(terminalId)}`),
 
   reviews: () => get<ReviewRow[]>("/reviews"),
@@ -525,6 +613,8 @@ export const api = {
   // ── SMS Delivery Health ──
   smsConfigStatus: () => get<SmsConfigStatus>("/sms/config-status"),
   smsDiagnostics: () => get<SmsDiagnostics>("/sms/diagnostics"),
+  /** Phase 6: lightweight delivery stats (no Twilio calls) — same auth as the sms-logs list. */
+  smsHealth: () => get<SmsDeliveryHealth>("/sms-logs/health"),
   smsTestSend: (to: string, body?: string, channel?: "sms" | "whatsapp") =>
     post<SmsTestSendResult>("/sms/test-send", { to, body, channel }),
 };

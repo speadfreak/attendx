@@ -148,6 +148,15 @@ export interface SmsLog {
   sentAt: string;
   /** @nullable */
   errorMessage: string | null;
+  // Phase 6: manual extension — re-add after orval regen
+  channel?: string | null;
+  errorCode?: string | null;
+  providerSid?: string | null;
+  statusUpdatedAt?: string | null;
+  errorHint?: {
+    title: string;
+    fix: string;
+  } | null;
 }
 
 /**

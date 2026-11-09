@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { startServerJobWorker } from "./lib/jobs";
 import { startReviewRetentionWorker } from "./lib/retention";
+import { reconcilePendingSms } from "./lib/sms-reconcile";
 
 // Default export — the entry consumed by the Vercel Express runtime
 // (see vercel.json → services.api-server.entrypoint). In serverless handler
@@ -36,6 +37,16 @@ if (rawPort) {
     logger.info({ port }, "Server listening");
     startServerJobWorker();
     startReviewRetentionWorker();
+
+    // Phase 6: periodic SMS delivery reconciliation. The Twilio status
+    // webhook is the primary freshness source; this 60s sweep is the
+    // safety net for missed callbacks. Long-lived mode only — never on
+    // Vercel serverless (the /api/internal/cron schedule covers that).
+    if (!process.env.VERCEL) {
+      setInterval(() => {
+        reconcilePendingSms().catch(() => {});
+      }, 60_000).unref();
+    }
   });
 } else if (!process.env["VERCEL"]) {
   // Human-friendly failure for local runs that forgot PORT. On Vercel the

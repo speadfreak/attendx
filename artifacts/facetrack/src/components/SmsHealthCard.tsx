@@ -95,6 +95,18 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
     staleTime: 60_000,
   });
 
+  // Phase 6: pending-delivery truth — cheap local stats (GET /sms-logs/health),
+  // refreshed alongside the one-minute reconcile sweep. Hidden entirely on
+  // fetch failure so the card never lies about data it couldn't load.
+  const { data: health } = useQuery({
+    queryKey: ["sms-health"],
+    queryFn: () => api.smsHealth(),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    retry: false,
+  });
+  const pendingDelivery = health?.pendingDelivery ?? 0;
+
   const [testTo, setTestTo] = useState("");
   const [testBody, setTestBody] = useState("");
   const [testing, setTesting] = useState(false);
@@ -148,6 +160,27 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
           tone={settings?.smsMessagingServiceSid ? "green" : settings?.smsFromNumber ? "amber" : "red"}
         />
       </div>
+
+      {/* Pending delivery — honest queue truth (hidden if stats can't be fetched) */}
+      {health && (
+        <div className={`mb-4 flex items-center justify-between gap-3 rounded-xl border p-3 ${pendingDelivery > 0 ? "border-amber-400/25 bg-amber-400/[0.06]" : "border-white/5 bg-black/20"}`}>
+          <div className="min-w-0">
+            <p className={labelCls}>pending delivery</p>
+            <p className="mt-1 text-[11px] leading-snug text-white/45">Awaiting carrier confirmation — auto-reconciles every minute</p>
+          </div>
+          {pendingDelivery > 0 ? (
+            <span className="flex shrink-0 items-center gap-2" aria-label={`${pendingDelivery} messages awaiting carrier confirmation`}>
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-60 animate-ping" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-400" />
+              </span>
+              <span className="text-2xl font-bold tabular-nums text-amber-300 animate-pulse">{pendingDelivery}</span>
+            </span>
+          ) : (
+            <span className="text-2xl font-bold tabular-nums text-white/35">0</span>
+          )}
+        </div>
+      )}
 
       {/* Sender config — the 21612 fix lives here */}
       <div className="rounded-xl border border-white/5 bg-black/20 p-4">

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { api, type QrScanResponse } from "@/lib/api";
+import { enqueueScan, newNonce, useOfflineSync } from "@/lib/offline-queue";
 import { GlowCard, SectionTitle, StatusBadge, StatusDot, MeshBackground, GlowEmpty } from "@/components/gx/Primitives";
 import { GlowSkeleton } from "@/components/gx/Skeletons";
 import { useToast } from "@/hooks/use-toast";
@@ -9,7 +10,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   DoorOpen, QrCode, Camera, CheckCircle2, XCircle, Clock,
   ScanLine, Terminal, Volume2, VolumeX, RefreshCw, Keyboard, AlertTriangle,
-  SwitchCamera, Zap,
+  SwitchCamera, Zap, MapPin, ShieldAlert, CloudUpload, Info,
 } from "lucide-react";
 
 /**
@@ -21,7 +22,7 @@ import {
  *  - Sound feedback, live counters, anomaly log visibility
  */
 
-type Verdict = "valid" | "duplicate" | "blocked" | null;
+type Verdict = "valid" | "duplicate" | "blocked" | "replayed" | "geofence" | "queued" | null;
 
 interface FeedEntry {
   id: number;
@@ -36,6 +37,60 @@ const SCANNER_REGION_ID = "gx-qr-reader";
 const CAMERA_ID_KEY = "gx_terminal_camera_id";
 
 interface CameraDevice { id: string; label: string; }
+
+/** Best-effort GPS fix attached to every scan (server geofence + fraud AI). */
+interface GeoFix { latitude: number; longitude: number; accuracy: number | null }
+
+/** Fresh-fix window: a fix younger than this is reused without re-querying GPS. */
+const GEO_CACHE_MS = 30_000; // mirrors maximumAge below
+
+/**
+ * Capture geolocation for one scan. Best-effort: resolves null on denial /
+ * timeout (8s per spec) / unsupported — the scan proceeds without geo.
+ */
+function requestGeoFix(): Promise<GeoFix | null> {
+  return new Promise((resolve) => {
+    if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
+      resolve(null);
+      return;
+    }
+    let settled = false;
+    const finish = (fix: GeoFix | null) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      resolve(fix);
+    };
+    // hard stop just past the 8s API timeout so a wedged GPS never blocks a scan
+    const timer = window.setTimeout(() => finish(null), 8_500);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => finish({
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        accuracy: Number.isFinite(pos.coords.accuracy) ? pos.coords.accuracy : null,
+      }),
+      () => finish(null),
+      { timeout: 8_000, maximumAge: 30_000, enableHighAccuracy: true },
+    );
+  });
+}
+
+/** Feed row tint per verdict. */
+const FEED_STYLES: Record<Exclude<Verdict, null>, { border: string; bg: string }> = {
+  valid: { border: "rgba(34,197,94,0.18)", bg: "rgba(34,197,94,0.05)" },
+  duplicate: { border: "rgba(245,158,11,0.18)", bg: "rgba(245,158,11,0.05)" },
+  blocked: { border: "rgba(239,68,68,0.18)", bg: "rgba(239,68,68,0.05)" },
+  geofence: { border: "rgba(239,68,68,0.30)", bg: "rgba(239,68,68,0.09)" },
+  replayed: { border: "rgba(148,163,184,0.25)", bg: "rgba(148,163,184,0.07)" },
+  queued: { border: "rgba(148,163,184,0.25)", bg: "rgba(148,163,184,0.07)" },
+};
+
+function feedDotTone(v: Exclude<Verdict, null>): "green" | "amber" | "red" | "slate" {
+  if (v === "valid") return "green";
+  if (v === "duplicate") return "amber";
+  if (v === "replayed" || v === "queued") return "slate";
+  return "red";
+}
 
 /** Live video track of the running scanner (torch constraints apply here). */
 function getScannerVideoTrack(): MediaStreamTrack | undefined {
@@ -98,6 +153,11 @@ export default function QrTerminalPage() {
   const [counter, setCounter] = useState({ valid: 0, duplicate: 0, anomalies: 0 });
   const [terminalId, setTerminalId] = useState<string>("door-1");
   const [editingTerminal, setEditingTerminal] = useState(false);
+  const [geo, setGeo] = useState<GeoFix | null>(null);
+  const geoCacheRef = useRef<{ fix: GeoFix; at: number } | null>(null);
+
+  // Offline spool state (IndexedDB queue + auto-sync)
+  const { pending, syncing, lastSyncAt, online, flushNow } = useOfflineSync();
 
   const feedIdRef = useRef(0);
 
@@ -121,14 +181,23 @@ export default function QrTerminalPage() {
   const handleScanResponse = useCallback((data: QrScanResponse, serial?: string) => {
     setScanResult(data);
     const kind: Exclude<Verdict, null> =
-      data.result === "valid" ? "valid"
+      data.replayed ? "replayed"
+      : data.result === "valid" ? "valid"
       : data.result === "duplicate" ? "duplicate"
+      : data.result === "geofence-violation" ? "geofence"
+      : data.result === "queued-offline" ? "queued"
       : "blocked";
     setVerdict(kind);
-    if (!muted) playTone(kind === "valid" ? "success" : kind === "duplicate" ? "duplicate" : "error");
+    // replayed/queued are neutral outcomes — no alarm tone
+    if (!muted && (kind === "valid" || kind === "duplicate" || kind === "blocked" || kind === "geofence")) {
+      playTone(kind === "valid" ? "success" : kind === "duplicate" ? "duplicate" : "error");
+    }
 
     pushFeed({
-      name: data.student?.name ?? (data.result === "valid" ? data.message : "Unknown badge"),
+      name: data.student?.name
+        ?? (kind === "queued" ? "Offline queue"
+        : kind === "replayed" ? "Already recorded"
+        : data.result === "valid" ? data.message : "Unknown badge"),
       message: data.message,
       verdict: kind,
       serial,
@@ -137,33 +206,97 @@ export default function QrTerminalPage() {
     setCounter((c) => ({
       valid: c.valid + (kind === "valid" ? 1 : 0),
       duplicate: c.duplicate + (kind === "duplicate" ? 1 : 0),
-      anomalies: c.anomalies + (kind === "blocked" ? 1 : 0),
+      anomalies: c.anomalies + (kind === "blocked" || kind === "geofence" ? 1 : 0),
     }));
 
-    setTimeout(() => setVerdict(null), 3500);
+    setTimeout(() => setVerdict(null), kind === "queued" ? 5000 : 3500);
     if (kind === "blocked") {
       toast({ title: "Badge rejected", description: data.message, variant: "destructive" });
     }
   }, [muted, toast]);
 
+  /**
+   * GPS for one scan: reuse a fix younger than 30s (matches maximumAge) so
+   * rapid badge taps don't each wait on the GPS radio; otherwise request a
+   * fresh fix (8s timeout, best-effort). Also feeds the GPS indicator chip.
+   */
+  const getGeoForScan = useCallback(async (): Promise<GeoFix | null> => {
+    const cached = geoCacheRef.current;
+    if (cached && Date.now() - cached.at < GEO_CACHE_MS) {
+      setGeo(cached.fix);
+      return cached.fix;
+    }
+    const fix = await requestGeoFix();
+    if (fix) geoCacheRef.current = { fix, at: Date.now() };
+    setGeo(fix);
+    return fix;
+  }, []);
+
   const submitToken = useCallback(async (rawToken: string) => {
     const token = rawToken.trim();
     if (!token || processingRef.current) return;
     processingRef.current = true;
+    const scannedAt = new Date().toISOString(); // captured at the scan moment
+    const nonce = newNonce();                    // client idempotency key
+    let geoFix: GeoFix | null = null;
     try {
-      const data = await api.qrScan(token, terminalId);
-      handleScanResponse(data);
-    } catch (err: any) {
-      // HTTP error statuses carry the verdict message
-      handleScanResponse({
-        ok: false,
-        result: "blocked",
-        message: err.message || "Scan failed — terminal could not reach the server.",
+      geoFix = await getGeoForScan(); // best-effort, ≤8s — null on failure
+      const data = await api.qrScan(token, terminalId, undefined, {
+        nonce,
+        scannedAt,
+        latitude: geoFix?.latitude ?? null,
+        longitude: geoFix?.longitude ?? null,
+        accuracy: geoFix?.accuracy ?? null,
       });
+      handleScanResponse(data);
+    } catch (err) {
+      // Non-2xx scan responses carry their verdict in the body — the fetch
+      // helper attaches it (see api.ts j()).
+      const httpErr = err as { status?: number; body?: (QrScanResponse & { error?: string }) | null; message?: string };
+      const body = httpErr.body;
+      if (body && (body.result || body.error)) {
+        // Definitive server verdict (4xx: geofence-violation, expired, revoked,
+        // …) — spooling these can never succeed, so surface them directly.
+        handleScanResponse(
+          body.result
+            ? body
+            : { ok: false, result: "malformed", message: body.error ?? "Malformed scan payload." },
+        );
+      } else {
+        // Network failure / offline / 5xx → buffer in the IndexedDB spool.
+        try {
+          await enqueueScan({
+            token,
+            terminalId,
+            scannedAt,
+            nonce,
+            latitude: geoFix?.latitude ?? null,
+            longitude: geoFix?.longitude ?? null,
+            accuracy: geoFix?.accuracy ?? null,
+          });
+          handleScanResponse({
+            ok: false,
+            result: "queued-offline",
+            message: "Queued offline — will sync automatically.",
+          });
+        } catch {
+          handleScanResponse({
+            ok: false,
+            result: "blocked",
+            message: "Scan failed and offline storage is unavailable — scan again.",
+          });
+        }
+      }
     } finally {
       processingRef.current = false;
     }
-  }, [terminalId, handleScanResponse]);
+  }, [terminalId, handleScanResponse, getGeoForScan]);
+
+  // Warm the GPS cache at terminal start so the first badge tap isn't slowed
+  // by a cold location fix (best-effort — permission prompts are expected).
+  useEffect(() => {
+    void getGeoForScan();
+  }, [getGeoForScan]);
 
   // torch is a non-standard Chromium capability — probe it off the typed capability set
   const detectTorch = useCallback(() => {
@@ -314,16 +447,76 @@ export default function QrTerminalPage() {
     ? (activeDevice.label || `Camera ${devices.indexOf(activeDevice) + 1}`)
     : (cameraLabel || "camera");
 
+  // GPS indicator: good ≤20m (emerald) / poor >20m (amber) / unavailable (slate)
+  const geoAccuracy = geo?.accuracy ?? null;
+  const geoLabel = geo ? `GPS ±${Math.round(geoAccuracy ?? 0)}m` : "GPS off";
+  const geoToneCls = !geo ? "text-slate-400" : (geoAccuracy ?? 0) <= 20 ? "text-emerald-400" : "text-amber-400";
+  const geoTitle = !geo
+    ? "Location unavailable — scans still work; geofence checks may be limited"
+    : `Location accuracy ±${Math.round(geoAccuracy ?? 0)} m (${(geoAccuracy ?? 0) <= 20 ? "good" : "poor"})`;
+
   const verdictStyles: Record<Exclude<Verdict, null>, { bg: string; ring: string; label: string; cls: string }> = {
     valid: { bg: "rgba(34,197,94,0.14)", ring: "rgba(34,197,94,0.55)", label: "WELCOME", cls: "text-emerald-400" },
     duplicate: { bg: "rgba(245,158,11,0.12)", ring: "rgba(245,158,11,0.5)", label: "ALREADY IN", cls: "text-amber-400" },
     blocked: { bg: "rgba(239,68,68,0.12)", ring: "rgba(239,68,68,0.5)", label: "DENIED", cls: "text-red-400" },
+    geofence: { bg: "rgba(239,68,68,0.18)", ring: "rgba(239,68,68,0.7)", label: "OUT OF BOUNDS", cls: "text-red-400" },
+    replayed: { bg: "rgba(148,163,184,0.12)", ring: "rgba(148,163,184,0.45)", label: "ALREADY RECORDED", cls: "text-slate-300" },
+    queued: { bg: "rgba(148,163,184,0.10)", ring: "rgba(148,163,184,0.4)", label: "QUEUED OFFLINE", cls: "text-slate-300" },
   };
 
   return (
     <div className="relative">
       <MeshBackground />
       <div className="relative z-10 space-y-5">
+        {/* ── Offline spool banner (Phase 6: dead-WiFi kiosk) ── */}
+        {(pending > 0 || !online) && (
+          <div className="sticky top-0 z-30">
+            <div
+              className="flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 shadow-lg"
+              style={{
+                background: "rgba(2,6,23,0.92)",
+                borderColor: online ? "rgba(148,163,184,0.35)" : "rgba(239,68,68,0.5)",
+                backdropFilter: "blur(8px)",
+              }}
+            >
+              <span
+                className="flex items-center gap-1.5"
+                title={online ? "Connected to the server" : "Offline — scans are spooled locally"}
+              >
+                <span className={`inline-block h-2 w-2 rounded-full ${online ? "bg-emerald-400" : "bg-red-400"}`} />
+                <span className="text-[10px] font-mono uppercase tracking-widest text-white/50">
+                  {online ? "online" : "offline"}
+                </span>
+              </span>
+              <CloudUpload size={16} className={online ? "text-emerald-400" : "text-slate-400"} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-white/85">
+                  {pending > 0
+                    ? `${pending} scan${pending === 1 ? "" : "s"} queued — will sync automatically`
+                    : "Offline — new scans will be queued automatically"}
+                </p>
+                <p className="font-mono text-[10px] text-white/40">
+                  {syncing
+                    ? "syncing…"
+                    : lastSyncAt
+                      ? `last sync ${format(lastSyncAt, "HH:mm:ss")}`
+                      : "waiting for connectivity"}
+                </p>
+              </div>
+              {syncing && <RefreshCw size={16} className="animate-spin text-emerald-400" />}
+              {pending > 0 && (
+                <button
+                  onClick={() => void flushNow()}
+                  disabled={syncing}
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/15 px-4 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/25 disabled:opacity-50"
+                >
+                  <RefreshCw size={14} className={syncing ? "animate-spin" : ""} /> Sync now
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <SectionTitle sub="DOOR TERMINAL · TAP BADGE TO CHECK IN">
             QR TERMINAL
@@ -396,7 +589,10 @@ export default function QrTerminalPage() {
               <div className="flex items-center justify-center gap-3">
                 {verdict === "valid" && <CheckCircle2 className="w-9 h-9 text-emerald-400" />}
                 {verdict === "duplicate" && <Clock className="w-9 h-9 text-amber-400" />}
+                {verdict === "geofence" && <ShieldAlert className="w-9 h-9 text-red-400" />}
                 {verdict === "blocked" && <XCircle className="w-9 h-9 text-red-400" />}
+                {verdict === "replayed" && <Info className="w-9 h-9 text-slate-300" />}
+                {verdict === "queued" && <CloudUpload className="w-9 h-9 text-slate-300" />}
                 <div className="text-left">
                   <p className={`text-2xl font-black tracking-widest ${verdictStyles[verdict].cls}`} style={{ fontFamily: "'Orbitron', monospace" }}>
                     {verdictStyles[verdict].label}
@@ -408,8 +604,26 @@ export default function QrTerminalPage() {
                       {scanResult.attendance?.markedAt ? ` · ${format(new Date(scanResult.attendance.markedAt), "HH:mm:ss")}` : ""}
                     </p>
                   )}
+                  {scanResult.replayed && (
+                    <p className="mt-1 flex items-center justify-center gap-1.5 text-[11px] text-slate-300/80">
+                      <Info size={11} /> Already recorded (synced from offline)
+                    </p>
+                  )}
                 </div>
               </div>
+              {scanResult.fraudScore != null && scanResult.fraudScore > 0 && (
+                <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-amber-300">
+                    <AlertTriangle size={11} /> Flagged for review · score {scanResult.fraudScore}
+                  </span>
+                  {scanResult.fraudSignals && scanResult.fraudSignals.length > 0 && (
+                    <span className="font-mono text-[10px] text-amber-200/70">{scanResult.fraudSignals.join(" · ")}</span>
+                  )}
+                </div>
+              )}
+              {scanResult.spooled && (
+                <p className="mt-2 font-mono text-[11px] text-white/40">recorded from offline spool</p>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -499,6 +713,13 @@ export default function QrTerminalPage() {
                   </button>
                 )}
                 {switching && <span className="text-[11px] text-white/40 font-mono">switching…</span>}
+                <span
+                  className="flex items-center gap-1 rounded-full border border-white/10 bg-black/40 px-2 py-0.5"
+                  title={geoTitle}
+                >
+                  <MapPin size={11} className={geoToneCls} />
+                  <span className="font-mono text-[10px] text-white/50">{geoLabel}</span>
+                </span>
                 <span className="ml-auto text-[11px] text-white/40 font-mono truncate max-w-[45%]" title={activeLabel}>
                   camera: {activeLabel}
                 </span>
@@ -563,15 +784,11 @@ export default function QrTerminalPage() {
                         exit={{ opacity: 0 }}
                         className="flex items-center gap-3 p-3 rounded-xl border"
                         style={{
-                          borderColor: entry.verdict === "valid" ? "rgba(34,197,94,0.18)"
-                            : entry.verdict === "duplicate" ? "rgba(245,158,11,0.18)"
-                            : "rgba(239,68,68,0.18)",
-                          background: entry.verdict === "valid" ? "rgba(34,197,94,0.05)"
-                            : entry.verdict === "duplicate" ? "rgba(245,158,11,0.05)"
-                            : "rgba(239,68,68,0.05)",
+                          borderColor: FEED_STYLES[entry.verdict].border,
+                          background: FEED_STYLES[entry.verdict].bg,
                         }}
                       >
-                        <StatusDot tone={entry.verdict === "valid" ? "green" : entry.verdict === "duplicate" ? "amber" : "red"} pulse={entry.verdict === "valid"} />
+                        <StatusDot tone={feedDotTone(entry.verdict)} pulse={entry.verdict === "valid"} />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <p className="text-sm font-medium text-white/85 truncate">{entry.name}</p>
