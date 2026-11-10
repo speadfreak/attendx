@@ -2,9 +2,9 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { z } from "zod/v4";
 import { requireAuth, requireAdminLevel } from "../lib/auth";
-import { getSmsSenderConfig, normalizePhone, twilioEnabled, twilioSend, SmsDeliveryError, describeSmsProviderCode, invalidateSmsSettingsCache } from "../lib/sms";
-import { runSmsDiagnostics } from "../lib/sms-diagnostics";
-import { pendingDeliveryCount } from "../lib/sms-reconcile";
+import { getSmsSenderConfig, normalizePhone, twilioEnabled, twilioSend, SmsDeliveryError, describeSmsProviderCode, invalidateSmsSettingsCache, TWILIO_WHATSAPP_FROM } from "../lib/sms";
+import { runSmsDiagnostics, getTwilioCarrierStatus, type TwilioCarrierStatus } from "../lib/sms-diagnostics";
+import { reconcilePendingSms, pendingDeliveryCount } from "../lib/sms-reconcile";
 import { writeAudit } from "../lib/audit";
 
 const router = Router();
@@ -13,6 +13,12 @@ const adminId = (req: Request) => (req as Request & { admin?: { adminId: number 
 /** Lightweight status for any signed-in admin/teacher — powers header badges. */
 router.get("/sms/config-status", requireAuth, async (_req, res): Promise<void> => {
   const config = await getSmsSenderConfig();
+  // Carrier facts (trial detection) ride along — cached 5 min server-side,
+  // failures degrade to nulls so this endpoint never breaks the header.
+  const carrier: TwilioCarrierStatus = await getTwilioCarrierStatus(
+    !!config.messagingServiceSid,
+    config.fromNumber,
+  );
   res.json({
     twilioEnabled: twilioEnabled(),
     channelMode: config.channelMode,
@@ -20,6 +26,8 @@ router.get("/sms/config-status", requireAuth, async (_req, res): Promise<void> =
     hasFromNumber: !!config.fromNumber,
     messagingServiceSid: config.messagingServiceSid,
     fromNumber: config.fromNumber,
+    whatsappOptIn: !!TWILIO_WHATSAPP_FROM,
+    carrier,
   });
 });
 
@@ -28,7 +36,31 @@ router.get("/sms/diagnostics", requireAdminLevel, async (_req, res): Promise<voi
   const diagnostics = await runSmsDiagnostics();
   // Phase 6: pending-delivery count rides along so the SMS Health card and
   // admin tooling see local queue truth next to the live Twilio probe.
-  res.json({ ...diagnostics, pendingDelivery: await pendingDeliveryCount() });
+  // `carrier` explains WHY sends fail (trial account vs geo permissions vs
+  // messaging service) — cached 5 min, nulls on any Twilio failure.
+  const carrier = await getTwilioCarrierStatus(
+    !!diagnostics.sender.messagingServiceSid,
+    diagnostics.sender.fromNumber,
+  );
+  res.json({ ...diagnostics, pendingDelivery: await pendingDeliveryCount(), carrier });
+});
+
+/**
+ * On-demand "check with carrier now" — runs the same reconcile sweep as the
+ * throttled background middleware and returns its summary, so the SMS Logs
+ * page can force-refresh statuses without waiting for the next request
+ * cycle. Same auth as GET /sms-logs (any staff member can read logs).
+ */
+router.post("/sms/reconcile", requireAuth, async (req, res): Promise<void> => {
+  const summary = await reconcilePendingSms();
+  await writeAudit({
+    actorAdminId: adminId(req),
+    action: "sms.reconcile",
+    targetType: "sms",
+    targetId: null,
+    payload: { checked: summary.checked, upgraded: summary.upgraded, errors: summary.errors },
+  });
+  res.json(summary);
 });
 
 const testSendInput = z.object({
@@ -60,7 +92,14 @@ router.post("/sms/test-send", requireAdminLevel, async (req, res): Promise<void>
     return;
   }
   const message = body ?? "AttendX test notification — SMS delivery is working. 🎉";
-  const channels: Array<"sms" | "whatsapp"> = channel ? [channel] : config.channelMode === "auto" ? ["sms", "whatsapp"] : [config.channelMode];
+  // Mirror the production channel gate: WhatsApp only on explicit opt-in.
+  const channels: Array<"sms" | "whatsapp"> = channel
+    ? [channel]
+    : config.channelMode === "whatsapp"
+      ? ["whatsapp"]
+      : config.channelMode === "auto" && TWILIO_WHATSAPP_FROM
+        ? ["sms", "whatsapp"]
+        : ["sms"];
 
   const attempts: Array<{ channel: string; ok: boolean; error: { message: string; code: string | null; fix: string | null } | null }> = [];
   let lastError: SmsDeliveryError | null = null;

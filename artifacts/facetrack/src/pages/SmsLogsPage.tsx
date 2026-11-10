@@ -1,14 +1,15 @@
 import { useState } from "react";
-import { useListSmsLogs, type SmsLog } from "@workspace/api-client-react";
+import { useListSmsLogs, getListSmsLogsQueryKey, type SmsLog } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "framer-motion";
-import { MessageSquare, AlertCircle, AlertTriangle, CheckCircle2, Phone } from "lucide-react";
+import { MessageSquare, AlertCircle, AlertTriangle, CheckCircle2, Phone, RefreshCw } from "lucide-react";
 import { format, formatDistanceToNowStrict } from "date-fns";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { api } from "@/lib/api";
 
 type SmsLogRow = SmsLog;
 
@@ -44,14 +45,20 @@ function StatusChip({ log }: { log: SmsLogRow }) {
     switch (log.status) {
       case "queued":
         return (
-          <span className={`${chip} border-slate-400/30 bg-slate-500/10 text-slate-600 dark:text-slate-300`}>
+          <span
+            title="Waiting on the carrier — Twilio's verdict (sent/delivered/failed) upgrades this row automatically. The page polls every 20s while any row is pending."
+            className={`${chip} border-slate-400/30 bg-slate-500/10 text-slate-600 dark:text-slate-300`}
+          >
             <PulsingDot cls="bg-slate-400" /> Queued
           </span>
         );
       case "sent":
         // Legacy rows predate status callbacks (no providerSid) — render as before.
         return log.providerSid ? (
-          <span className={`${chip} border-emerald-500/40 bg-transparent text-emerald-600 dark:text-emerald-400`}>
+          <span
+            title="Accepted by the carrier — awaiting final delivery confirmation (checked automatically)."
+            className={`${chip} border-emerald-500/40 bg-transparent text-emerald-600 dark:text-emerald-400`}
+          >
             Sent to carrier
           </span>
         ) : (
@@ -116,9 +123,45 @@ function StatusChip({ log }: { log: SmsLogRow }) {
 export default function SmsLogsPage() {
   const [status, setStatus] = useState<string>("all");
 
-  const { data: logs, isLoading, isError, error, refetch } = useListSmsLogs({
-    status: status === "all" ? undefined : status
-  });
+  // T4: auto-refresh — poll every 20s while any visible row still awaits a
+  // carrier verdict (queued/sent); stop polling once every row is final.
+  // Background tab never polls (refetchIntervalInBackground: false).
+  const listParams = { status: status === "all" ? undefined : status };
+  const { data: logs, isLoading, isError, error, refetch } = useListSmsLogs(
+    listParams,
+    {
+      query: {
+        queryKey: getListSmsLogsQueryKey(listParams),
+        refetchInterval: (query) => {
+          const rows = query.state.data as SmsLog[] | undefined;
+          return rows?.some((r) => r.status === "queued" || r.status === "sent") ? 20_000 : false;
+        },
+        refetchIntervalInBackground: false,
+      },
+    },
+  );
+
+  // T4: on-demand "check with carrier now" — forces a Twilio reconcile sweep
+  // server-side, then refreshes the visible rows.
+  const [reconciling, setReconciling] = useState(false);
+  const [reconcileNote, setReconcileNote] = useState<string | null>(null);
+  const runReconcile = async () => {
+    setReconciling(true);
+    setReconcileNote(null);
+    try {
+      const summary = await api.smsReconcile();
+      await refetch();
+      setReconcileNote(
+        summary.checked === 0
+          ? "Updated just now — nothing pending"
+          : `Updated just now — checked ${summary.checked}, upgraded ${summary.upgraded}`,
+      );
+    } catch (err: unknown) {
+      setReconcileNote(err instanceof Error ? err.message : "Status check failed");
+    } finally {
+      setReconciling(false);
+    }
+  };
 
   const errorMessage = error instanceof Error ? error.message : "Unknown error";
 
@@ -130,19 +173,37 @@ export default function SmsLogsPage() {
           <p className="text-muted-foreground">Automated parent notifications — real carrier delivery status</p>
         </div>
 
-        <div className="w-full sm:w-[200px]">
-          <Select value={status} onValueChange={setStatus}>
-            <SelectTrigger className="min-h-[44px]" aria-label="Filter by delivery status">
-              <SelectValue placeholder="All Statuses" />
-            </SelectTrigger>
-            <SelectContent>
-              {STATUS_FILTERS.map((s) => (
-                <SelectItem key={s.value} value={s.value} className="min-h-[44px]">
-                  {s.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex w-full flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
+          {reconcileNote && (
+            <p className={`text-xs ${reconcileNote.includes("just now") ? "text-muted-foreground" : "text-destructive"}`}>
+              {reconcileNote}
+            </p>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="gx-glow-hover shrink-0"
+            onClick={() => void runReconcile()}
+            disabled={reconciling}
+            aria-label="Check delivery status with Twilio now"
+          >
+            <RefreshCw className={`w-4 h-4 ${reconciling ? "animate-spin" : ""}`} />
+            Check delivery status
+          </Button>
+          <div className="w-full sm:w-[200px]">
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger className="min-h-[44px]" aria-label="Filter by delivery status">
+                <SelectValue placeholder="All Statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_FILTERS.map((s) => (
+                  <SelectItem key={s.value} value={s.value} className="min-h-[44px]">
+                    {s.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 

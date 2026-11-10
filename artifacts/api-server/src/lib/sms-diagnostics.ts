@@ -54,6 +54,71 @@ interface TwilioServicePhoneNumber {
   phone_number: string;
 }
 
+/**
+ * Carrier-level account facts used by the SMS Health UI to explain WHY
+ * sends fail (trial limitation vs geo permissions vs WhatsApp sender).
+ * Calls `GET /2010-04-01/Accounts/{sid}.json` with a tight 4s timeout and
+ * caches the result in-module for 5 minutes; ANY failure resolves to nulls
+ * so callers can never be thrown off by a Twilio hiccup.
+ *
+ * Auth reuses the same Basic auth helper as the rest of the diagnostics.
+ */
+export interface TwilioCarrierStatus {
+  /** "Trial" | "Full" | "Starter" … from Twilio, lowercased; null when unknown */
+  accountType: "trial" | "paid" | null;
+  /** Convenience flag — true ONLY when Twilio confirms a trial account */
+  trial: boolean;
+  /** Whether a Messaging Service SID is configured for sending (local truth) */
+  messagingServiceConfigured: boolean;
+  /** Sender fallback number currently configured (local truth) */
+  fromNumber: string | null;
+}
+
+interface TwilioAccountView {
+  type?: string;
+  status?: string;
+}
+
+let carrierCache: { value: TwilioCarrierStatus; at: number } | null = null;
+const CARRIER_CACHE_TTL_MS = 5 * 60_000;
+
+export async function getTwilioCarrierStatus(messagingServiceConfigured: boolean, fromNumber: string | null): Promise<TwilioCarrierStatus> {
+  const local: TwilioCarrierStatus = {
+    accountType: null,
+    trial: false,
+    messagingServiceConfigured,
+    fromNumber,
+  };
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return local;
+  if (carrierCache && Date.now() - carrierCache.at < CARRIER_CACHE_TTL_MS) {
+    return { ...carrierCache.value, messagingServiceConfigured, fromNumber };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 4000);
+  try {
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}.json`, {
+      headers: { Authorization: authHeader() },
+      signal: controller.signal,
+    });
+    if (!res.ok) return local;
+    const account = (await res.json()) as TwilioAccountView;
+    const rawType = (account.type ?? "").toLowerCase();
+    const value: TwilioCarrierStatus = {
+      accountType: rawType === "trial" ? "trial" : rawType ? "paid" : null,
+      trial: rawType === "trial",
+      messagingServiceConfigured,
+      fromNumber,
+    };
+    carrierCache = { value, at: Date.now() };
+    return value;
+  } catch {
+    return local; // timeout / network / parse failure — nulls, never throw
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export interface SmsDiagnostics {
   checkedAt: string;
   twilio: {

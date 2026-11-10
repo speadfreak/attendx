@@ -7,6 +7,14 @@ const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 const TWILIO_FROM_ENV = process.env.TWILIO_FROM_NUMBER;
 const TWILIO_MESSAGING_SERVICE_ENV = process.env.TWILIO_MESSAGING_SERVICE_SID;
+/**
+ * WhatsApp is OPT-IN: the fallback attempt over `whatsapp:` only happens when
+ * an explicit WhatsApp sender is configured via TWILIO_WHATSAPP_FROM (or the
+ * admin pins channel mode to 'whatsapp' in Operations → SMS Health). Without
+ * it, `auto` mode sends SMS only — unregistered WhatsApp senders otherwise
+ * produce a burst of Twilio 63007 failures on accounts with no WA sender.
+ */
+export const TWILIO_WHATSAPP_FROM = process.env.TWILIO_WHATSAPP_FROM ?? null;
 
 /**
  * Public base URL of this deployment (e.g. https://attendx.vercel.app).
@@ -214,8 +222,8 @@ export function describeSmsProviderCode(code: string | null): SmsErrorHint | nul
       };
     case "21612":
       return {
-        title: "Geo-permission block: this corridor is disabled on your Twilio account",
-        fix: "VERIFIED LIVE: even a Messaging Service does NOT bypass this. One-time 30-second fix: Twilio Console → Messaging → Settings → Geo Permissions → enable Ethiopia (ET) — https://console.twilio.com/us1/develop/sms/settings/geo-permissions . Also confirm the destination number is a verified caller ID while on a trial account. No code change is needed — AttendX retries nothing here because Twilio rejects the route itself.",
+        title: "Number pair not enabled (21612)",
+        fix: "This US number can't text +251 yet: (1) upgrade from Trial or verify the parent's number under Phone Numbers → Verified Caller IDs, (2) enable Ethiopia in Messaging → Geographic Permissions, (3) create a Messaging Service with your sender and set TWILIO_MESSAGING_SERVICE_SID.",
         retryable: false,
         channelSwitchable: true,
       };
@@ -242,8 +250,8 @@ export function describeSmsProviderCode(code: string | null): SmsErrorHint | nul
       };
     case "63007":
       return {
-        title: "Number not enabled for WhatsApp",
-        fix: "The sender is not a WhatsApp-enabled Twilio sender. Enable WhatsApp on your number/Messaging Service in the Twilio console, or keep channel mode on 'sms'.",
+        title: "WhatsApp sender not registered (63007)",
+        fix: "No WhatsApp-capable sender on the account — register one in Twilio Console or force the SMS channel.",
         retryable: false,
         channelSwitchable: false,
       };
@@ -357,6 +365,26 @@ export function mapTwilioStatus(twilioStatus: string): string | null {
   }
 }
 
+/**
+ * After a carrier-accepted send, Twilio can STILL fail seconds later at the
+ * network level (the async 21612 trap). The status webhook is the primary
+ * truth source; this one-shot sweep ~12s later is the fast path that makes
+ * the sms_logs row reflect reality almost immediately — even before the
+ * throttled middleware/interval sweep gets around to it.
+ *
+ * Lazily imported to avoid the static sms.ts ⇄ sms-reconcile.ts cycle, and
+ * scheduled fire-and-forget so the send path never waits on it.
+ */
+function schedulePostSendReconcile(): void {
+  setTimeout(() => {
+    void import("./sms-reconcile")
+      // minAgeSeconds=10 so the just-sent row (queued ~12s ago) is included —
+      // the sweep's default 45s cutoff would skip it and miss the fast path.
+      .then(({ reconcilePendingSms }) => reconcilePendingSms(25, 10))
+      .catch(() => {});
+  }, 12_000).unref?.();
+}
+
 export interface SendSmsResult {
   channel: SmsChannel;
   provider: "twilio" | "simulation";
@@ -409,8 +437,13 @@ export async function sendSms(params: {
     throw new SmsDeliveryError(detail, { provider: providerBase, code: "21211", fix: "Fix the parent phone value on the student record (E.164 or local 09… format)." });
   }
 
+  // Channel attempts: `sms`/`whatsapp` are explicit admin opt-ins; `auto`
+  // sends SMS first and only falls back to WhatsApp when a WhatsApp sender is
+  // explicitly configured (TWILIO_WHATSAPP_FROM) — see TWILIO_WHATSAPP_FROM above.
   const attempts: SmsChannel[] =
-    config.channelMode === "auto" ? ["sms", "whatsapp"] : [config.channelMode];
+    config.channelMode === "auto"
+      ? TWILIO_WHATSAPP_FROM ? ["sms", "whatsapp"] : ["sms"]
+      : [config.channelMode];
 
   let lastError: SmsDeliveryError | null = null;
   for (let i = 0; i < attempts.length; i += 1) {
@@ -425,10 +458,13 @@ export async function sendSms(params: {
           body: message,
           channel,
           messagingServiceSid: config.messagingServiceSid,
-          fromNumber: config.fromNumber,
+          fromNumber: channel === "whatsapp" && TWILIO_WHATSAPP_FROM ? TWILIO_WHATSAPP_FROM : config.fromNumber,
         });
         providerSid = result.providerSid;
         logger.info({ studentId, channel, providerSid, initialStatus: result.initialStatus }, "Twilio notification accepted");
+        // Carrier accepted — check its verdict ~12s later so the log row
+        // upgrades from queued to the real status fast (async failures).
+        schedulePostSendReconcile();
       } else {
         logger.info({ studentId, channel }, "[SIMULATED] notification logged");
       }

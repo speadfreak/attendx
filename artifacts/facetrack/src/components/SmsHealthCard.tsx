@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   MessageSquare, ShieldCheck, ShieldAlert, Activity, Send, RefreshCw,
   CheckCircle2, XCircle, Zap, Radio, CircleDollarSign, Globe, ChevronDown, ChevronUp,
+  AlertTriangle, Info,
 } from "lucide-react";
 import { GlowCard, StatusBadge } from "@/components/gx/Primitives";
 import { api, type SmsDiagnostics, type SmsTestSendResult } from "@/lib/api";
@@ -51,6 +52,16 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
   const queryClient = useQueryClient();
 
   const { data: settings } = useQuery({ queryKey: ["system-settings"], queryFn: () => api.systemSettings() });
+
+  // T4: cheap sender + carrier status (trial detection) — the server caches
+  // the Twilio account probe for 5 min, so this stays light. Powers the
+  // trial-account banner even before the admin expands live diagnostics.
+  const { data: configStatus } = useQuery({
+    queryKey: ["sms-config"],
+    queryFn: () => api.smsConfigStatus(),
+    staleTime: 60_000,
+    retry: false,
+  });
 
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [channelMode, setChannelMode] = useState<"sms" | "whatsapp" | "auto">("auto");
@@ -106,6 +117,34 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
     retry: false,
   });
   const pendingDelivery = health?.pendingDelivery ?? 0;
+
+  // T4: carrier account facts — diagnostics (admin-only) wins when loaded;
+  // the always-on config-status query is the fallback. Unknown → no banner.
+  const carrier = diagnostics?.carrier ?? configStatus?.carrier;
+  const trialAccount = carrier?.trial === true;
+  const messagingServiceConfigured = carrier?.messagingServiceConfigured;
+
+  // T4: on-demand "check with carrier now" — upgrades queued/sent sms_logs
+  // rows via Twilio, then refreshes the local delivery stats.
+  const [reconciling, setReconciling] = useState(false);
+  const refreshCarrierStatuses = async () => {
+    setReconciling(true);
+    try {
+      const summary = await api.smsReconcile();
+      await queryClient.invalidateQueries({ queryKey: ["sms-health"] });
+      await queryClient.invalidateQueries({ queryKey: ["sms-diagnostics"] });
+      toast({
+        title: "Carrier statuses refreshed",
+        description: summary.checked > 0
+          ? `Checked ${summary.checked} pending send${summary.checked === 1 ? "" : "s"} — upgraded ${summary.upgraded}.`
+          : "No pending sends to check.",
+      });
+    } catch (err: unknown) {
+      toast({ title: "Status refresh failed", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+    } finally {
+      setReconciling(false);
+    }
+  };
 
   const [testTo, setTestTo] = useState("");
   const [testBody, setTestBody] = useState("");
@@ -168,17 +207,54 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
             <p className={labelCls}>pending delivery</p>
             <p className="mt-1 text-[11px] leading-snug text-white/45">Awaiting carrier confirmation — auto-reconciles every minute</p>
           </div>
-          {pendingDelivery > 0 ? (
-            <span className="flex shrink-0 items-center gap-2" aria-label={`${pendingDelivery} messages awaiting carrier confirmation`}>
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-60 animate-ping" />
-                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-400" />
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            {pendingDelivery > 0 ? (
+              <span className="flex items-center gap-2" aria-label={`${pendingDelivery} messages awaiting carrier confirmation`}>
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-60 animate-ping" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-400" />
+                </span>
+                <span className="text-2xl font-bold tabular-nums text-amber-300 animate-pulse">{pendingDelivery}</span>
               </span>
-              <span className="text-2xl font-bold tabular-nums text-amber-300 animate-pulse">{pendingDelivery}</span>
-            </span>
-          ) : (
-            <span className="text-2xl font-bold tabular-nums text-white/35">0</span>
-          )}
+            ) : (
+              <span className="text-2xl font-bold tabular-nums text-white/35">0</span>
+            )}
+            {/* T4: on-demand "check with carrier now" */}
+            <button
+              type="button"
+              className={smallBtn}
+              onClick={() => void refreshCarrierStatuses()}
+              disabled={reconciling}
+              aria-label="Ask Twilio for the latest delivery verdicts now"
+            >
+              <RefreshCw size={12} className={reconciling ? "animate-spin" : ""} /> refresh carrier statuses
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* T4: trial-account truth — the #1 root cause of 21612 on this deployment */}
+      {trialAccount && (
+        <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-amber-400/30 bg-amber-400/[0.08] p-3">
+          <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-300" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-amber-200">
+              Trial account — Twilio only delivers to Verified Caller IDs.
+            </p>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-amber-100/70">
+              Verify parent numbers, enable Ethiopia in Geographic Permissions, or upgrade your account.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* T4: stable-routing tip when no Messaging Service is configured */}
+      {messagingServiceConfigured === false && (
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-2.5">
+          <Info size={13} className="mt-0.5 shrink-0 text-cyan-300" />
+          <p className="text-[11px] leading-relaxed text-white/55">
+            Tip: create a Messaging Service and set TWILIO_MESSAGING_SERVICE_SID for stable sender selection.
+          </p>
         </div>
       )}
 

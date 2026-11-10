@@ -475,6 +475,21 @@ export interface SmsConfigStatus {
   hasFromNumber: boolean;
   messagingServiceSid: string | null;
   fromNumber: string | null;
+  /** T4: true only when TWILIO_WHATSAPP_FROM is configured (WhatsApp is opt-in). */
+  whatsappOptIn?: boolean;
+  /** T4: carrier account facts (trial detection) — additive, may be absent on older API. */
+  carrier?: TwilioCarrierStatus;
+}
+
+/** T4: live account facts from Twilio (`GET /Accounts/{sid}.json`, 5-min server cache). */
+export interface TwilioCarrierStatus {
+  /** "trial" | "paid" — null when Twilio couldn't be reached */
+  accountType: "trial" | "paid" | null;
+  /** true ONLY when Twilio confirms a trial account */
+  trial: boolean;
+  /** Whether a Messaging Service SID is configured for sending */
+  messagingServiceConfigured: boolean;
+  fromNumber: string | null;
 }
 
 export interface SmsDiagnostics {
@@ -500,6 +515,22 @@ export interface SmsDiagnostics {
   recommendations: Array<{ severity: "critical" | "warning" | "info"; title: string; detail: string }>;
   /** Phase 6: sends still awaiting a carrier verdict (additive, may be absent on older API). */
   pendingDelivery?: number;
+  /** T4: carrier account facts (trial detection) — additive, may be absent on older API. */
+  carrier?: TwilioCarrierStatus;
+}
+
+/** POST /sms/reconcile — summary of an on-demand "check with carrier now" sweep. */
+export interface SmsReconcileSummary {
+  /** rows that still needed a verdict and were fetched */
+  checked: number;
+  /** rows whose status changed */
+  upgraded: number;
+  /** new status → count of upgrades */
+  byStatus: Record<string, number>;
+  /** Twilio fetch failures during the sweep */
+  errors: number;
+  /** upgrades that were 21612 geo-blocks */
+  geoBlocked: number;
 }
 
 /** GET /sms-logs/health — cheap local delivery stats powering the SMS Health card. */
@@ -684,6 +715,8 @@ export const api = {
   smsHealth: () => get<SmsDeliveryHealth>("/sms-logs/health"),
   smsTestSend: (to: string, body?: string, channel?: "sms" | "whatsapp") =>
     post<SmsTestSendResult>("/sms/test-send", { to, body, channel }),
+  /** T4: on-demand "check with carrier now" — upgrades queued/sent rows via Twilio. */
+  smsReconcile: () => post<SmsReconcileSummary>("/sms/reconcile"),
 
   // ── Fraud Radar (proxy-fraud signals) ──
   listFraudSignals: (params?: {

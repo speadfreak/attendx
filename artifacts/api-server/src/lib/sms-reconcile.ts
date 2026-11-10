@@ -58,11 +58,18 @@ async function fetchTwilioMessage(sid: string): Promise<TwilioMessageView | null
   }
 }
 
-export async function reconcilePendingSms(limit = 25): Promise<ReconcileSummary> {
+/**
+ * Ask Twilio for the verdict of every message still pending confirmation.
+ * @param limit max rows fetched per sweep (default 25)
+ * @param minAgeSeconds how old a pending row must be before it is checked
+ *   (default 45s — lets the initial Twilio status settle; the post-send
+ *   fast pass in lib/sms.ts calls this with ~10s to upgrade quicker).
+ */
+export async function reconcilePendingSms(limit = 25, minAgeSeconds = MIN_AGE_SECONDS): Promise<ReconcileSummary> {
   const summary: ReconcileSummary = { checked: 0, upgraded: 0, byStatus: {}, errors: 0, geoBlocked: 0 };
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return summary;
 
-  const cutoff = new Date(Date.now() - MIN_AGE_SECONDS * 1000);
+  const cutoff = new Date(Date.now() - minAgeSeconds * 1000);
   const pending = await db
     .select({
       id: smsLogsTable.id,

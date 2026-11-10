@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { AuroraBackground, GradientButton, GradientCard } from "@/components/gx/Primitives";
-import { BellRing, Lock, Mail, ScanFace, ShieldCheck, Zap } from "lucide-react";
+import { BellRing, Lock, Mail, MapPin, RefreshCw, ScanFace, ShieldCheck, WifiOff, Zap } from "lucide-react";
 import {
   motion,
   useAnimationControls,
@@ -30,6 +30,13 @@ const FEATURES = [
     title: "Instant parent alerts",
     desc: "SMS notifications the moment a student is late or absent.",
   },
+] as const;
+
+/* Decorative trust strip — replaces the old demo-credentials footer. */
+const TRUST = [
+  { icon: WifiOff, label: "Offline-ready kiosk", tone: "gx-chip-teal" },
+  { icon: MapPin, label: "Geofenced check-ins", tone: "gx-chip-violet" },
+  { icon: RefreshCw, label: "Real-time sync", tone: "gx-chip-emerald" },
 ] as const;
 
 const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
@@ -84,18 +91,35 @@ export default function LoginPage() {
     hidden: {},
     show: {
       transition: {
-        staggerChildren: reduceMotion ? 0 : 0.09,
-        delayChildren: reduceMotion ? 0 : 0.05,
+        staggerChildren: reduceMotion ? 0 : 0.085,
+        delayChildren: reduceMotion ? 0 : 0.06,
       },
     },
   };
 
   const item: Variants = {
-    hidden: { opacity: reduceMotion ? 1 : 0, y: reduceMotion ? 0 : 26 },
+    hidden: reduceMotion ? { opacity: 1 } : { opacity: 0, y: 30, scale: 0.98 },
     show: {
       opacity: 1,
       y: 0,
-      transition: { duration: reduceMotion ? 0 : 0.7, ease: EASE },
+      scale: 1,
+      transition: { duration: reduceMotion ? 0 : 0.65, ease: EASE },
+    },
+  };
+
+  // Hero moments (title, imagery, login card): spring entrance with a soft blur-in.
+  const heroItem: Variants = {
+    hidden: reduceMotion
+      ? { opacity: 1 }
+      : { opacity: 0, y: 42, scale: 0.955, filter: "blur(10px)" },
+    show: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      filter: "blur(0px)",
+      transition: reduceMotion
+        ? { duration: 0 }
+        : { type: "spring", stiffness: 58, damping: 15, mass: 0.9 },
     },
   };
 
@@ -124,16 +148,19 @@ export default function LoginPage() {
           className="hidden flex-col gap-9 px-10 py-14 lg:flex xl:px-14"
         >
           <motion.p
-            variants={item}
-            className="inline-flex items-center gap-2 self-start rounded-full border border-fuchsia-400/20 bg-fuchsia-400/[0.06] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-fuchsia-200/80"
+            variants={heroItem}
+            className="inline-flex items-center gap-2.5 self-start rounded-full border border-fuchsia-400/20 bg-fuchsia-400/[0.06] px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.24em] text-fuchsia-200/80"
           >
-            <Zap className="h-3 w-3" aria-hidden="true" />
+            <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-300 opacity-60 motion-reduce:hidden" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-300" />
+            </span>
             Face-first attendance intelligence
           </motion.p>
 
           <motion.h1
-            variants={item}
-            className="max-w-xl text-4xl font-black leading-[1.08] tracking-tight xl:text-5xl"
+            variants={heroItem}
+            className="max-w-2xl text-5xl font-black leading-[1.05] tracking-tight xl:text-6xl"
           >
             Every arrival, <span className="text-gradient">beautifully tracked.</span>
           </motion.h1>
@@ -144,7 +171,7 @@ export default function LoginPage() {
           </motion.p>
 
           {/* Hero image, masked into the aurora */}
-          <motion.div variants={item} className="w-full max-w-xl">
+          <motion.div variants={heroItem} className="w-full max-w-xl">
             <motion.div
               animate={reduceMotion ? undefined : { y: [0, -8, 0] }}
               transition={reduceMotion ? undefined : { duration: 7, repeat: Infinity, ease: "easeInOut" }}
@@ -215,17 +242,21 @@ export default function LoginPage() {
               </div>
             </motion.div>
 
-            <motion.div variants={item} className="mb-7 text-center">
-              <h2 className="counter-num text-4xl font-black tracking-[0.06em] text-white">
+            <motion.div variants={heroItem} className="mb-7 text-center">
+              <h2 className="counter-num text-5xl font-black tracking-[0.05em] text-white">
                 ATTEND<span className="text-gradient">X</span>
               </h2>
-              <p className="mt-1.5 text-[11px] uppercase tracking-[0.28em] text-violet-200/50">
+              <p className="mt-2 text-[10px] uppercase tracking-[0.3em] text-violet-200/60">
                 Intelligent Attendance Command Center
               </p>
               <div className="gx-hairline mx-auto mt-4 w-3/4" />
             </motion.div>
 
-            <motion.div variants={item}>
+            <motion.div
+              variants={heroItem}
+              whileHover={reduceMotion ? undefined : { y: -4, scale: 1.01 }}
+              transition={{ type: "spring", stiffness: 240, damping: 20 }}
+            >
               {/* shake on failed login */}
               <motion.div animate={shakeControls}>
                 {/* success exit flourish */}
@@ -237,14 +268,21 @@ export default function LoginPage() {
                   }
                   transition={{ duration: 0.4, ease: "easeIn" }}
                 >
-                  <GradientCard glow className="backdrop-blur-xl">
+                  <GradientCard
+                    glow
+                    className="backdrop-blur-xl"
+                    style={{
+                      boxShadow:
+                        "var(--gx-glow-aurora-strong), inset 0 1px 0 rgba(255,255,255,0.08), 0 34px 90px -18px rgba(0,0,0,0.62)",
+                    }}
+                  >
                     <form onSubmit={handleSubmit} className="space-y-5 p-7 sm:p-8" aria-busy={busy}>
-                      <div className="space-y-2">
-                        <Label htmlFor="email" className="text-[11px] font-medium uppercase tracking-[0.16em] text-violet-200/70">
+                      <div className="group space-y-2">
+                        <Label htmlFor="email" className="text-[11px] font-medium uppercase tracking-[0.16em] text-violet-200/70 transition-colors group-focus-within:text-fuchsia-200/90">
                           Identity
                         </Label>
                         <div className="relative">
-                          <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fuchsia-300/50" aria-hidden="true" />
+                          <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fuchsia-300/50 transition-colors group-focus-within:text-fuchsia-300" aria-hidden="true" />
                           <Input
                             id="email"
                             type="email"
@@ -252,24 +290,24 @@ export default function LoginPage() {
                             placeholder="you@school.edu"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            className="gx-focus-ring h-11 rounded-lg border-white/10 bg-white/[0.06] pl-10 text-white placeholder:text-white/25 transition-colors hover:border-white/20 focus-visible:border-fuchsia-400/50 focus-visible:ring-0"
+                            className="gx-focus-ring h-11 rounded-xl border-white/10 bg-white/[0.06] pl-10 text-white placeholder:text-white/25 transition-colors duration-200 hover:border-white/20 focus-visible:border-fuchsia-400/50 focus-visible:bg-white/[0.09] focus-visible:ring-0"
                           />
                         </div>
                       </div>
 
-                      <div className="space-y-2">
-                        <Label htmlFor="password" className="text-[11px] font-medium uppercase tracking-[0.16em] text-violet-200/70">
+                      <div className="group space-y-2">
+                        <Label htmlFor="password" className="text-[11px] font-medium uppercase tracking-[0.16em] text-violet-200/70 transition-colors group-focus-within:text-fuchsia-200/90">
                           Authorization Key
                         </Label>
                         <div className="relative">
-                          <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fuchsia-300/50" aria-hidden="true" />
+                          <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fuchsia-300/50 transition-colors group-focus-within:text-fuchsia-300" aria-hidden="true" />
                           <Input
                             id="password"
                             type="password"
                             autoComplete="current-password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            className="gx-focus-ring h-11 rounded-lg border-white/10 bg-white/[0.06] pl-10 text-white placeholder:text-white/25 transition-colors hover:border-white/20 focus-visible:border-fuchsia-400/50 focus-visible:ring-0"
+                            className="gx-focus-ring h-11 rounded-xl border-white/10 bg-white/[0.06] pl-10 text-white placeholder:text-white/25 transition-colors duration-200 hover:border-white/20 focus-visible:border-fuchsia-400/50 focus-visible:bg-white/[0.09] focus-visible:ring-0"
                           />
                         </div>
                       </div>
@@ -285,11 +323,24 @@ export default function LoginPage() {
                       </GradientButton>
                     </form>
 
-                    <div className="border-t border-white/[0.06] px-7 py-4 text-center sm:px-8">
-                      <p className="text-[10px] uppercase tracking-[0.2em] text-white/30">Demo Access</p>
-                      <p className="mt-1 font-mono text-xs text-white/45">
-                        admin@gmail.com <span className="mx-1 text-white/20">·</span> admin_password
-                      </p>
+                    {/* Trust strip — compact capability chips (decorative) */}
+                    <div className="border-t border-white/[0.06] px-6 py-4 sm:px-8">
+                      <ul
+                        className="flex flex-wrap items-center justify-center gap-2"
+                        aria-label="Platform capabilities"
+                      >
+                        {TRUST.map((t) => (
+                          <li key={t.label}>
+                            <span
+                              className={`gx-chip ${t.tone}`}
+                              style={{ fontSize: "10px", padding: "3px 10px", gap: "6px" }}
+                            >
+                              <t.icon className="h-3 w-3" aria-hidden="true" />
+                              {t.label}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   </GradientCard>
                 </motion.div>

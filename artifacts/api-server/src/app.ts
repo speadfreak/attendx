@@ -4,6 +4,7 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { ensureSchemaMiddleware } from "./lib/schema-bootstrap";
+import { smsReconcileMiddleware } from "./lib/reconcile-middleware";
 
 const app: Express = express();
 
@@ -34,6 +35,11 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 // Memoized per process — ~free after the first call; on failure it logs
 // loudly and lets requests continue (degraded) instead of 500-ing.
 app.use(ensureSchemaMiddleware());
+
+// Phase 6: throttled SMS delivery reconcile — keeps sms_logs statuses honest
+// on every active page without awaiting anything in the request path. This
+// replaces the setInterval sweep in serverless mode (Vercel has no timers).
+app.use(smsReconcileMiddleware());
 
 app.use("/api", router);
 
