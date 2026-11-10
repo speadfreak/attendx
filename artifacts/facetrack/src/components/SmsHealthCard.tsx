@@ -233,7 +233,7 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
         </div>
       )}
 
-      {/* T4: trial-account truth — the #1 root cause of 21612 on this deployment */}
+      {/* Trial-account restrictions are separate from destination sender rules. */}
       {trialAccount && (
         <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-amber-400/30 bg-amber-400/[0.08] p-3">
           <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-300" />
@@ -242,23 +242,23 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
               Trial account — Twilio only delivers to Verified Caller IDs.
             </p>
             <p className="mt-0.5 text-[11px] leading-relaxed text-amber-100/70">
-              Verify parent numbers, enable Ethiopia in Geographic Permissions, or upgrade your account.
+              This trial restriction is separate from sender-pair errors. Verifying a parent number will not make an unsupported sender type valid for an Ethiopian carrier.
             </p>
           </div>
         </div>
       )}
 
-      {/* T4: stable-routing tip when no Messaging Service is configured */}
+      {/* Sender-pool routing is useful, but country rules still apply. */}
       {messagingServiceConfigured === false && (
         <div className="mb-4 flex items-start gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-2.5">
           <Info size={13} className="mt-0.5 shrink-0 text-cyan-300" />
           <p className="text-[11px] leading-relaxed text-white/55">
-            Tip: create a Messaging Service and set TWILIO_MESSAGING_SERVICE_SID for stable sender selection.
+            A Messaging Service manages sender selection. For Ethio Telecom in Ethiopia, its pool must include a registered Alphanumeric Sender ID; the SID alone does not enable delivery.
           </p>
         </div>
       )}
 
-      {/* Sender config — the 21612 fix lives here */}
+      {/* Sender config */}
       <div className="rounded-xl border border-white/5 bg-black/20 p-4">
         <p className={labelCls}>sender configuration</p>
         <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -276,7 +276,7 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
             </select>
           </div>
           <div className="min-w-0">
-            <label className="mb-1 block text-[11px] text-white/50" htmlFor="sms-service-sid">Messaging Service SID (fixes 21612)</label>
+            <label className="mb-1 block text-[11px] text-white/50" htmlFor="sms-service-sid">Messaging Service SID (sender pool)</label>
             <input
               id="sms-service-sid"
               value={serviceSid}
@@ -311,8 +311,8 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
             {saving ? <RefreshCw size={13} className="animate-spin" /> : <ShieldCheck size={13} />} save sender config
           </button>
           <p className="text-[10px] leading-snug text-white/35 min-w-0 flex-1">
-            Messaging Service routing is what makes <span className="text-amber-300/80">Ethiopia (+251)</span> deliverable —
-            US long codes direct-dialing ET get Twilio <span className="font-mono">21612</span>.
+            For <span className="text-amber-300/80">Ethiopia (+251)</span>, a Messaging Service SID alone is not enough:
+            Ethio Telecom requires a registered Alphanumeric Sender ID in its sender pool; US long codes can still get Twilio <span className="font-mono">21612</span>.
           </p>
         </div>
       </div>

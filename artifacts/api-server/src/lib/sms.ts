@@ -222,8 +222,8 @@ export function describeSmsProviderCode(code: string | null): SmsErrorHint | nul
       };
     case "21612":
       return {
-        title: "Number pair not enabled (21612)",
-        fix: "This US number can't text +251 yet: (1) upgrade from Trial or verify the parent's number under Phone Numbers → Verified Caller IDs, (2) enable Ethiopia in Messaging → Geographic Permissions, (3) create a Messaging Service with your sender and set TWILIO_MESSAGING_SERVICE_SID.",
+        title: "Twilio sender/recipient restriction (21612)",
+        fix: "Twilio 21612 means this To/From pairing is not allowed; it does not by itself prove the number format, trial status, or geographic permissions are wrong. For Ethiopia, Twilio says Ethio Telecom blocks unregistered Sender IDs from October 8, 2026 and does not support international long codes. Register an Alphanumeric Sender ID for Ethiopia, add it to the configured Messaging Service's Sender Pool (Add Senders → Alpha Sender), and confirm AttendX is using that service SID. A geo-permission toggle or US number alone will not fix this; check the destination country's Twilio sender rules for other destinations.",
         retryable: false,
         channelSwitchable: true,
       };

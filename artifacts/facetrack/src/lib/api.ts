@@ -508,6 +508,7 @@ export interface SmsDiagnostics {
     channelMode: string;
     defaultCountry: string;
     numberInServicePool: boolean | null;
+    alphaSender: string | null;
   };
   numbers: Array<{ phone: string; friendlyName: string; sms: boolean }>;
   messagingServices: Array<{ sid: string; friendlyName: string; usecase: string | null; poolSize: number }>;

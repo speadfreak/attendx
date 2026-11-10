@@ -5,10 +5,9 @@ import { logger } from "./logger";
 /**
  * Live Twilio account diagnostics for the Operations → SMS Health card.
  * Uses the Twilio REST API (read-only) to verify credentials, inspect the
- * sender configuration and produce prioritized, actionable recommendations —
- * most importantly: detecting when a Messaging Service exists and should be
- * used instead of a raw US long code `From` (the classic Twilio 21612 trap
- * when notifying Ethiopian parents).
+ * sender configuration and produce prioritized, actionable recommendations.
+ * Ethiopia needs destination-specific checks: a Messaging Service SID alone
+ * does not satisfy the Ethio Telecom registered Alphanumeric Sender ID rule.
  */
 
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
@@ -52,6 +51,11 @@ interface TwilioMessagingService {
 interface TwilioServicePhoneNumber {
   sid: string;
   phone_number: string;
+}
+
+interface TwilioAlphaSender {
+  sid: string;
+  alpha_sender: string;
 }
 
 /**
@@ -135,6 +139,7 @@ export interface SmsDiagnostics {
     channelMode: string;
     defaultCountry: string;
     numberInServicePool: boolean | null;
+    alphaSender: string | null;
   };
   numbers: Array<{ phone: string; friendlyName: string; sms: boolean }>;
   messagingServices: Array<{ sid: string; friendlyName: string; usecase: string | null; poolSize: number }>;
@@ -183,6 +188,7 @@ export async function runSmsDiagnostics(): Promise<SmsDiagnostics> {
       channelMode: config.channelMode,
       defaultCountry: config.defaultCountry,
       numberInServicePool: null,
+      alphaSender: null,
     },
     numbers: [],
     messagingServices: [],
@@ -265,6 +271,16 @@ export async function runSmsDiagnostics(): Promise<SmsDiagnostics> {
         diagnostics.sender.messagingServiceName = svc.friendly_name;
         diagnostics.sender.numberInServicePool =
           config.fromNumber == null ? null : pool.some((p) => p.phone_number === config.fromNumber);
+        try {
+          const alphaSenders = await twilioGet<{ alpha_senders: TwilioAlphaSender[] }>(
+            `https://messaging.twilio.com/v1/Services/${svc.sid}/AlphaSenders?PageSize=50`,
+          );
+          diagnostics.sender.alphaSender = alphaSenders.alpha_senders?.[0]?.alpha_sender ?? null;
+        } catch (err) {
+          // Alpha Sender support may be disabled on the account; diagnostics
+          // should still return the rest of the service and number-pool data.
+          logger.warn({ err }, "diagnostics: configured service alpha sender fetch failed");
+        }
       }
     }
   } catch (err) {
@@ -272,6 +288,7 @@ export async function runSmsDiagnostics(): Promise<SmsDiagnostics> {
   }
 
   // 3. Destination reachability from the actual parent phone numbers on file
+  let ethiopiaParentCount = 0;
   try {
     const parents = await db
       .select({ phone: studentsTable.parentPhone })
@@ -286,6 +303,7 @@ export async function runSmsDiagnostics(): Promise<SmsDiagnostics> {
     }
     for (const { prefix, parents: count } of [...byPrefix.entries()].map(([prefix, parents]) => ({ prefix, parents }))) {
       const meta = COUNTRY_PREFIXES.find((c) => c.prefix === prefix)!;
+      if (meta.iso === "ET") ethiopiaParentCount = count;
       let reachable = false;
       let price: string | null = null;
       try {
@@ -311,25 +329,52 @@ export async function runSmsDiagnostics(): Promise<SmsDiagnostics> {
     logger.warn({ err }, "diagnostics: destination analysis failed");
   }
 
-  // 4. The 21612-class recommendation — the whole reason this card exists
-  if (!config.messagingServiceSid && diagnostics.messagingServices.length > 0) {
-    const first = diagnostics.messagingServices[0];
+  // 4. Verify that the effective Messaging Service belongs to this account
+  // and that its sender pool can meet destination-specific rules.
+  const configuredService = config.messagingServiceSid
+    ? diagnostics.messagingServices.find((service) => service.sid === config.messagingServiceSid)
+    : undefined;
+
+  if (config.messagingServiceSid && !configuredService) {
     diagnostics.recommendations.push({
       severity: "critical",
-      title: "Sending with a raw From number — international SMS will fail (Twilio 21612)",
-      detail: `US/CA long codes direct-dialing destinations like Ethiopia are rejected. Your account has Messaging Service "${first.friendlyName}" (${first.sid}${first.poolSize ? `, ${first.poolSize} number(s) in pool` : ""}). FIX: paste that SID into Operations → SMS Health → Messaging Service SID (or set TWILIO_MESSAGING_SERVICE_SID). This is the single change that makes Ethiopian delivery work.`,
+      title: "Configured Messaging Service was not found in this Twilio account",
+      detail: `AttendX is using ${config.messagingServiceSid}, but Twilio did not return that service for the configured credentials. Confirm the SID belongs to the same account as TWILIO_ACCOUNT_SID, then correct the effective Messaging Service SID.`,
     });
-  } else if (config.messagingServiceSid && diagnostics.sender.numberInServicePool === false) {
+  } else if (config.messagingServiceSid && configuredService && configuredService.poolSize === 0 && !diagnostics.sender.alphaSender) {
     diagnostics.recommendations.push({
       severity: "warning",
-      title: "Configured Messaging Service has no numbers in its pool",
-      detail: `Service ${config.messagingServiceSid} is set, but no sender number is in its pool. Add your Twilio number to the service in the Twilio console → Messaging → Services → Sender Pool.`,
+      title: "Configured Messaging Service has no detected senders",
+      detail: `Service ${config.messagingServiceSid} is set, but AttendX found neither a phone number nor an Alphanumeric Sender ID in its sender pool. Add a supported sender in Twilio Console → Messaging → Services → Sender Pool.`,
     });
-  } else if (config.messagingServiceSid) {
+  } else if (config.messagingServiceSid && configuredService && config.fromNumber && diagnostics.sender.numberInServicePool === false) {
+    diagnostics.recommendations.push({
+      severity: "warning",
+      title: "Configured fallback number is not in this service's pool",
+      detail: `AttendX is using Messaging Service ${config.messagingServiceSid}, but ${config.fromNumber} is not among its phone-number senders. The service may still use an attached Alphanumeric Sender ID; verify its sender pool in Twilio Console.`,
+    });
+  } else if (config.messagingServiceSid && configuredService) {
     diagnostics.recommendations.push({
       severity: "info",
       title: "Messaging Service routing is active",
-      detail: `Sender: ${diagnostics.sender.messagingServiceName ?? config.messagingServiceSid}. International routing (incl. Ethiopia) is handled by Twilio's copilot.`,
+      detail: `Sender service: ${diagnostics.sender.messagingServiceName ?? config.messagingServiceSid}.${diagnostics.sender.alphaSender ? ` Alphanumeric Sender ID "${diagnostics.sender.alphaSender}" is attached.` : " No Alphanumeric Sender ID was found on this service."} Twilio still applies destination-specific sender rules.`,
+    });
+  } else if (!config.messagingServiceSid && config.fromNumber) {
+    diagnostics.recommendations.push({
+      severity: "warning",
+      title: "AttendX is sending from a direct phone number",
+      detail: `The active From number is ${config.fromNumber}. Use a Messaging Service to manage eligible senders; this does not bypass destination-specific registration or network restrictions.`,
+    });
+  }
+
+  if (ethiopiaParentCount > 0) {
+    const senderNote = diagnostics.sender.alphaSender
+      ? `The configured service has Alpha Sender "${diagnostics.sender.alphaSender}", but this check cannot confirm that Twilio has registered it for Ethiopia.`
+      : "No Alphanumeric Sender ID was found on AttendX's effective Messaging Service.";
+    diagnostics.recommendations.push({
+      severity: "warning",
+      title: "Ethiopia: verify a registered Alphanumeric Sender ID",
+      detail: `${ethiopiaParentCount} parent number(s) are in +251. Twilio's current Ethiopia guidance says unregistered Sender IDs to Ethio Telecom are blocked from October 8, 2026, and international long codes are not supported on that network. ${senderNote} Register the sender ID for Ethiopia, add it to the effective Messaging Service's Sender Pool, and verify the recipient's carrier; a service SID or geographic-permissions toggle alone is not enough.`,
     });
   }
 
