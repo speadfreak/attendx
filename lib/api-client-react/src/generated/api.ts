@@ -60,9 +60,12 @@ import type {
   PiStatus,
   PreviewAttendanceClearParams,
   RecognizeFaceBody,
+  RetryFailedSmsLogsBody,
   ReviewDecisionInput,
   ReviewDecisionResponse,
   SmsLog,
+  SmsRetryAllResult,
+  SmsRetryResult,
   Student,
   SystemSettings,
   SystemSettingsInput,
@@ -1791,6 +1794,176 @@ export function useListSmsLogs<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Re-send every failed/undelivered SMS that has no newer retry attempt
+ */
+export const getRetryFailedSmsLogsUrl = () => {
+  return `/api/sms-logs/retry-failed`;
+};
+
+export const retryFailedSmsLogs = async (
+  retryFailedSmsLogsBody?: RetryFailedSmsLogsBody,
+  options?: RequestInit,
+): Promise<SmsRetryAllResult> => {
+  return customFetch<SmsRetryAllResult>(getRetryFailedSmsLogsUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(retryFailedSmsLogsBody),
+  });
+};
+
+export const getRetryFailedSmsLogsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof retryFailedSmsLogs>>,
+    TError,
+    { data: BodyType<RetryFailedSmsLogsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof retryFailedSmsLogs>>,
+  TError,
+  { data: BodyType<RetryFailedSmsLogsBody> },
+  TContext
+> => {
+  const mutationKey = ["retryFailedSmsLogs"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof retryFailedSmsLogs>>,
+    { data: BodyType<RetryFailedSmsLogsBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return retryFailedSmsLogs(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RetryFailedSmsLogsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof retryFailedSmsLogs>>
+>;
+export type RetryFailedSmsLogsMutationBody = BodyType<RetryFailedSmsLogsBody>;
+export type RetryFailedSmsLogsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Re-send every failed/undelivered SMS that has no newer retry attempt
+ */
+export const useRetryFailedSmsLogs = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof retryFailedSmsLogs>>,
+    TError,
+    { data: BodyType<RetryFailedSmsLogsBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof retryFailedSmsLogs>>,
+  TError,
+  { data: BodyType<RetryFailedSmsLogsBody> },
+  TContext
+> => {
+  return useMutation(getRetryFailedSmsLogsMutationOptions(options));
+};
+
+/**
+ * @summary Re-send one failed/undelivered SMS log entry
+ */
+export const getRetrySmsLogUrl = (id: number) => {
+  return `/api/sms-logs/${id}/retry`;
+};
+
+export const retrySmsLog = async (
+  id: number,
+  options?: RequestInit,
+): Promise<SmsRetryResult> => {
+  return customFetch<SmsRetryResult>(getRetrySmsLogUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRetrySmsLogMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof retrySmsLog>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof retrySmsLog>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["retrySmsLog"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof retrySmsLog>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return retrySmsLog(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RetrySmsLogMutationResult = NonNullable<
+  Awaited<ReturnType<typeof retrySmsLog>>
+>;
+
+export type RetrySmsLogMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Re-send one failed/undelivered SMS log entry
+ */
+export const useRetrySmsLog = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof retrySmsLog>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof retrySmsLog>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getRetrySmsLogMutationOptions(options));
+};
 
 /**
  * @summary Get dashboard summary statistics

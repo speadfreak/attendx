@@ -493,6 +493,72 @@ paths:
                 items:
                   $ref: "#/components/schemas/SmsLog"
 
+  /sms-logs/retry-failed:
+    post:
+      operationId: retryFailedSmsLogs
+      tags: [sms]
+      summary: Re-send every failed/undelivered SMS that has no newer retry attempt
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                limit:
+                  type: integer
+                  minimum: 1
+                  maximum: 40
+                  default: 40
+      responses:
+        "200":
+          description: Bulk retry summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SmsRetryAllResult"
+
+  /sms-logs/{id}/retry:
+    post:
+      operationId: retrySmsLog
+      tags: [sms]
+      summary: Re-send one failed/undelivered SMS log entry
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Retry attempt outcome
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SmsRetryResult"
+        "400":
+          description: Invalid log id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: SMS log not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Row not retryable or a retry is already in flight
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /dashboard/stats:
     get:
       operationId: getDashboardStats
@@ -1209,6 +1275,12 @@ components:
           type: ["string", "null"]
         statusUpdatedAt:
           type: ["string", "null"]
+        # Retry lineage — retryOfId points at the original failed row when
+        # this row is a re-send; hasRetry flags rows already re-sent once.
+        retryOfId:
+          type: ["integer", "null"]
+        hasRetry:
+          type: boolean
         errorHint:
           type: ["object", "null"]
           properties:
@@ -1230,6 +1302,55 @@ components:
         - provider
         - sentAt
         - errorMessage
+        - hasRetry
+
+    SmsRetryResult:
+      type: object
+      description: Outcome of one SMS retry attempt
+      properties:
+        originalLogId:
+          type: integer
+          description: The failed sms_logs row the retry was launched from
+        retryLogId:
+          type: ["integer", "null"]
+          description: The NEW attempt row written for this retry (null when even bookkeeping failed)
+        status:
+          type: ["string", "null"]
+          description: Status the new attempt row was created with (queued/sent/failed/simulated)
+        error:
+          type: ["string", "null"]
+          description: Human-readable failure reason, null when the gateway accepted the message
+      required:
+        - originalLogId
+        - retryLogId
+        - status
+        - error
+
+    SmsRetryAllResult:
+      type: object
+      description: Summary of a bulk "retry all failed" run
+      properties:
+        attempted:
+          type: integer
+        accepted:
+          type: integer
+          description: Attempts the gateway accepted (new row queued/sent)
+        failed:
+          type: integer
+          description: Attempts rejected before the gateway accepted
+        skipped:
+          type: integer
+          description: Rows skipped because a retry was already in flight
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/SmsRetryResult"
+      required:
+        - attempted
+        - accepted
+        - failed
+        - skipped
+        - results
 
     EncodeFaceBody:
       type: object

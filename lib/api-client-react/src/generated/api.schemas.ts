@@ -137,6 +137,16 @@ export interface UpdateAttendanceBody {
   notes?: string | null;
 }
 
+/**
+ * @nullable
+ */
+export type SmsLogErrorHint = {
+  title?: string;
+  fix?: string;
+  retryable?: boolean;
+  channelSwitchable?: boolean;
+} | null;
+
 export interface SmsLog {
   id: number;
   studentId: number;
@@ -148,15 +158,56 @@ export interface SmsLog {
   sentAt: string;
   /** @nullable */
   errorMessage: string | null;
-  // Phase 6: manual extension — re-add after orval regen
+  /** @nullable */
   channel?: string | null;
+  /** @nullable */
   errorCode?: string | null;
+  /** @nullable */
   providerSid?: string | null;
+  /** @nullable */
   statusUpdatedAt?: string | null;
-  errorHint?: {
-    title: string;
-    fix: string;
-  } | null;
+  /** @nullable */
+  retryOfId?: number | null;
+  hasRetry: boolean;
+  /** @nullable */
+  errorHint?: SmsLogErrorHint;
+}
+
+/**
+ * Outcome of one SMS retry attempt
+ */
+export interface SmsRetryResult {
+  /** The failed sms_logs row the retry was launched from */
+  originalLogId: number;
+  /**
+   * The NEW attempt row written for this retry (null when even bookkeeping failed)
+   * @nullable
+   */
+  retryLogId: number | null;
+  /**
+   * Status the new attempt row was created with (queued/sent/failed/simulated)
+   * @nullable
+   */
+  status: string | null;
+  /**
+   * Human-readable failure reason, null when the gateway accepted the message
+   * @nullable
+   */
+  error: string | null;
+}
+
+/**
+ * Summary of a bulk "retry all failed" run
+ */
+export interface SmsRetryAllResult {
+  attempted: number;
+  /** Attempts the gateway accepted (new row queued/sent) */
+  accepted: number;
+  /** Attempts rejected before the gateway accepted */
+  failed: number;
+  /** Rows skipped because a retry was already in flight */
+  skipped: number;
+  results: SmsRetryResult[];
 }
 
 /**
@@ -651,6 +702,14 @@ export type ListSmsLogsParams = {
    * @nullable
    */
   studentId?: number | null;
+};
+
+export type RetryFailedSmsLogsBody = {
+  /**
+   * @minimum 1
+   * @maximum 40
+   */
+  limit?: number;
 };
 
 export type PreviewAttendanceClearParams = {

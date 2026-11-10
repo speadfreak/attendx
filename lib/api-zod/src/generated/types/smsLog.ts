@@ -5,6 +5,7 @@
  * AttendX intelligent attendance and Pi operations API
  * OpenAPI spec version: 0.1.0
  */
+import type { SmsLogErrorHint } from "./smsLogErrorHint";
 
 export interface SmsLog {
   id: number;
@@ -17,4 +18,17 @@ export interface SmsLog {
   sentAt: string;
   /** @nullable */
   errorMessage: string | null;
+  /** @nullable */
+  channel?: string | null;
+  /** @nullable */
+  errorCode?: string | null;
+  /** @nullable */
+  providerSid?: string | null;
+  /** @nullable */
+  statusUpdatedAt?: string | null;
+  /** @nullable */
+  retryOfId?: number | null;
+  hasRetry: boolean;
+  /** @nullable */
+  errorHint?: SmsLogErrorHint;
 }

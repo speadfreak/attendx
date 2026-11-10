@@ -1,12 +1,21 @@
 import { useState } from "react";
-import { useListSmsLogs, getListSmsLogsQueryKey, type SmsLog } from "@workspace/api-client-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useListSmsLogs, getListSmsLogsQueryKey, retrySmsLog, retryFailedSmsLogs, type SmsLog } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
-import { MessageSquare, AlertCircle, AlertTriangle, CheckCircle2, Phone, RefreshCw } from "lucide-react";
+import {
+  MessageSquare, AlertCircle, AlertTriangle, CheckCircle2, Phone, RefreshCw,
+  RotateCcw, Zap, Loader2,
+} from "lucide-react";
 import { format, formatDistanceToNowStrict } from "date-fns";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
@@ -30,6 +39,9 @@ const STATUS_FILTERS = [
 
 const chip = "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium leading-none";
 
+/** Statuses whose rows can be re-sent through the gateway. */
+const RETRYABLE = new Set(["failed", "undelivered"]);
+
 function PulsingDot({ cls }: { cls: string }) {
   return (
     <span className="relative flex h-2 w-2 shrink-0">
@@ -46,7 +58,7 @@ function StatusChip({ log }: { log: SmsLogRow }) {
       case "queued":
         return (
           <span
-            title="Waiting on the carrier — Twilio's verdict (sent/delivered/failed) upgrades this row automatically. The page polls every 20s while any row is pending."
+            title="Waiting on the gateway — the delivery verdict (sent/delivered/failed) upgrades this row automatically. The page polls every 20s while any row is pending."
             className={`${chip} border-slate-400/30 bg-slate-500/10 text-slate-600 dark:text-slate-300`}
           >
             <PulsingDot cls="bg-slate-400" /> Queued
@@ -56,7 +68,7 @@ function StatusChip({ log }: { log: SmsLogRow }) {
         // Legacy rows predate status callbacks (no providerSid) — render as before.
         return log.providerSid ? (
           <span
-            title="Accepted by the carrier — awaiting final delivery confirmation (checked automatically)."
+            title="Accepted by the gateway — awaiting final delivery confirmation (checked automatically)."
             className={`${chip} border-emerald-500/40 bg-transparent text-emerald-600 dark:text-emerald-400`}
           >
             Sent to carrier
@@ -122,6 +134,8 @@ function StatusChip({ log }: { log: SmsLogRow }) {
 
 export default function SmsLogsPage() {
   const [status, setStatus] = useState<string>("all");
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   // T4: auto-refresh — poll every 20s while any visible row still awaits a
   // carrier verdict (queued/sent); stop polling once every row is final.
@@ -141,7 +155,77 @@ export default function SmsLogsPage() {
     },
   );
 
-  // T4: on-demand "check with carrier now" — forces a Twilio reconcile sweep
+  const refreshSmsData = () => {
+    // Prefix key matches the list (all filter variants) + the health endpoint.
+    void queryClient.invalidateQueries({ queryKey: ["/api/sms-logs"] });
+    void queryClient.invalidateQueries({ queryKey: ["sms-health"] });
+  };
+
+  // ── Insane retry engine ─────────────────────────────────────────────
+  // Per-row retry: re-sends the exact message through the active gateway.
+  // The failed row is never rewritten — a NEW row with retry lineage appears
+  // and runs its own honest queued → sent/delivered/failed lifecycle.
+  const retryOne = useMutation({
+    mutationFn: ({ id }: { id: number }) => retrySmsLog(id),
+    onSuccess: (result) => {
+      refreshSmsData();
+      if (result.error == null && result.status !== "failed") {
+        toast({
+          title: `Retry accepted — attempt #${result.retryLogId ?? "?"} is on its way`,
+          description: "The gateway queued the message. Delivery status upgrades automatically.",
+        });
+      } else {
+        toast({
+          title: "Retry failed",
+          description: result.error ?? "The gateway rejected the message — check the new log row for the reason.",
+          variant: "destructive",
+        });
+      }
+    },
+    onError: (err: unknown) => {
+      toast({
+        title: "Retry failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Retry ALL failed rows that don't have a newer attempt yet — newest
+  // first, capped at 40 per run, concurrency-limited server-side.
+  const retryAll = useMutation({
+    mutationFn: () => retryFailedSmsLogs(undefined),
+    onSuccess: (summary) => {
+      refreshSmsData();
+      if (summary.attempted === 0) {
+        toast({
+          title: summary.skipped > 0 ? "Retries already in flight" : "Nothing to retry",
+          description:
+            summary.skipped > 0
+              ? "Every failed message already has a retry running — give it a few seconds."
+              : "No failed messages are waiting for a first retry.",
+        });
+        return;
+      }
+      toast({
+        title: `Re-sent ${summary.accepted} of ${summary.attempted} message${summary.attempted === 1 ? "" : "s"}`,
+        description:
+          summary.failed > 0
+            ? `${summary.failed} could not be re-sent — their new rows show why.`
+            : "All retries were accepted by the gateway.",
+        variant: summary.failed > 0 ? "destructive" : "default",
+      });
+    },
+    onError: (err: unknown) => {
+      toast({
+        title: "Bulk retry failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // T4: on-demand "check with carrier now" — forces a reconcile sweep
   // server-side, then refreshes the visible rows.
   const [reconciling, setReconciling] = useState(false);
   const [reconcileNote, setReconcileNote] = useState<string | null>(null);
@@ -165,6 +249,10 @@ export default function SmsLogsPage() {
 
   const errorMessage = error instanceof Error ? error.message : "Unknown error";
 
+  // Failed rows still waiting for their FIRST retry — the "Retry all" target.
+  const failedRows = logs?.filter((r) => RETRYABLE.has(r.status) && !r.hasRetry) ?? [];
+  const retryingOneId = retryOne.isPending ? retryOne.variables?.id : undefined;
+
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
       <div className="gx-page-header flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
@@ -185,11 +273,51 @@ export default function SmsLogsPage() {
             className="gx-glow-hover shrink-0"
             onClick={() => void runReconcile()}
             disabled={reconciling}
-            aria-label="Check delivery status with Twilio now"
+            aria-label="Check delivery status with the gateway now"
           >
             <RefreshCw className={`w-4 h-4 ${reconciling ? "animate-spin" : ""}`} />
             Check delivery status
           </Button>
+          {failedRows.length > 0 && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  disabled={retryAll.isPending}
+                  aria-label={`Retry all ${failedRows.length} failed messages`}
+                >
+                  {retryAll.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Zap className="w-4 h-4" />
+                  )}
+                  Retry failed ({failedRows.length})
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Re-send {failedRows.length} failed message{failedRows.length === 1 ? "" : "s"}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Each failed message is re-sent to its parent through the active gateway. Rows you already
+                    retried once are skipped automatically, so nobody gets double texts. New attempt rows will
+                    appear here and track their own delivery status.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-destructive text-white hover:bg-destructive/90"
+                    onClick={() => retryAll.mutate()}
+                  >
+                    <Zap className="w-4 h-4 mr-1.5" />
+                    Retry {failedRows.length} now
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
           <div className="w-full sm:w-[200px]">
             <Select value={status} onValueChange={setStatus}>
               <SelectTrigger className="min-h-[44px]" aria-label="Filter by delivery status">
@@ -229,67 +357,112 @@ export default function SmsLogsPage() {
                 <TableHead className="w-1/3">Message</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Timestamp</TableHead>
+                <TableHead className="text-right pr-4">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 Array(5).fill(0).map((_, i) => (
                   <TableRow key={i}>
-                    {Array(5).fill(0).map((_, j) => (
+                    {Array(6).fill(0).map((_, j) => (
                       <TableCell key={j}><Skeleton className="h-5 w-full" /></TableCell>
                     ))}
                   </TableRow>
                 ))
               ) : logs?.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="gx-empty-tint h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="gx-empty-tint h-32 text-center text-muted-foreground">
                     <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
                     No SMS logs found.
                   </TableCell>
                 </TableRow>
               ) : (
-                logs?.map((log) => (
-                  <TableRow key={log.id} className="hover:bg-muted/30">
-                    <TableCell className="font-medium text-sm">{log.studentName}'s Parent</TableCell>
-                    <TableCell className="text-muted-foreground font-mono text-xs">
-                      <div className="flex items-center gap-1.5">
-                        <Phone className="w-3 h-3" />
-                        {log.parentPhone}
-                      </div>
-                      {log.channel && log.channel !== "sms" && (
-                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground/70">{log.channel}</div>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <p className="text-xs text-muted-foreground truncate max-w-[300px]" title={log.message}>
-                        {log.message}
-                      </p>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <StatusChip log={log} />
-                        {log.errorCode && (
-                          <span className="gx-chip gx-chip-amber font-mono">
-                            err {log.errorCode}
-                          </span>
-                        )}
-                      </div>
-                      {log.errorHint && (
-                        <p className="mt-1 max-w-[260px] text-[11px] leading-snug text-muted-foreground">
-                          <span className="font-medium">{log.errorHint.title}:</span> {log.errorHint.fix}
-                        </p>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground font-mono text-xs">
-                      <div>{format(new Date(log.sentAt), 'MMM d, HH:mm')}</div>
-                      {log.statusUpdatedAt && (
-                        <div className="font-sans text-[10px] text-muted-foreground/70">
-                          status {formatDistanceToNowStrict(new Date(log.statusUpdatedAt), { addSuffix: true })}
+                logs?.map((log) => {
+                  const canRetry = RETRYABLE.has(log.status);
+                  const retrying = retryingOneId === log.id;
+                  return (
+                    <TableRow key={log.id} className="hover:bg-muted/30">
+                      <TableCell className="font-medium text-sm">{log.studentName}'s Parent</TableCell>
+                      <TableCell className="text-muted-foreground font-mono text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <Phone className="w-3 h-3" />
+                          {log.parentPhone}
                         </div>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))
+                        {log.channel && log.channel !== "sms" && (
+                          <div className="text-[10px] uppercase tracking-wide text-muted-foreground/70">{log.channel}</div>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <p className="text-xs text-muted-foreground truncate max-w-[300px]" title={log.message}>
+                          {log.message}
+                        </p>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <StatusChip log={log} />
+                          {log.errorCode && (
+                            <span className="gx-chip gx-chip-amber font-mono">
+                              err {log.errorCode}
+                            </span>
+                          )}
+                          {log.hasRetry && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className={`${chip} border-violet-500/40 bg-transparent text-violet-600 dark:text-violet-400`}>
+                                    <RotateCcw className="h-2.5 w-2.5" /> Retried
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-xs">
+                                  <p>A newer attempt of this message exists — check the row marked “retry of #{log.id}”.</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                        </div>
+                        {log.errorHint && (
+                          <p className="mt-1 max-w-[260px] text-[11px] leading-snug text-muted-foreground">
+                            <span className="font-medium">{log.errorHint.title}:</span> {log.errorHint.fix}
+                          </p>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground font-mono text-xs">
+                        <div>{format(new Date(log.sentAt), 'MMM d, HH:mm')}</div>
+                        {log.statusUpdatedAt && (
+                          <div className="font-sans text-[10px] text-muted-foreground/70">
+                            status {formatDistanceToNowStrict(new Date(log.statusUpdatedAt), { addSuffix: true })}
+                          </div>
+                        )}
+                        {log.retryOfId != null && (
+                          <div className="font-sans text-[10px] text-violet-600 dark:text-violet-400">
+                            retry of #{log.retryOfId}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right pr-4">
+                        {canRetry ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            disabled={retryOne.isPending}
+                            onClick={() => retryOne.mutate({ id: log.id })}
+                            aria-label={`Retry message to ${log.parentPhone}`}
+                          >
+                            {retrying ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <RotateCcw className="w-3.5 h-3.5" />
+                            )}
+                            Retry
+                          </Button>
+                        ) : (
+                          <span className="text-muted-foreground/40 text-xs" aria-hidden="true">—</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>

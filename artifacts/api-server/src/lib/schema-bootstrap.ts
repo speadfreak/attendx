@@ -18,7 +18,12 @@ import { pool } from "@workspace/db";
  * through pg's simple query protocol (multi-statement, one round-trip).
  */
 
-const MIGRATION_NAME = "0007_phase6_sms_geo_fraud";
+/**
+ * Every migration the server self-applies at boot, in order. Each entry is
+ * ledgered in schema_migrations independently and is fully idempotent, so
+ * racing processes / repeated boots are safe.
+ * (Declared after the SQL template constants below.)
+ */
 
 const PHASE6_MIGRATION_SQL = `-- ============================================================================
 -- 0007_phase6_sms_geo_fraud.sql
@@ -146,6 +151,24 @@ CREATE INDEX IF NOT EXISTS qr_scan_logs_student_time_idx ON qr_scan_logs (studen
 CREATE INDEX IF NOT EXISTS qr_scan_logs_terminal_time_idx ON qr_scan_logs (terminal_id, created_at);
 `;
 
+// ----------------------------------------------------------------------------
+// 0008_sms_retry.sql — lib/db/src/schema/sms_logs.ts
+// Retry lineage: when a row re-sends an earlier failed attempt, retry_of_id
+// points at the original. "Retry all failed" skips rows that already have a
+// newer attempt (NOT EXISTS) so parents never get duplicate spam.
+// ----------------------------------------------------------------------------
+const SMS_RETRY_MIGRATION_SQL = `
+ALTER TABLE sms_logs ADD COLUMN IF NOT EXISTS retry_of_id INTEGER;
+
+-- Mirror of schema index("sms_logs_retry_of_idx").on(t.retryOfId)
+CREATE INDEX IF NOT EXISTS sms_logs_retry_of_idx ON sms_logs (retry_of_id);
+`;
+
+const MIGRATIONS: Array<{ name: string; sql: string }> = [
+  { name: "0007_phase6_sms_geo_fraud", sql: PHASE6_MIGRATION_SQL },
+  { name: "0008_sms_retry", sql: SMS_RETRY_MIGRATION_SQL },
+];
+
 export interface EnsureSchemaResult {
   /** true when the migration was applied by this call, false when already present / skipped */
   applied: boolean;
@@ -165,43 +188,41 @@ async function runEnsureSchema(): Promise<EnsureSchemaResult> {
     return { applied: false, durationMs: 0 };
   }
 
-  console.log(`[schema-bootstrap] applying migration ${MIGRATION_NAME}...`);
-
   // (i) migration ledger (idempotent)
   await pool.query(
     "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())",
   );
 
-  // (ii) already applied?
-  const existing = await pool.query<{ name: string }>(
-    "SELECT name FROM schema_migrations WHERE name = $1",
-    [MIGRATION_NAME],
-  );
-  if (existing.rowCount && existing.rowCount > 0) {
-    console.log("[schema-bootstrap] schema verified (already applied)");
+  // (ii) which migrations still need applying?
+  const appliedRows = await pool.query<{ name: string }>("SELECT name FROM schema_migrations");
+  const applied = new Set(appliedRows.rows.map((r) => r.name));
+  const pending = MIGRATIONS.filter((m) => !applied.has(m.name));
+
+  if (!pending.length) {
+    console.log("[schema-bootstrap] schema verified (all migrations already applied)");
     return { applied: false, durationMs: Date.now() - startedAt };
   }
 
-  try {
-    // (iii) apply the Phase 6 migration — no $n placeholders, so the simple
-    // query protocol executes every statement in one round-trip.
-    await pool.query(PHASE6_MIGRATION_SQL);
-
-    // (iv) record it so subsequent boots/instances skip the work
-    await pool.query(
-      "INSERT INTO schema_migrations (name) VALUES ($1) ON CONFLICT DO NOTHING",
-      [MIGRATION_NAME],
-    );
-  } catch (err) {
-    // Self-healing must never take the whole app down: log loudly and let
-    // the caller decide (middleware → next(), boot → keep serving).
-    console.error(`[schema-bootstrap] FAILED: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`);
-    throw err;
+  for (const migration of pending) {
+    console.log(`[schema-bootstrap] applying migration ${migration.name}...`);
+    try {
+      // No $n placeholders — the simple query protocol executes every
+      // statement of the migration in one round-trip.
+      await pool.query(migration.sql);
+      await pool.query(
+        "INSERT INTO schema_migrations (name) VALUES ($1) ON CONFLICT DO NOTHING",
+        [migration.name],
+      );
+      console.log(`[schema-bootstrap] migration ${migration.name} applied in ${Date.now() - startedAt}ms`);
+    } catch (err) {
+      // Self-healing must never take the whole app down: log loudly and let
+      // the caller decide (middleware → next(), boot → keep serving).
+      console.error(`[schema-bootstrap] FAILED (${migration.name}): ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`);
+      throw err;
+    }
   }
 
-  const durationMs = Date.now() - startedAt;
-  console.log(`[schema-bootstrap] migration ${MIGRATION_NAME} applied in ${durationMs}ms`);
-  return { applied: true, durationMs };
+  return { applied: true, durationMs: Date.now() - startedAt };
 }
 
 export function ensureSchema(): Promise<EnsureSchemaResult> {

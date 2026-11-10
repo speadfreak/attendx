@@ -344,19 +344,111 @@ export const ListSmsLogsResponseItem = zod.object({
   provider: zod.string(),
   sentAt: zod.string(),
   errorMessage: zod.string().nullable(),
-  // Phase 6: manual extension — re-add after orval regen
-  channel: zod.string().nullable().optional(),
-  errorCode: zod.string().nullable().optional(),
-  providerSid: zod.string().nullable().optional(),
-  statusUpdatedAt: zod.string().nullable().optional(),
-  errorHint: zod.object({
-    title: zod.string(),
-    fix: zod.string(),
-    retryable: zod.boolean(),
-    channelSwitchable: zod.boolean(),
-  }).nullable().optional(),
+  channel: zod.string().nullish(),
+  errorCode: zod.string().nullish(),
+  providerSid: zod.string().nullish(),
+  statusUpdatedAt: zod.string().nullish(),
+  retryOfId: zod.number().nullish(),
+  hasRetry: zod.boolean(),
+  errorHint: zod
+    .object({
+      title: zod.string().optional(),
+      fix: zod.string().optional(),
+      retryable: zod.boolean().optional(),
+      channelSwitchable: zod.boolean().optional(),
+    })
+    .nullish(),
 });
 export const ListSmsLogsResponse = zod.array(ListSmsLogsResponseItem);
+
+/**
+ * @summary Re-send every failed/undelivered SMS that has no newer retry attempt
+ */
+export const retryFailedSmsLogsBodyLimitDefault = 40;
+export const retryFailedSmsLogsBodyLimitMax = 40;
+
+export const RetryFailedSmsLogsBody = zod.object({
+  limit: zod
+    .number()
+    .min(1)
+    .max(retryFailedSmsLogsBodyLimitMax)
+    .default(retryFailedSmsLogsBodyLimitDefault),
+});
+
+export const RetryFailedSmsLogsResponse = zod
+  .object({
+    attempted: zod.number(),
+    accepted: zod
+      .number()
+      .describe("Attempts the gateway accepted (new row queued\/sent)"),
+    failed: zod
+      .number()
+      .describe("Attempts rejected before the gateway accepted"),
+    skipped: zod
+      .number()
+      .describe("Rows skipped because a retry was already in flight"),
+    results: zod.array(
+      zod
+        .object({
+          originalLogId: zod
+            .number()
+            .describe("The failed sms_logs row the retry was launched from"),
+          retryLogId: zod
+            .number()
+            .nullable()
+            .describe(
+              "The NEW attempt row written for this retry (null when even bookkeeping failed)",
+            ),
+          status: zod
+            .string()
+            .nullable()
+            .describe(
+              "Status the new attempt row was created with (queued\/sent\/failed\/simulated)",
+            ),
+          error: zod
+            .string()
+            .nullable()
+            .describe(
+              "Human-readable failure reason, null when the gateway accepted the message",
+            ),
+        })
+        .describe("Outcome of one SMS retry attempt"),
+    ),
+  })
+  .describe('Summary of a bulk \"retry all failed\" run');
+
+/**
+ * @summary Re-send one failed/undelivered SMS log entry
+ */
+export const RetrySmsLogParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const RetrySmsLogResponse = zod
+  .object({
+    originalLogId: zod
+      .number()
+      .describe("The failed sms_logs row the retry was launched from"),
+    retryLogId: zod
+      .number()
+      .nullable()
+      .describe(
+        "The NEW attempt row written for this retry (null when even bookkeeping failed)",
+      ),
+    status: zod
+      .string()
+      .nullable()
+      .describe(
+        "Status the new attempt row was created with (queued\/sent\/failed\/simulated)",
+      ),
+    error: zod
+      .string()
+      .nullable()
+      .describe(
+        "Human-readable failure reason, null when the gateway accepted the message",
+      ),
+  })
+  .describe("Outcome of one SMS retry attempt");
 
 /**
  * @summary Get dashboard summary statistics

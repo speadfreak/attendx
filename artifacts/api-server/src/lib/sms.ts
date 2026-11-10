@@ -212,6 +212,10 @@ export class SmsDeliveryError extends Error {
   readonly retryable: boolean;
   readonly channelSwitchable: boolean;
   readonly fix: string | null;
+  /** sms_logs row id recording this failure, when one was written — lets the
+   *  retry endpoints point the admin at the exact attempt row. Mutable:
+   *  the failure row is persisted AFTER the error object is constructed. */
+  logId: number | null;
 
   constructor(
     message: string,
@@ -221,6 +225,7 @@ export class SmsDeliveryError extends Error {
       retryable?: boolean;
       channelSwitchable?: boolean;
       fix?: string | null;
+      logId?: number | null;
     } = {},
   ) {
     super(message);
@@ -230,6 +235,7 @@ export class SmsDeliveryError extends Error {
     this.retryable = options.retryable ?? false;
     this.channelSwitchable = options.channelSwitchable ?? false;
     this.fix = options.fix ?? null;
+    this.logId = options.logId ?? null;
   }
 }
 
@@ -550,12 +556,27 @@ export async function textbeeSend(params: { to: string; body: string }): Promise
     });
   }
 
-  const data = res.json;
+  const envelope = res.json as TextbeeSendData | { data?: TextbeeSendData } | null;
+  // TextBee wraps EVERY response in a `{ data: { … } }` envelope, e.g.
+  //   {"data":{"success":true,"message":"SMS added to queue for processing",
+  //           "smsBatchId":"6af3117d…","recipientCount":1}}
+  // Older/alternate deployments returned the fields at the top level —
+  // accept both shapes (regression fix: the wrapped success used to fall
+  // through to "did not accept" even though the SMS went out fine).
+  const data: TextbeeSendData | null =
+    envelope && typeof envelope === "object" && "data" in envelope &&
+    envelope.data && typeof envelope.data === "object"
+      ? (envelope as { data: TextbeeSendData }).data
+      : (envelope as TextbeeSendData | null);
   // The send-response shape depends on the hosted queue:
   //  - queued:  { success, smsBatchId, recipientCount, … }
   //  - immediate (FCM direct): { successCount, failureCount, … } — no ids.
   const batchId = data?.smsBatchId ?? null;
-  const accepted = batchId ? true : (data?.successCount ?? 0) > 0;
+  const immediateOk = (data?.successCount ?? 0) > 0;
+  // Some queue responses omit smsBatchId but still say success — accept, and
+  // let the reconcile sweep match the row by recipient + message.
+  const plainOk = data?.success === true;
+  const accepted = batchId != null || immediateOk || plainOk;
   if (batchId) {
     return { providerSid: `tbbatch:${batchId}`, initialStatus: "queued" };
   }
@@ -956,6 +977,10 @@ export interface SendSmsResult {
   provider: SmsProviderName;
   /** Provider message id when the send reached a live gateway */
   providerSid: string | null;
+  /** sms_logs row id written for this attempt (null when bookkeeping failed) */
+  logId: number | null;
+  /** Honest status the row was created with (queued/sent/simulated…) */
+  initialStatus: string | null;
 }
 
 /**
@@ -978,8 +1003,12 @@ export async function sendSms(params: {
   studentId: number;
   parentPhone: string;
   message: string;
+  /** When this attempt re-sends an earlier failed log row, that row's id —
+   *  stamped on every sms_logs row this call writes (success or failure) so
+   *  "Retry failed" can skip rows that already have a newer attempt. */
+  retryOfId?: number;
 }): Promise<SendSmsResult> {
-  const { studentId, message } = params;
+  const { studentId, message, retryOfId } = params;
   const config = await getSmsSenderConfig();
   const to = normalizePhone(params.parentPhone, config.defaultCountry);
   const providerBase = activeSmsProvider();
@@ -990,8 +1019,8 @@ export async function sendSms(params: {
     logger.info({ studentId }, "channelMode=whatsapp ignored: active provider is SMS-only");
   }
 
-  const logFailure = async (provider: string, detail: string, code: string | null = null, channel: SmsChannel | null = null) => {
-    await db.insert(smsLogsTable).values({
+  const logFailure = async (provider: string, detail: string, code: string | null = null, channel: SmsChannel | null = null): Promise<number | null> => {
+    const [row] = await db.insert(smsLogsTable).values({
       studentId,
       parentPhone: params.parentPhone,
       message,
@@ -1000,20 +1029,23 @@ export async function sendSms(params: {
       errorMessage: detail,
       errorCode: code,
       channel,
+      retryOfId: retryOfId ?? null,
       statusUpdatedAt: new Date(),
-    });
+    }).returning({ id: smsLogsTable.id });
+    return row?.id ?? null;
   };
 
   if (!to) {
     const detail = `Parent phone "${params.parentPhone}" is not a valid phone number (could not normalize with default country ${config.defaultCountry}).`;
     logger.error({ studentId }, "SMS skipped: invalid parent phone");
     // Bookkeeping-only failure must not mask the real, actionable error.
+    let invalidPhoneLogId: number | null = null;
     try {
-      await logFailure(providerBase, detail);
+      invalidPhoneLogId = await logFailure(providerBase, detail);
     } catch (logErr) {
       logger.error({ err: logErr, studentId }, "sms_logs failure write failed — propagating original SmsDeliveryError");
     }
-    throw new SmsDeliveryError(detail, { provider: providerBase, code: "21211", fix: "Fix the parent phone value on the student record (E.164 or local 09… format)." });
+    throw new SmsDeliveryError(detail, { provider: providerBase, code: "21211", logId: invalidPhoneLogId, fix: "Fix the parent phone value on the student record (E.164 or local 09… format)." });
   }
 
   // Channel attempts: TextBee and AfroMessage (and simulation) are SMS-only.
@@ -1089,8 +1121,9 @@ export async function sendSms(params: {
       // the Phase 6 columns), the carrier has ALREADY accepted the message —
       // reclassifying the send as failed here would be a lie and would burn
       // retries on an already-sent message. Log loudly and return success.
+      let logId: number | null = null;
       try {
-        await db.insert(smsLogsTable).values({
+        const [row] = await db.insert(smsLogsTable).values({
           studentId,
           parentPhone: params.parentPhone,
           message,
@@ -1099,12 +1132,14 @@ export async function sendSms(params: {
           errorMessage: null,
           providerSid,
           channel,
+          retryOfId: retryOfId ?? null,
           statusUpdatedAt: initialStatus ? new Date() : null,
-        });
+        }).returning({ id: smsLogsTable.id });
+        logId = row?.id ?? null;
       } catch (logErr) {
         console.error("[sms] carrier accepted message but sms_logs write failed", logErr);
       }
-      return { channel, provider: providerBase, providerSid };
+      return { channel, provider: providerBase, providerSid, logId, initialStatus };
     } catch (err) {
       const delivery = err instanceof SmsDeliveryError
         ? err
@@ -1119,7 +1154,8 @@ export async function sendSms(params: {
         // columns, DB hiccup) we must still surface the ORIGINAL
         // SmsDeliveryError with its code + fix hint, not the raw pg error.
         try {
-          await logFailure(provider, delivery.message + (delivery.fix ? ` → FIX: ${delivery.fix}` : ""), delivery.code, channel);
+          const failureLogId = await logFailure(provider, delivery.message + (delivery.fix ? ` → FIX: ${delivery.fix}` : ""), delivery.code, channel);
+          delivery.logId = failureLogId;
         } catch (logErr) {
           logger.error({ err: logErr, studentId, channel }, "sms_logs failure write failed — propagating original SmsDeliveryError");
         }
@@ -1130,8 +1166,9 @@ export async function sendSms(params: {
 
   // Unreachable (loop always returns or throws) — kept for exhaustiveness.
   const detail = lastError?.message ?? "Notification failed";
-  await logFailure(providerBase, detail, lastError?.code ?? null);
-  throw lastError ?? new SmsDeliveryError(detail, { provider: providerBase });
+  const fallbackFailureLogId = await logFailure(providerBase, detail, lastError?.code ?? null).catch(() => null);
+  if (lastError) lastError.logId = fallbackFailureLogId;
+  throw lastError ?? new SmsDeliveryError(detail, { provider: providerBase, logId: fallbackFailureLogId });
 }
 
 export function buildPresentMessage(studentName: string, time: string): string {

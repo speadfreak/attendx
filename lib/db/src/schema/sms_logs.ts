@@ -35,12 +35,17 @@ export const smsLogsTable = pgTable(
     channel: text("channel"),
     /** Last time the status was confirmed by a callback / reconciliation */
     statusUpdatedAt: timestamp("status_updated_at", { withTimezone: true }),
+    /** When this row is a retry attempt, the id of the earlier failed row
+     *  it re-sends. Null = original send. Lets "Retry failed" skip rows
+     *  that already have a newer attempt (no duplicate spam). */
+    retryOfId: integer("retry_of_id"),
     sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index("sms_logs_provider_sid_idx").on(t.providerSid),
     index("sms_logs_status_sent_idx").on(t.status, t.sentAt),
+    index("sms_logs_retry_of_idx").on(t.retryOfId),
   ],
 );
 
