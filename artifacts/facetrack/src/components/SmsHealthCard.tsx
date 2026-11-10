@@ -68,6 +68,7 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
   const [serviceSid, setServiceSid] = useState("");
   const [fromNumber, setFromNumber] = useState("");
   const [defaultCountry, setDefaultCountry] = useState("+251");
+  const [afroSenderName, setAfroSenderName] = useState("");
   const [hydrated, setHydrated] = useState(false);
 
   // Hydrate the form once settings arrive
@@ -76,6 +77,7 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
     setServiceSid(settings.smsMessagingServiceSid ?? "");
     setFromNumber(settings.smsFromNumber ?? "");
     setDefaultCountry(settings.smsDefaultCountry ?? "+251");
+    setAfroSenderName(settings.smsAfroSenderName ?? "");
     setHydrated(true);
   }
 
@@ -88,6 +90,7 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
         smsMessagingServiceSid: serviceSid.trim(),
         smsFromNumber: fromNumber.trim(),
         smsDefaultCountry: defaultCountry.trim() || "+251",
+        smsAfroSenderName: afroSenderName.trim(),
       });
       toast({ title: "SMS sender config saved", description: "New sends use it immediately." });
       await queryClient.invalidateQueries({ queryKey: ["sms-config"] });
@@ -123,6 +126,11 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
   const carrier = diagnostics?.carrier ?? configStatus?.carrier;
   const trialAccount = carrier?.trial === true;
   const messagingServiceConfigured = carrier?.messagingServiceConfigured;
+
+  // Phase 6.3: which gateway actually carries outbound SMS now.
+  const provider = configStatus?.provider ?? diagnostics?.provider;
+  const afroStatus = configStatus?.afro ?? diagnostics?.afro;
+  const afroActive = provider === "afromessage";
 
   // T4: on-demand "check with carrier now" — upgrades queued/sent sms_logs
   // rows via Twilio, then refreshes the local delivery stats.
@@ -194,9 +202,9 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
           <h3 className="text-sm font-semibold uppercase tracking-widest gx-gradient-text">SMS DELIVERY HEALTH</h3>
         </div>
         <StatusBadge
-          value={settings?.smsMessagingServiceSid ? "valid" : "pending"}
-          label={settings?.smsMessagingServiceSid ? "SERVICE ROUTING" : settings?.smsFromNumber ? "RAW FROM" : "UNCONFIGURED"}
-          tone={settings?.smsMessagingServiceSid ? "green" : settings?.smsFromNumber ? "amber" : "red"}
+          value={afroActive ? "valid" : settings?.smsMessagingServiceSid ? "valid" : "pending"}
+          label={afroActive ? "AFROMESSAGE" : settings?.smsMessagingServiceSid ? "SERVICE ROUTING" : settings?.smsFromNumber ? "RAW FROM" : "UNCONFIGURED"}
+          tone={afroActive ? "green" : settings?.smsMessagingServiceSid ? "green" : settings?.smsFromNumber ? "amber" : "red"}
         />
       </div>
 
@@ -233,8 +241,25 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
         </div>
       )}
 
+      {/* Phase 6.3: AfroMessage active — Ethiopia-native corridor status. */}
+      {afroActive && afroStatus && (
+        <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-emerald-400/25 bg-emerald-400/[0.06] p-3">
+          <MessageSquare size={15} className="mt-0.5 shrink-0 text-emerald-400" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-emerald-200">
+              AfroMessage gateway active — Ethiopia-native delivery ✅
+            </p>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-emerald-100/70">
+              Identifier <span className="font-mono">{afroStatus.identifierId ?? "(not detected)"}</span>
+              {" · sender "}{afroStatus.senderName ? <span className="font-mono">{afroStatus.senderName}</span> : "default short code"}
+              {afroStatus.callbackConfigured ? " · delivery callbacks enabled (verdicts update automatically)" : " · set PUBLIC_BASE_URL to receive delivery verdicts"}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Trial-account restrictions are separate from destination sender rules. */}
-      {trialAccount && (
+      {provider === "twilio" && trialAccount && (
         <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-amber-400/30 bg-amber-400/[0.08] p-3">
           <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-300" />
           <div className="min-w-0 flex-1">
@@ -249,7 +274,7 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
       )}
 
       {/* Sender-pool routing is useful, but country rules still apply. */}
-      {messagingServiceConfigured === false && (
+      {provider === "twilio" && messagingServiceConfigured === false && (
         <div className="mb-4 flex items-start gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-2.5">
           <Info size={13} className="mt-0.5 shrink-0 text-cyan-300" />
           <p className="text-[11px] leading-relaxed text-white/55">
@@ -305,14 +330,32 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
               className={`${inputCls} font-mono`}
             />
           </div>
+          <div className="min-w-0">
+            <label className="mb-1 block text-[11px] text-white/50" htmlFor="sms-afro-sender">AfroMessage sender name (FROM label)</label>
+            <input
+              id="sms-afro-sender"
+              value={afroSenderName}
+              onChange={(e) => setAfroSenderName(e.target.value)}
+              placeholder="ATTENDX (registered in AfroMessage dashboard)"
+              maxLength={11}
+              className={`${inputCls} font-mono uppercase`}
+            />
+          </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button type="button" className={primaryBtn} onClick={() => void saveSettings()} disabled={saving}>
             {saving ? <RefreshCw size={13} className="animate-spin" /> : <ShieldCheck size={13} />} save sender config
           </button>
           <p className="text-[10px] leading-snug text-white/35 min-w-0 flex-1">
-            For <span className="text-amber-300/80">Ethiopia (+251)</span>, a Messaging Service SID alone is not enough:
-            Ethio Telecom requires a registered Alphanumeric Sender ID in its sender pool; US long codes can still get Twilio <span className="font-mono">21612</span>.
+            {afroActive
+              ? <>
+                  Sending via <span className="text-emerald-300/80">AfroMessage</span>. A custom sender name must be registered/verified in the AfroMessage dashboard first; without one, messages arrive from your identifier's default short code.
+                </>
+              : <>
+                  For <span className="text-amber-300/80">Ethiopia (+251)</span>, a Messaging Service SID alone is not enough:
+                  Ethio Telecom requires a registered Alphanumeric Sender ID in its sender pool; US long codes can still get Twilio <span className="font-mono">21612</span>.
+                </>
+            }
           </p>
         </div>
       </div>
@@ -352,10 +395,16 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
             <div className="flex items-center gap-2">
               {testResult.ok ? <CheckCircle2 size={14} className="shrink-0 text-emerald-400" /> : <XCircle size={14} className="shrink-0 text-red-400" />}
               <p className={`font-semibold ${testResult.ok ? "text-emerald-300" : "text-red-300"}`}>
-                {testResult.ok ? "Accepted by Twilio — delivery in progress" : "Delivery failed"}
+                {testResult.ok
+                  ? testResult.provider === "simulation"
+                    ? "Simulated — no live SMS gateway is configured"
+                    : `Accepted by ${testResult.provider === "afromessage" ? "AfroMessage" : "Twilio"} — delivery in progress`
+                  : "Delivery failed"}
               </p>
             </div>
-            <p className="mt-1 text-white/45 font-mono break-all">to: {testResult.normalizedTo} · sender: {testResult.sender.via}{testResult.sender.messagingServiceSid ? ` (${testResult.sender.messagingServiceSid.slice(0, 10)}…)` : ""}</p>
+            <p className="mt-1 text-white/45 font-mono break-all">
+              to: {testResult.normalizedTo} · via: {testResult.sender.via}{testResult.sender.afroSenderName ? ` (${testResult.sender.afroSenderName})` : ""}{testResult.sender.messagingServiceSid ? ` (${testResult.sender.messagingServiceSid.slice(0, 10)}…)` : ""}
+            </p>
             {testResult.attempts.map((a, i) => (
               <p key={i} className="mt-1 text-white/55">
                 channel <span className="font-mono text-white/70">{a.channel}</span>: {a.ok ? "✅ accepted" : `❌ ${a.error?.message ?? "failed"}`}
@@ -391,17 +440,19 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
             </div>
           ) : (
             <>
-              <div className="flex flex-wrap gap-2 text-[10px]">
-                <span className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-white/60">
-                  <Radio size={11} className="text-emerald-400" /> account: {diagnostics.twilio.accountStatus ?? "?"}
-                </span>
-                <span className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-white/60">
-                  <CircleDollarSign size={11} className="text-amber-300" /> balance: {diagnostics.twilio.balance ?? "?"} {diagnostics.twilio.currency ?? ""}
-                </span>
-                <span className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-white/60">
-                  <Globe size={11} className="text-cyan-300" /> numbers: {diagnostics.numbers.length} · services: {diagnostics.messagingServices.length}
-                </span>
-              </div>
+              {diagnostics.twilio.enabled && (
+                <div className="flex flex-wrap gap-2 text-[10px]">
+                  <span className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-white/60">
+                    <Radio size={11} className="text-emerald-400" /> account: {diagnostics.twilio.accountStatus ?? "?"}
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-white/60">
+                    <CircleDollarSign size={11} className="text-amber-300" /> balance: {diagnostics.twilio.balance ?? "?"} {diagnostics.twilio.currency ?? ""}
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-white/60">
+                    <Globe size={11} className="text-cyan-300" /> numbers: {diagnostics.numbers.length} · services: {diagnostics.messagingServices.length}
+                  </span>
+                </div>
+              )}
 
               <RecommendationList diagnostics={diagnostics} />
 

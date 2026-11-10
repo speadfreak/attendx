@@ -2,13 +2,19 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { z } from "zod/v4";
 import { requireAuth, requireAdminLevel } from "../lib/auth";
-import { getSmsSenderConfig, normalizePhone, twilioEnabled, twilioSend, SmsDeliveryError, describeSmsProviderCode, invalidateSmsSettingsCache, TWILIO_WHATSAPP_FROM } from "../lib/sms";
+import { getSmsSenderConfig, normalizePhone, twilioEnabled, twilioSend, afroMessageEnabled, afroIdentifierId, afroSend, activeSmsProvider, SmsDeliveryError, describeSmsProviderCode, invalidateSmsSettingsCache, TWILIO_WHATSAPP_FROM, PUBLIC_BASE_URL } from "../lib/sms";
 import { runSmsDiagnostics, getTwilioCarrierStatus, type TwilioCarrierStatus } from "../lib/sms-diagnostics";
 import { reconcilePendingSms, pendingDeliveryCount } from "../lib/sms-reconcile";
 import { writeAudit } from "../lib/audit";
 
 const router = Router();
 const adminId = (req: Request) => (req as Request & { admin?: { adminId: number } }).admin?.adminId;
+
+/** Identifier IDs are semi-sensitive — mask the middle for display. */
+function maskIdentifier(id: string | null): string | null {
+  if (!id) return null;
+  return id.length <= 8 ? id : `${id.slice(0, 4)}…${id.slice(-4)}`;
+}
 
 /** Lightweight status for any signed-in admin/teacher — powers header badges. */
 router.get("/sms/config-status", requireAuth, async (_req, res): Promise<void> => {
@@ -20,7 +26,16 @@ router.get("/sms/config-status", requireAuth, async (_req, res): Promise<void> =
     config.fromNumber,
   );
   res.json({
+    // Phase 6.3: which gateway actually carries outbound SMS now.
+    provider: activeSmsProvider(),
     twilioEnabled: twilioEnabled(),
+    afroEnabled: afroMessageEnabled(),
+    afro: {
+      enabled: afroMessageEnabled(),
+      identifierId: maskIdentifier(afroIdentifierId()),
+      senderName: config.afroSenderName,
+      callbackConfigured: !!PUBLIC_BASE_URL,
+    },
     channelMode: config.channelMode,
     hasMessagingService: !!config.messagingServiceSid,
     hasFromNumber: !!config.fromNumber,
@@ -92,39 +107,73 @@ router.post("/sms/test-send", requireAdminLevel, async (req, res): Promise<void>
     return;
   }
   const message = body ?? "AttendX test notification — SMS delivery is working. 🎉";
-  // Mirror the production channel gate: WhatsApp only on explicit opt-in.
-  const channels: Array<"sms" | "whatsapp"> = channel
-    ? [channel]
-    : config.channelMode === "whatsapp"
-      ? ["whatsapp"]
-      : config.channelMode === "auto" && TWILIO_WHATSAPP_FROM
-        ? ["sms", "whatsapp"]
-        : ["sms"];
+  const provider = activeSmsProvider();
 
   const attempts: Array<{ channel: string; ok: boolean; error: { message: string; code: string | null; fix: string | null } | null }> = [];
   let lastError: SmsDeliveryError | null = null;
+  let senderBlock: Record<string, unknown>;
 
-  for (const ch of channels) {
+  if (provider === "afromessage") {
+    // Ethiopia-native gateway: single SMS attempt, synchronous ack.
+    senderBlock = {
+      via: "afromessage",
+      messagingServiceSid: null,
+      fromNumber: null,
+      afroSenderName: config.afroSenderName,
+      identifierId: maskIdentifier(afroIdentifierId()),
+    };
     try {
-      await twilioSend({
-        to,
-        body: message,
-        channel: ch,
-        messagingServiceSid: config.messagingServiceSid,
-        fromNumber: config.fromNumber,
-      });
-      attempts.push({ channel: ch, ok: true, error: null });
-      lastError = null;
-      break;
+      await afroSend({ to, body: message, senderName: config.afroSenderName, identifierId: afroIdentifierId() });
+      attempts.push({ channel: "sms", ok: true, error: null });
     } catch (err) {
-      const delivery = err instanceof SmsDeliveryError ? err : new SmsDeliveryError(err instanceof Error ? err.message : String(err));
-      const hint = describeSmsProviderCode(delivery.code);
+      const delivery = err instanceof SmsDeliveryError ? err : new SmsDeliveryError(err instanceof Error ? err.message : String(err), { provider: "afromessage" });
       attempts.push({
-        channel: ch,
+        channel: "sms",
         ok: false,
-        error: { message: delivery.message, code: delivery.code, fix: delivery.fix ?? hint?.fix ?? null },
+        error: { message: delivery.message, code: delivery.code, fix: delivery.fix },
       });
       lastError = delivery;
+    }
+  } else if (provider === "simulation") {
+    senderBlock = { via: "simulation", messagingServiceSid: null, fromNumber: null };
+    attempts.push({ channel: "sms", ok: true, error: null });
+  } else {
+    // Twilio: mirror the production channel gate — WhatsApp only on opt-in.
+    const channels: Array<"sms" | "whatsapp"> = channel
+      ? [channel]
+      : config.channelMode === "whatsapp"
+        ? ["whatsapp"]
+        : config.channelMode === "auto" && TWILIO_WHATSAPP_FROM
+          ? ["sms", "whatsapp"]
+          : ["sms"];
+    senderBlock = {
+      via: config.messagingServiceSid ? "messaging-service" : "from-number",
+      messagingServiceSid: config.messagingServiceSid,
+      fromNumber: config.fromNumber,
+    };
+
+    for (const ch of channels) {
+      try {
+        await twilioSend({
+          to,
+          body: message,
+          channel: ch,
+          messagingServiceSid: config.messagingServiceSid,
+          fromNumber: config.fromNumber,
+        });
+        attempts.push({ channel: ch, ok: true, error: null });
+        lastError = null;
+        break;
+      } catch (err) {
+        const delivery = err instanceof SmsDeliveryError ? err : new SmsDeliveryError(err instanceof Error ? err.message : String(err));
+        const hint = describeSmsProviderCode(delivery.code);
+        attempts.push({
+          channel: ch,
+          ok: false,
+          error: { message: delivery.message, code: delivery.code, fix: delivery.fix ?? hint?.fix ?? null },
+        });
+        lastError = delivery;
+      }
     }
   }
 
@@ -139,12 +188,9 @@ router.post("/sms/test-send", requireAdminLevel, async (req, res): Promise<void>
   const succeeded = attempts.some((a) => a.ok);
   res.status(succeeded ? 200 : 502).json({
     ok: succeeded,
+    provider,
     normalizedTo: to,
-    sender: {
-      via: config.messagingServiceSid ? "messaging-service" : "from-number",
-      messagingServiceSid: config.messagingServiceSid,
-      fromNumber: config.fromNumber,
-    },
+    sender: senderBlock,
     attempts,
     error: lastError && !succeeded
       ? { message: lastError.message, code: lastError.code, fix: lastError.fix }

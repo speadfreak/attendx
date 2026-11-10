@@ -1,5 +1,5 @@
 import { db, studentsTable } from "@workspace/db";
-import { twilioEnabled, getSmsSenderConfig, normalizePhone, type SmsSenderConfig } from "./sms";
+import { twilioEnabled, getSmsSenderConfig, normalizePhone, activeSmsProvider, afroMessageEnabled, afroIdentifierId, type SmsSenderConfig } from "./sms";
 import { logger } from "./logger";
 
 /**
@@ -125,12 +125,22 @@ export async function getTwilioCarrierStatus(messagingServiceConfigured: boolean
 
 export interface SmsDiagnostics {
   checkedAt: string;
+  /** Phase 6.3: which gateway actually carries outbound SMS. */
+  provider: string;
   twilio: {
     enabled: boolean;
     error: string | null;
     accountStatus: string | null;
     balance: string | null;
     currency: string | null;
+  };
+  /** Phase 6.3: AfroMessage gateway facts (Ethiopia-native SMS corridor). */
+  afro: {
+    enabled: boolean;
+    /** Masked identifier ID (system short-code) derived from the token JWT */
+    identifierId: string | null;
+    senderName: string | null;
+    callbackConfigured: boolean;
   };
   sender: {
     messagingServiceSid: string | null;
@@ -176,11 +186,25 @@ interface PricingCountry {
   }>;
 }
 
+/** Identifier IDs are semi-sensitive — mask the middle for display. */
+function maskIdentifier(id: string | null): string | null {
+  if (!id) return null;
+  return id.length <= 8 ? id : `${id.slice(0, 4)}…${id.slice(-4)}`;
+}
+
 export async function runSmsDiagnostics(): Promise<SmsDiagnostics> {
   const config: SmsSenderConfig = await getSmsSenderConfig(true);
+  const provider = activeSmsProvider();
   const diagnostics: SmsDiagnostics = {
     checkedAt: new Date().toISOString(),
+    provider,
     twilio: { enabled: twilioEnabled(), error: null, accountStatus: null, balance: null, currency: null },
+    afro: {
+      enabled: afroMessageEnabled(),
+      identifierId: maskIdentifier(afroIdentifierId()),
+      senderName: config.afroSenderName,
+      callbackConfigured: !!(process.env.PUBLIC_BASE_URL ?? process.env.TWILIO_STATUS_CALLBACK_BASE),
+    },
     sender: {
       messagingServiceSid: config.messagingServiceSid,
       messagingServiceName: null,
@@ -196,11 +220,42 @@ export async function runSmsDiagnostics(): Promise<SmsDiagnostics> {
     recommendations: [],
   };
 
+  // ── AfroMessage active: no Twilio probing, report the afro corridor state. ──
+  if (provider === "afromessage") {
+    diagnostics.recommendations.push({
+      severity: "info",
+      title: "AfroMessage is the active SMS gateway",
+      detail: `Outbound notifications go through api.afromessage.com — the Ethiopia-native corridor. Identifier: ${diagnostics.afro.identifierId ?? "(not detected)"}. Sender name: ${config.afroSenderName ?? "default short code"}.${diagnostics.afro.callbackConfigured ? " Delivery callbacks are enabled — carrier verdicts upgrade sms_logs automatically." : ""}`,
+    });
+    if (!diagnostics.afro.identifierId) {
+      diagnostics.recommendations.push({
+        severity: "warning",
+        title: "AfroMessage identifier not detected",
+        detail: "The identifier (system short-code id) could not be decoded from AFROMESSAGE_TOKEN. If sends fail with a sender error, set AFROMESSAGE_IDENTIFIER_ID explicitly (AfroMessage dashboard → your identifier's value).",
+      });
+    }
+    if (!config.afroSenderName) {
+      diagnostics.recommendations.push({
+        severity: "info",
+        title: "No custom Sender Name set",
+        detail: "Messages arrive from your identifier's default short code. For a branded FROM (e.g. ATTENDX), register the Sender Name in the AfroMessage dashboard, then save it in the sender configuration above.",
+      });
+    }
+    if (!diagnostics.afro.callbackConfigured) {
+      diagnostics.recommendations.push({
+        severity: "warning",
+        title: "Delivery callbacks are not configured",
+        detail: "PUBLIC_BASE_URL is unset, so AfroMessage cannot push delivery verdicts — rows stay at 'sent' forever. Set PUBLIC_BASE_URL (e.g. https://your-app.vercel.app) to receive real delivered/undelivered/failed states.",
+      });
+    }
+    return diagnostics;
+  }
+
   if (!twilioEnabled()) {
     diagnostics.recommendations.push({
       severity: "critical",
-      title: "Twilio is not configured",
-      detail: "Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN environment variables to enable live delivery. Without them, notifications are simulated only.",
+      title: "No live SMS gateway is configured",
+      detail: "Notifications are simulated only. For Ethiopia set AFROMESSAGE_TOKEN (recommended — the Ethiopia-native corridor); alternatively set TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN for Twilio delivery.",
     });
     return diagnostics;
   }

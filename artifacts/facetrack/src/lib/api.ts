@@ -414,6 +414,8 @@ export interface SystemSettingsExtended {
   smsMessagingServiceSid: string | null;
   smsFromNumber: string | null;
   smsDefaultCountry: string;
+  /** AfroMessage Sender Name shown as FROM (null → default short code) */
+  smsAfroSenderName: string | null;
   updatedAt: string | null;
 }
 
@@ -434,6 +436,8 @@ export interface SystemSettingsPatch {
   /** E.164 sender — empty string clears */
   smsFromNumber?: string;
   smsDefaultCountry?: string;
+  /** AfroMessage Sender Name (2-11 letters/digits) — empty string clears */
+  smsAfroSenderName?: string;
 }
 
 // ── Absence Risk Radar (Phase 5) ─────────────────────────────────
@@ -469,7 +473,12 @@ export interface AbsenceRiskSummary {
 // ── SMS Delivery Health (Phase 5) ─────────────────────────────
 
 export interface SmsConfigStatus {
+  /** Phase 6.3: the gateway that actually carries outbound SMS. */
+  provider?: "afromessage" | "twilio" | "simulation";
   twilioEnabled: boolean;
+  /** Phase 6.3: AfroMessage (Ethiopia-native) gateway facts — additive. */
+  afro?: AfroMessageStatus;
+  afroEnabled?: boolean;
   channelMode: "sms" | "whatsapp" | "auto";
   hasMessagingService: boolean;
   hasFromNumber: boolean;
@@ -492,8 +501,21 @@ export interface TwilioCarrierStatus {
   fromNumber: string | null;
 }
 
+/** Phase 6.3: AfroMessage (afromessage.com) gateway facts — additive, may be absent on older API. */
+export interface AfroMessageStatus {
+  enabled: boolean;
+  /** Masked identifier ID (system short-code) decoded from the token JWT */
+  identifierId: string | null;
+  /** Custom Sender Name shown as FROM to parents (null → default short code) */
+  senderName: string | null;
+  /** True when PUBLIC_BASE_URL is set, so DLR callbacks can upgrade statuses */
+  callbackConfigured: boolean;
+}
+
 export interface SmsDiagnostics {
   checkedAt: string;
+  /** Phase 6.3: which gateway actually carries outbound SMS. */
+  provider?: string;
   twilio: {
     enabled: boolean;
     error: string | null;
@@ -501,6 +523,8 @@ export interface SmsDiagnostics {
     balance: string | null;
     currency: string | null;
   };
+  /** Phase 6.3: AfroMessage gateway facts — additive, may be absent on older API. */
+  afro?: AfroMessageStatus;
   sender: {
     messagingServiceSid: string | null;
     messagingServiceName: string | null;
@@ -542,8 +566,17 @@ export interface SmsDeliveryHealth {
 
 export interface SmsTestSendResult {
   ok: boolean;
+  /** Phase 6.3: which gateway carried this test send. */
+  provider?: "afromessage" | "twilio" | "simulation";
   normalizedTo: string;
-  sender: { via: "messaging-service" | "from-number"; messagingServiceSid: string | null; fromNumber: string | null };
+  sender: {
+    via: "messaging-service" | "from-number" | "afromessage" | "simulation";
+    messagingServiceSid: string | null;
+    fromNumber: string | null;
+    /** AfroMessage sender facts — additive */
+    afroSenderName?: string | null;
+    identifierId?: string | null;
+  };
   attempts: Array<{ channel: string; ok: boolean; error: { message: string; code: string | null; fix: string | null } | null }>;
   error: { message: string; code: string | null; fix: string | null } | null;
 }

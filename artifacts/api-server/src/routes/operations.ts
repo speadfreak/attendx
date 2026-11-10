@@ -44,6 +44,8 @@ const settingsInput = z.object({
   smsMessagingServiceSid: z.union([z.literal(""), z.string().trim().regex(/^MG[0-9a-fA-F]{32}$/, "Expected a Twilio Messaging Service SID (MG…)")]).optional(),
   smsFromNumber: z.union([z.literal(""), z.string().trim().regex(/^\+[1-9]\d{6,14}$/, "Expected E.164, e.g. +18312826811")]).optional(),
   smsDefaultCountry: z.string().trim().regex(/^\+[1-9]\d{0,2}$/, "Expected country code, e.g. +251").optional(),
+  // AfroMessage Sender Name — empty string clears; 2-11 letters/digits/-/_
+  smsAfroSenderName: z.union([z.literal(""), z.string().trim().regex(/^[A-Za-z0-9_-]{2,11}$/, "Sender Name: 2-11 letters/digits (e.g. ATTENDX), verified in the AfroMessage dashboard")]).optional(),
 }).refine((value) => Object.keys(value).length > 0, "At least one setting is required");
 const fanInput = z.object({ mode: z.enum(["auto", "on", "off"]) });
 const decisionInput = z.object({

@@ -28,6 +28,9 @@ export const DEFAULT_SYSTEM_SETTINGS = {
   smsMessagingServiceSid: null as string | null,
   smsFromNumber: null as string | null,
   smsDefaultCountry: "+251",
+  // AfroMessage Sender Name shown as FROM to parents (verified in the
+  // AfroMessage dashboard); empty → the identifier's default short code.
+  smsAfroSenderName: null as string | null,
 };
 
 export type FanMode = "auto" | "on" | "off";
@@ -53,6 +56,9 @@ export function isValidTimezone(timezone: string): boolean {
 const MESSAGING_SERVICE_SID_RE = /^MG[0-9a-fA-F]{32}$/;
 const E164_RE = /^\+[1-9]\d{6,14}$/;
 const COUNTRY_CODE_RE = /^\+[1-9]\d{0,2}$/;
+// Alphanumeric Sender ID rules (Ethio Telecom / AfroMessage): letters,
+// digits, underscore, hyphen — 2 to 11 characters.
+const AFRO_SENDER_RE = /^[A-Za-z0-9_-]{2,11}$/;
 
 function normalizedTime(value: string | undefined, fallback: string): string {
   if (typeof value !== "string") return fallback;
@@ -87,6 +93,8 @@ export async function getSystemSettings() {
   const smsFromNumber = rawFrom && E164_RE.test(rawFrom) ? rawFrom : null;
   const rawDefaultCountry = values.get("smsDefaultCountry");
   const smsDefaultCountry = rawDefaultCountry && COUNTRY_CODE_RE.test(rawDefaultCountry) ? rawDefaultCountry : DEFAULT_SYSTEM_SETTINGS.smsDefaultCountry;
+  const rawAfroSender = values.get("smsAfroSenderName");
+  const smsAfroSenderName = rawAfroSender && AFRO_SENDER_RE.test(rawAfroSender) ? rawAfroSender : null;
   const latestUpdate = rows.reduce<Date | null>(
     (latest, row) => (!latest || row.updatedAt > latest ? row.updatedAt : latest),
     null,
@@ -108,6 +116,7 @@ export async function getSystemSettings() {
     smsMessagingServiceSid,
     smsFromNumber,
     smsDefaultCountry,
+    smsAfroSenderName,
     updatedAt: latestUpdate?.toISOString() ?? null,
   };
 }

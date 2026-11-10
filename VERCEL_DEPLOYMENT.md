@@ -58,13 +58,28 @@ Project-level env vars are shared by all services. Add them in Project → Setti
 | `DATABASE_URL` | Reachable PostgreSQL connection string. Prefer a provider's **pooled** connection URL for serverless traffic. |
 | `SESSION_SECRET` | Long random secret used to sign admin JWTs **and the QR badge HMAC signatures**. Changing it invalidates every issued badge. |
 | `CRON_SECRET` | Long random secret used to authenticate scheduled processing requests. |
-| `PUBLIC_BASE_URL` | Optional; public origin of this deployment (e.g. `https://attendx.vercel.app`). Enables Twilio StatusCallback pushes so delivery statuses update in real time without polling. |
-| `TWILIO_ACCOUNT_SID` | Optional; enables live SMS delivery. |
+| `PUBLIC_BASE_URL` | Optional; public origin of this deployment (e.g. `https://attendx.vercel.app`). Enables provider status callbacks (Twilio StatusCallback / AfroMessage DLR) so delivery statuses update in real time without polling. |
+| `AFROMESSAGE_TOKEN` | **Recommended for Ethiopia.** Bearer JWT token from the AfroMessage dashboard (api.afromessage.com → Tokens). When set, AfroMessage becomes the active SMS gateway — the Ethiopia-native corridor that Twilio's international senders cannot reliably reach (Ethio Telecom blocks unregistered international sender IDs). The account identifier (system short-code id) is decoded automatically from the token's JWT payload. |
+| `AFROMESSAGE_SENDER_NAME` | Optional; custom FROM label shown to parents (e.g. `ATTENDX`). Must be registered/verified in the AfroMessage dashboard; 2-11 letters/digits. Can also be set at runtime in Operations → SMS Health (`smsAfroSenderName`, stored in the DB). Without it, messages arrive from the identifier's default short code. |
+| `AFROMESSAGE_IDENTIFIER_ID` | Optional; only needed for multi-identifier accounts. Defaults to the `identifier` claim inside `AFROMESSAGE_TOKEN`. |
+| `AFROMESSAGE_CALLBACK_SECRET` | Optional; shared secret required as `?token=…` on the DLR callback (`/api/webhooks/afromessage/status`). When set, the send path appends it to the callback URL automatically. |
+| `SMS_PROVIDER` | Optional; forces a provider when multiple gateways are configured (`afromessage` \| `twilio` \| `simulation`). Default precedence: AfroMessage → Twilio → simulation. |
+| `TWILIO_ACCOUNT_SID` | Optional; enables Twilio as a fallback SMS gateway. |
 | `TWILIO_AUTH_TOKEN` | Optional; enables live SMS delivery. |
 | `TWILIO_FROM_NUMBER` | Optional fallback sender (E.164). International delivery should use a Messaging Service instead. |
 | `TWILIO_MESSAGING_SERVICE_SID` | Optional; **recommended for international SMS** (e.g. Ethiopia). Sends via a Twilio Messaging Service instead of a raw From number — fixes Twilio error 21612. Can also be set at runtime in Operations → SMS Health (stored in the DB, no redeploy needed). |
 
 The three Twilio variables are optional; without them AttendX records simulated SMS delivery. If enabled, create fresh credentials in Vercel's secret UI — do not reuse credentials stored in any repository file.
+
+## SMS provider (Ethiopia corridor)
+
+AttendX supports two live gateways and picks one automatically:
+
+1. **AfroMessage** (active when `AFROMESSAGE_TOKEN` is set) — the Ethiopia-native gateway. Sends go to `POST https://api.afromessage.com/api/send` with the Bearer token; the synchronous ack starts the log row at `sent`, and the DLR callback (`GET /api/webhooks/afromessage/status`) upgrades it to delivered/undelivered/failed when `PUBLIC_BASE_URL` is configured. Setup: dashboard → Tokens → copy the JWT into `AFROMESSAGE_TOKEN`; optionally register a Sender Name and save it in Operations → SMS Health.
+2. **Twilio** (active when Twilio creds are set and AfroMessage is not) — works for many countries but **not reliably for Ethiopia**: Ethio Telecom blocks unregistered international sender IDs (Twilio error 21612). Keep the credentials if you also message non-+251 numbers.
+3. **Simulation** — no credentials: rows are logged as `simulated`, nothing is sent.
+
+Provider precedence (override with `SMS_PROVIDER`): AfroMessage → Twilio → simulation. SMS Health in Operations always shows the active gateway, its identifier/sender facts, and any config warnings.
 
 Leave `VITE_API_ORIGIN` unset: the browser calls `/api` on the same domain. It only exists for exotic split-origin setups.
 

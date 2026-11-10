@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, like, lt, sql } from "drizzle-orm";
 import { db, smsLogsTable } from "@workspace/db";
 import { mapTwilioStatus } from "./sms";
 import { logger } from "./logger";
@@ -81,6 +81,11 @@ export async function reconcilePendingSms(limit = 25, minAgeSeconds = MIN_AGE_SE
       isNotNull(smsLogsTable.providerSid),
       inArray(smsLogsTable.status, [...PENDING_STATUSES]),
       lt(smsLogsTable.sentAt, cutoff),
+      // AfroMessage rows (provider "afromessage") have no status-polling REST
+      // API — their verdicts arrive exclusively via the DLR callback. Asking
+      // Twilio about them would only burn errors, so reconcile is restricted
+      // to Twilio-carried rows ("twilio", "twilio:whatsapp").
+      like(smsLogsTable.provider, "twilio%"),
     ))
     .orderBy(smsLogsTable.sentAt)
     .limit(limit);

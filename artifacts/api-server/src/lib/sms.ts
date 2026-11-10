@@ -7,6 +7,68 @@ const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 const TWILIO_FROM_ENV = process.env.TWILIO_FROM_NUMBER;
 const TWILIO_MESSAGING_SERVICE_ENV = process.env.TWILIO_MESSAGING_SERVICE_SID;
+
+// ── AfroMessage credentials (Ethiopia-native SMS gateway) — env only ──
+// The API token is the JWT issued by api.afromessage.com → Tokens. Its
+// payload carries the account `identifier` (system short-code id), which we
+// decode automatically — no second env var needed unless the account has
+// multiple identifiers (then set AFROMESSAGE_IDENTIFIER_ID explicitly).
+const AFROMESSAGE_TOKEN = process.env.AFROMESSAGE_TOKEN ?? null;
+const AFROMESSAGE_SENDER_ENV =
+  process.env.AFROMESSAGE_SENDER_NAME ??
+  process.env.AFROMESSAGE_SENDER_NAMES ?? // official SDK's env name
+  null;
+const AFROMESSAGE_IDENTIFIER_ENV =
+  process.env.AFROMESSAGE_IDENTIFIER_ID ??
+  process.env.AFRO_IDENTIFIER_ID ??
+  null;
+const AFROMESSAGE_BASE_URL = (process.env.AFROMESSAGE_BASE_URL ?? "https://api.afromessage.com/api").replace(/\/$/, "");
+/** Optional shared secret appended to the DLR callback URL (?token=…) and
+ *  required as a query param by the webhook when configured. */
+export const AFROMESSAGE_CALLBACK_SECRET = process.env.AFROMESSAGE_CALLBACK_SECRET ?? null;
+
+/** Decode a JWT payload claim without verifying the signature (the token is
+ *  already a credential; we only need the identifier it was issued for). */
+function jwtPayloadClaim(token: string | null, claim: string): string | null {
+  if (!token) return null;
+  const parts = token.split(".");
+  if (parts.length < 2) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as Record<string, unknown>;
+    const value = payload[claim];
+    return typeof value === "string" && value.length > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export function afroMessageEnabled(): boolean {
+  return !!AFROMESSAGE_TOKEN;
+}
+
+/** Identifier ID (system short-code) — env override wins, else the JWT claim. */
+export function afroIdentifierId(): string | null {
+  return AFROMESSAGE_IDENTIFIER_ENV ?? jwtPayloadClaim(AFROMESSAGE_TOKEN, "identifier");
+}
+
+export type SmsProviderName = "afromessage" | "twilio" | "simulation";
+
+/**
+ * The provider that will actually carry outbound SMS.
+ * Precedence: explicit SMS_PROVIDER env override → AfroMessage (when its
+ * token is configured — it is the reliable Ethiopia corridor, unlike Twilio,
+ * where Ethio Telecom blocks unregistered international senders) → Twilio →
+ * simulation.
+ */
+export function activeSmsProvider(): SmsProviderName {
+  const forced = (process.env.SMS_PROVIDER ?? "").toLowerCase();
+  if (forced === "afromessage" && afroMessageEnabled()) return "afromessage";
+  if (forced === "twilio" && twilioEnabled()) return "twilio";
+  if (forced === "simulation") return "simulation";
+  if (afroMessageEnabled()) return "afromessage";
+  if (twilioEnabled()) return "twilio";
+  return "simulation";
+}
 /**
  * WhatsApp is OPT-IN: the fallback attempt over `whatsapp:` only happens when
  * an explicit WhatsApp sender is configured via TWILIO_WHATSAPP_FROM (or the
@@ -49,6 +111,10 @@ export interface SmsSenderConfig {
   messagingServiceSid: string | null;
   fromNumber: string | null;
   defaultCountry: string;
+  /** AfroMessage Sender Name (shown as FROM to parents) — DB setting wins,
+   *  else AFROMESSAGE_SENDER_NAME(S) env; null → the identifier's default
+   *  short code is used. */
+  afroSenderName: string | null;
 }
 
 let settingsCache: { value: SmsSenderConfig; at: number } | null = null;
@@ -66,6 +132,7 @@ export async function getSmsSenderConfig(forceFresh = false): Promise<SmsSenderC
   let messagingServiceSid: string | null = TWILIO_MESSAGING_SERVICE_ENV ?? null;
   let fromNumber: string | null = TWILIO_FROM_ENV ?? null;
   let defaultCountry = "+251";
+  let afroSenderName: string | null = AFROMESSAGE_SENDER_ENV;
   try {
     const settings = await getSystemSettings();
     const storedMode: unknown = settings.smsChannelMode;
@@ -73,6 +140,7 @@ export async function getSmsSenderConfig(forceFresh = false): Promise<SmsSenderC
     if (settings.smsMessagingServiceSid) messagingServiceSid = settings.smsMessagingServiceSid;
     if (settings.smsFromNumber) fromNumber = settings.smsFromNumber;
     if (settings.smsDefaultCountry) defaultCountry = settings.smsDefaultCountry;
+    if (settings.smsAfroSenderName) afroSenderName = settings.smsAfroSenderName;
   } catch (err) {
     logger.warn({ err }, "SMS settings unavailable — falling back to env defaults");
   }
@@ -81,6 +149,7 @@ export async function getSmsSenderConfig(forceFresh = false): Promise<SmsSenderC
     messagingServiceSid: messagingServiceSid ?? null,
     fromNumber: fromNumber ?? null,
     defaultCountry,
+    afroSenderName: afroSenderName ?? null,
   };
   settingsCache = { value, at: Date.now() };
   return value;
@@ -260,6 +329,150 @@ export function describeSmsProviderCode(code: string | null): SmsErrorHint | nul
   }
 }
 
+// ── AfroMessage send (https://afromessage.com/developers) ─────────────
+
+interface AfroSendBody {
+  acknowledge?: string;
+  error?: string;
+  message_id?: string;
+  status?: string;
+  message?: unknown;
+  to?: unknown;
+  // Some deployments nest the payload under `response`:
+  response?: { message_id?: string; status?: string; message?: unknown; to?: unknown; error?: string } | string;
+}
+
+export interface AfroSendResult {
+  /** AfroMessage message_id — stored in sms_logs.provider_sid for DLR matching */
+  providerSid: string | null;
+  /** Mapped initial AttendX status when the API reported one; null otherwise */
+  initialStatus: string | null;
+}
+
+/**
+ * Map AfroMessage's send-progress states onto AttendX's honest sms_logs
+ * taxonomy. Unknown states return null (row keeps its current status).
+ */
+export function mapAfroStatus(status: string): string | null {
+  switch (status.toLowerCase()) {
+    case "queued":
+    case "accepted":
+    case "scheduled":
+    case "init":
+    case "initiated":
+    case "pending":
+      return "queued";
+    case "sent":
+    case "submitted":
+      return "sent";
+    case "delivered":
+      return "delivered";
+    case "undelivered":
+    case "not_delivered":
+    case "not delivered":
+      return "undelivered";
+    case "failed":
+    case "rejected":
+    case "expired":
+    case "error":
+      return "failed";
+    default:
+      return null;
+  }
+}
+
+/** DLR callback URL for outbound messages (GET endpoint, per AfroMessage docs). */
+export function afroCallbackUrl(): string | null {
+  if (!PUBLIC_BASE_URL) return null;
+  const secret = AFROMESSAGE_CALLBACK_SECRET ? `?token=${encodeURIComponent(AFROMESSAGE_CALLBACK_SECRET)}` : "";
+  return `${PUBLIC_BASE_URL}/api/webhooks/afromessage/status${secret}`;
+}
+
+/**
+ * Send one SMS through AfroMessage (POST {base}/send, Bearer token).
+ * The API answers SYNCHRONOUSLY: acknowledge=success means the message was
+ * accepted for delivery and a message_id was assigned. Carrier verdicts only
+ * arrive via the callback URL (when PUBLIC_BASE_URL is set) — the row starts
+ * at `sent` and the webhook upgrades it to delivered/undelivered/failed.
+ */
+export async function afroSend(params: {
+  to: string;
+  body: string;
+  senderName: string | null;
+  identifierId: string | null;
+}): Promise<AfroSendResult> {
+  const payload: Record<string, unknown> = { to: params.to, message: params.body };
+  if (params.identifierId) payload.from = params.identifierId;
+  if (params.senderName) payload.sender = params.senderName;
+  const callback = afroCallbackUrl();
+  if (callback) payload.callback = callback;
+
+  let res: Response;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12_000);
+    try {
+      res = await fetch(`${AFROMESSAGE_BASE_URL}/send`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${AFROMESSAGE_TOKEN}`,
+          "Content-Type": "application/json;charset=UTF-8",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch (err) {
+    // Network-level failure (DNS, timeout, reset) — worth retrying.
+    throw new SmsDeliveryError(`AfroMessage unreachable: ${err instanceof Error ? err.message : String(err)}`, {
+      provider: "afromessage",
+      retryable: true,
+    });
+  }
+
+  const raw = await res.text();
+  let parsed: AfroSendBody | null = null;
+  try {
+    parsed = JSON.parse(raw) as AfroSendBody;
+  } catch {
+    parsed = null;
+  }
+
+  // Tolerant shape handling: {acknowledge, response:{message_id,…}} is the
+  // documented envelope; some deployments return the fields at the top level.
+  const ack = parsed?.acknowledge ?? null;
+  const inner = parsed && typeof parsed.response === "object" && parsed.response !== null ? parsed.response : parsed;
+  const messageId = inner?.message_id ?? parsed?.message_id ?? null;
+  const failureDetail =
+    parsed?.error ??
+    (typeof parsed?.response === "string" ? parsed.response : null) ??
+    (typeof inner?.message === "string" ? inner.message : null) ??
+    (typeof parsed?.message === "string" ? parsed.message : null);
+
+  if (!res.ok || (ack && ack !== "success")) {
+    const authFail = res.status === 401 || res.status === 403;
+    throw new SmsDeliveryError(
+      `AfroMessage ${res.status}: ${failureDetail ?? raw.slice(0, 300)}`,
+      {
+        provider: "afromessage",
+        code: authFail ? "afro-auth" : null,
+        retryable: res.status >= 500 || res.status === 429,
+        fix: authFail
+          ? "AFROMESSAGE_TOKEN is invalid or expired — copy the API token again from the AfroMessage dashboard (api.afromessage.com → Tokens) and redeploy."
+          : !AFROMESSAGE_TOKEN
+            ? "AFROMESSAGE_TOKEN is not configured — add it in Vercel → Settings → Environment Variables."
+            : "Check the AfroMessage dashboard: the account needs SMS credit, and a custom Sender Name must be verified there before use.",
+      },
+    );
+  }
+
+  const initial = typeof inner?.status === "string" ? mapAfroStatus(inner.status) : null;
+  return { providerSid: messageId, initialStatus: initial };
+}
+
 export interface TwilioSendResult {
   /** Twilio MessageSid (SM… / MM… for media) */
   providerSid: string | null;
@@ -387,19 +600,23 @@ function schedulePostSendReconcile(): void {
 
 export interface SendSmsResult {
   channel: SmsChannel;
-  provider: "twilio" | "simulation";
-  /** Twilio MessageSid when the send reached Twilio */
+  /** The gateway that carried (or would have carried) this message */
+  provider: SmsProviderName;
+  /** Provider message id when the send reached a live gateway */
   providerSid: string | null;
 }
 
 /**
- * Send a parent notification through the configured channel strategy:
- *  - `sms`      → SMS only
- *  - `whatsapp` → WhatsApp only
- *  - `auto`     → SMS first; on channel-capable failures (21612, 21408, …)
- *                 transparently retry over WhatsApp and report which won.
+ * Send a parent notification through the configured provider + channel
+ * strategy:
+ *  - AfroMessage (active when AFROMESSAGE_TOKEN is set): SMS only, Ethiopia-
+ *    native corridor. Synchronous ack → row starts at `sent`; DLR callback
+ *    upgrades delivered/undelivered/failed.
+ *  - Twilio: `sms`/`whatsapp` per channel mode; `auto` retries channel-capable
+ *    failures (21612, 21408, …) over WhatsApp when opted in.
+ *  - No credentials → simulated rows (visible, honest, no side effects).
  * Every attempt outcome is persisted to sms_logs with the effective channel
- * encoded in `provider` ("twilio" | "twilio:whatsapp" | "simulation[:…]").
+ * encoded in `provider` ("afromessage" | "twilio" | "twilio:whatsapp" | "simulation[:…]").
  */
 export async function sendSms(params: {
   studentId: number;
@@ -409,7 +626,12 @@ export async function sendSms(params: {
   const { studentId, message } = params;
   const config = await getSmsSenderConfig();
   const to = normalizePhone(params.parentPhone, config.defaultCountry);
-  const providerBase = twilioEnabled() ? "twilio" : "simulation";
+  const providerBase = activeSmsProvider();
+  if (providerBase === "afromessage" && config.channelMode === "whatsapp") {
+    // AfroMessage has no WhatsApp channel — honor the admin's intent as best
+    // we can by still sending SMS rather than dropping the notification.
+    logger.info({ studentId }, "channelMode=whatsapp ignored: active provider AfroMessage is SMS-only");
+  }
 
   const logFailure = async (provider: string, detail: string, code: string | null = null, channel: SmsChannel | null = null) => {
     await db.insert(smsLogsTable).values({
@@ -437,13 +659,16 @@ export async function sendSms(params: {
     throw new SmsDeliveryError(detail, { provider: providerBase, code: "21211", fix: "Fix the parent phone value on the student record (E.164 or local 09… format)." });
   }
 
-  // Channel attempts: `sms`/`whatsapp` are explicit admin opt-ins; `auto`
-  // sends SMS first and only falls back to WhatsApp when a WhatsApp sender is
-  // explicitly configured (TWILIO_WHATSAPP_FROM) — see TWILIO_WHATSAPP_FROM above.
+  // Channel attempts: AfroMessage (and simulation) are SMS-only. For Twilio,
+  // `sms`/`whatsapp` are explicit admin opt-ins; `auto` sends SMS first and
+  // only falls back to WhatsApp when a WhatsApp sender is explicitly
+  // configured (TWILIO_WHATSAPP_FROM) — see TWILIO_WHATSAPP_FROM above.
   const attempts: SmsChannel[] =
-    config.channelMode === "auto"
-      ? TWILIO_WHATSAPP_FROM ? ["sms", "whatsapp"] : ["sms"]
-      : [config.channelMode];
+    providerBase !== "twilio"
+      ? ["sms"]
+      : config.channelMode === "auto"
+        ? TWILIO_WHATSAPP_FROM ? ["sms", "whatsapp"] : ["sms"]
+        : [config.channelMode];
 
   let lastError: SmsDeliveryError | null = null;
   for (let i = 0; i < attempts.length; i += 1) {
@@ -451,7 +676,22 @@ export async function sendSms(params: {
     const provider = channel === "whatsapp" ? `${providerBase}:whatsapp` : providerBase;
     try {
       let providerSid: string | null = null;
-      if (twilioEnabled()) {
+      let initialStatus: string | null = null;
+      if (providerBase === "afromessage") {
+        logger.info({ studentId, channel: "sms" }, "Sending notification via AfroMessage");
+        const result = await afroSend({
+          to,
+          body: message,
+          senderName: config.afroSenderName,
+          identifierId: afroIdentifierId(),
+        });
+        providerSid = result.providerSid;
+        // Synchronous ack: the gateway accepted the message for delivery.
+        // Without a reported initial state, `sent` is the honest label —
+        // the DLR callback (if PUBLIC_BASE_URL is set) upgrades it later.
+        initialStatus = result.initialStatus ?? "sent";
+        logger.info({ studentId, providerSid, initialStatus }, "AfroMessage notification accepted");
+      } else if (providerBase === "twilio") {
         logger.info({ studentId, channel }, "Sending notification via Twilio");
         const result = await twilioSend({
           to,
@@ -461,6 +701,7 @@ export async function sendSms(params: {
           fromNumber: channel === "whatsapp" && TWILIO_WHATSAPP_FROM ? TWILIO_WHATSAPP_FROM : config.fromNumber,
         });
         providerSid = result.providerSid;
+        initialStatus = "queued";
         logger.info({ studentId, channel, providerSid, initialStatus: result.initialStatus }, "Twilio notification accepted");
         // Carrier accepted — check its verdict ~12s later so the log row
         // upgrades from queued to the real status fast (async failures).
@@ -468,9 +709,9 @@ export async function sendSms(params: {
       } else {
         logger.info({ studentId, channel }, "[SIMULATED] notification logged");
       }
-      // Honest status: Twilio has only SUBMITTED the message at this point.
-      // It can still fail at the carrier (async 21612 and friends) — the
-      // status webhook + reconciliation sweep upgrade this row to the real
+      // Honest status: a live gateway has only SUBMITTED the message at this
+      // point. It can still fail at the carrier — the status webhooks +
+      // reconciliation sweep upgrade this row to the real
       // sent/delivered/undelivered/failed verdict.
       // The log write is bookkeeping: if it fails (e.g. sms_logs is missing
       // the Phase 6 columns), the carrier has ALREADY accepted the message —
@@ -481,12 +722,12 @@ export async function sendSms(params: {
           studentId,
           parentPhone: params.parentPhone,
           message,
-          status: twilioEnabled() ? "queued" : "simulated",
+          status: initialStatus ?? "simulated",
           provider,
           errorMessage: null,
           providerSid,
           channel,
-          statusUpdatedAt: twilioEnabled() ? new Date() : null,
+          statusUpdatedAt: initialStatus ? new Date() : null,
         });
       } catch (logErr) {
         console.error("[sms] carrier accepted message but sms_logs write failed", logErr);
