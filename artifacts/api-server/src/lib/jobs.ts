@@ -5,6 +5,13 @@ import { writeAudit } from "./audit";
 import { sendSms, SmsDeliveryError } from "./sms";
 import { buildStatusMessage } from "./sms-templates";
 import { publishEvent } from "./events";
+import { getArrivalRules } from "./attendance-rules";
+
+export type AttendanceSmsStatus = "present" | "late" | "absent";
+
+function isAttendanceSmsStatus(value: string): value is AttendanceSmsStatus {
+  return value === "present" || value === "late" || value === "absent";
+}
 
 export async function enqueueJob(params: {
   type: string;
@@ -29,6 +36,27 @@ export async function enqueueJob(params: {
   }
 
   return job;
+}
+
+/**
+ * Queue a parent notification for a newly recorded attendance event.
+ * Keep the event timestamp with the job so delayed retries still report the
+ * actual check-in time, not when a worker happened to process the job.
+ */
+export async function enqueueAttendanceSms(
+  studentId: number,
+  status: string,
+  markedAt: Date,
+) {
+  if (!isAttendanceSmsStatus(status)) {
+    logger.warn({ studentId, status }, "Skipping parent SMS for unsupported attendance status");
+    return null;
+  }
+  return enqueueJob({
+    type: "send_sms",
+    worker: "api",
+    payload: { studentId, status, markedAt: markedAt.toISOString() },
+  });
 }
 
 async function claimServerJob(jobId?: number) {
@@ -75,7 +103,7 @@ async function runServerJob(job: ClaimedServerJob): Promise<void> {
 
     const studentId = Number(job.payload.studentId);
     const status = String(job.payload.status);
-    if (!Number.isInteger(studentId) || !["late", "absent"].includes(status)) {
+    if (!Number.isInteger(studentId) || !isAttendanceSmsStatus(status)) {
       throw new Error("Invalid attendance notification job payload");
     }
     const [student] = await db.select().from(studentsTable).where(eq(studentsTable.id, studentId));
@@ -91,12 +119,26 @@ async function runServerJob(job: ClaimedServerJob): Promise<void> {
       classroomName = cls?.name ?? null;
     }
 
-    // Late/absent SMS go out with the arrival/absence time formatted in the
-    // school's timezone (Phase 4 time rules), not the server clock.
+    const rawMarkedAt = job.payload.markedAt;
+    const parsedMarkedAt = typeof rawMarkedAt === "string" ? new Date(rawMarkedAt) : null;
+    const markedAt = parsedMarkedAt && Number.isFinite(parsedMarkedAt.getTime())
+      ? parsedMarkedAt
+      : new Date();
+    let timezone = "Africa/Addis_Ababa";
+    try {
+      timezone = (await getArrivalRules()).timezone;
+    } catch (err) {
+      logger.warn({ err }, "Could not load attendance timezone; using SMS fallback timezone");
+    }
+
+    // Keep the event time and format it in the school's timezone, not the
+    // server timezone (UTC on Vercel).
     const message = await buildStatusMessage(
-      status as "late" | "absent",
+      status,
       student.name,
       classroomName,
+      markedAt,
+      timezone,
     );
 
     try {

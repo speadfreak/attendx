@@ -499,7 +499,7 @@ async function processScanCore(input: ScanCoreInput): Promise<ScanCoreOutput> {
     await db.update(qrScanLogsTable).set({ fraudScore: fraud.score, fraudSignals: fraud.kinds }).where(eq(qrScanLogsTable.id, scanLog.id));
   }
 
-  // 8. Audit trail + late-arrival parent SMS (unchanged Phase 3/4 behavior)
+  // 8. Audit trail + parent SMS for every new arrival.
   await writeAudit({
     actorAdminId: input.actorAdminId ?? null,
     action: "attendance.qr.committed",
@@ -508,10 +508,8 @@ async function processScanCore(input: ScanCoreInput): Promise<ScanCoreOutput> {
     payload: { studentId: sid, serial: issue.serial, terminalId, status, spooled: input.spooled ?? false },
   });
 
-  if (status === "late") {
-    const { enqueueJob } = await import("../lib/jobs");
-    await enqueueJob({ type: "send_sms", worker: "api", payload: { studentId: sid, status } });
-  }
+  const { enqueueAttendanceSms } = await import("../lib/jobs");
+  await enqueueAttendanceSms(student.id, status, log.markedAt);
 
   return {
     httpCode: 201,

@@ -7,7 +7,7 @@
  *
  * Admins configure (Operations → System Settings):
  *   entranceTime     — arrivals at/before this local time are "present"
- *   lateCutoffTime   — after entranceTime the arrival is "late" (SMS queued)
+ *   lateCutoffTime   — distinguishes late from present; both queue an arrival SMS
  *   absenceCutoffTime — the absent sweep only marks students once local time
  *                       passes this; before it, "no record yet" ≠ absent
  *   attendanceTimezone — IANA zone the school runs on (default Africa/Addis_Ababa)
@@ -79,7 +79,7 @@ export function localDayBounds(at: Date, timezone: string): { dayKey: string; st
   return { dayKey, startUtc, endUtc };
 }
 
-/** present = at/before entrance time; late = anything after (SMS queued upstream). */
+/** present = at/before entrance time; late = anything after (both queue SMS upstream). */
 export function resolveArrivalStatus(at: Date, rules: ArrivalRules): "present" | "late" {
   return minutesSinceMidnight(at, rules.timezone) <= rules.entranceMinutes ? "present" : "late";
 }

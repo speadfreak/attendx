@@ -3,7 +3,7 @@ import { db, studentsTable, faceEncodingsTable, attendanceLogsTable, matchReview
 import { eq, and, gte, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { requireAuth, requireStaff } from "../lib/auth";
-import { enqueueJob } from "../lib/jobs";
+import { enqueueAttendanceSms } from "../lib/jobs";
 import { writeAudit } from "../lib/audit";
 import { findClosestFaceMatch, findClosestFaceMatchAll } from "../lib/face-matching";
 import { getSystemSettings } from "../lib/system-settings";
@@ -148,9 +148,7 @@ router.post("/face/recognize", requireStaff, async (req, res): Promise<void> => 
     confidence,
   }).returning();
 
-  if (status === "late") {
-    await enqueueJob({ type: "send_sms", worker: "api", payload: { studentId: student.id, status } });
-  }
+  await enqueueAttendanceSms(student.id, status, log.markedAt);
   const actor = (req as typeof req & { admin?: { adminId?: number } }).admin;
   await writeAudit({
     actorAdminId: actor?.adminId,

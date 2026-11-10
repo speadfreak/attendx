@@ -867,7 +867,7 @@ export default function OperationsPage() {
                       <input id="attendance-timezone" data-testid="input-attendance-timezone" type="text" value={attendanceTimezone} onChange={(event) => setAttendanceTimezone(event.target.value)} maxLength={64} placeholder="Africa/Addis_Ababa" className={inputClass} />
                     </div>
                   </div>
-                  <p className="mt-2 text-[11px] leading-relaxed text-violet-100/40">Arrivals at or before the entrance time are marked present; arrivals after it are marked late and trigger the parent SMS. Students with no attendance record are only marked absent once the absence cutoff time unlocks the sweep.</p>
+                  <p className="mt-2 text-[11px] leading-relaxed text-violet-100/40">Arrivals at or before the entrance time are marked present; later arrivals are marked late. Both arrival statuses trigger the matching parent SMS. Students with no attendance record are only marked absent once the absence cutoff time unlocks the sweep.</p>
                 </div>
                 <div className="border-t border-violet-100/[0.08] pt-4">
                   <p className="text-xs font-semibold text-violet-100/75">Gate integrity</p>

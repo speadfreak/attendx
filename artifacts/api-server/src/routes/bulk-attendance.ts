@@ -13,7 +13,7 @@ import { requirePiToken, type PiAuthenticatedRequest } from "../lib/pi-auth";
 import { findClosestFaceMatch } from "../lib/face-matching";
 import { getSystemSettings } from "../lib/system-settings";
 import { arrivalRulesFromSettings, resolveArrivalStatus, localDayBounds } from "../lib/attendance-rules";
-import { enqueueJob } from "../lib/jobs";
+import { enqueueAttendanceSms, enqueueJob } from "../lib/jobs";
 import { publishEvent } from "../lib/events";
 import { writeAudit } from "../lib/audit";
 
@@ -192,9 +192,7 @@ router.post("/attendance/bulk-match", requirePiToken, async (req, res): Promise<
         source: "gate-camera",
       },
     });
-    if (status === "late") {
-      await enqueueJob({ type: "send_sms", worker: "api", payload: { studentId: student.id, status } });
-    }
+    await enqueueAttendanceSms(student.id, status, attendance.markedAt);
   }
 
   const retentionAt = new Date(now.getTime() + settings.reviewRetentionDays * 24 * 60 * 60 * 1000);

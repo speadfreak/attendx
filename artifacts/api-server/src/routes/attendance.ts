@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, attendanceLogsTable, studentsTable, classroomsTable, auditLogsTable } from "@workspace/db";
 import { and, count, eq, gte, inArray, lte, sql } from "drizzle-orm";
-import { enqueueJob } from "../lib/jobs";
+import { enqueueAttendanceSms } from "../lib/jobs";
 import { writeAudit } from "../lib/audit";
 import {
   ListAttendanceQueryParams,
@@ -176,13 +176,7 @@ router.post("/attendance", requireStaff, async (req, res): Promise<void> => {
   }).returning();
   publishEvent("attendance.created", { studentId: log.studentId, studentName: student.name, status: log.status, method: "manual", source: "manual", markedAt: log.markedAt.toISOString() });
 
-  if (log.status === "late" || log.status === "absent") {
-    await enqueueJob({
-      type: "send_sms",
-      worker: "api",
-      payload: { studentId: student.id, status: log.status },
-    });
-  }
+  await enqueueAttendanceSms(student.id, log.status, log.markedAt);
   const actor = (req as typeof req & { admin?: { adminId?: number } }).admin;
   await writeAudit({
     actorAdminId: actor?.adminId,

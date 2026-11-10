@@ -125,7 +125,7 @@
 - Method mix + classroom leaderboard insights
 
 ### 🛠 Admin & ops
-- **SMS Template Manager**: editable present/late/absent templates with `{student_name} {time} {classroom}` variables — absent template now fully wired via end-of-day sweep
+- **SMS Template Manager**: editable present/late/absent templates with `{student_name} {time} {classroom}` variables — arrival messages are queued for every new check-in, and absent alerts fire from the end-of-day sweep
 - **Audit trail viewer**: searchable/filterable log of every sensitive action (CSV export)
 - **Role tiers**: super_admin (full access) · admin · teacher (view + manual marking + QR issue, no operations/admin/audit surfaces)
 

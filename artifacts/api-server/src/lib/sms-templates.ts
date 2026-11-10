@@ -1,4 +1,5 @@
 import { settingValue } from "./system-settings";
+import { formatLocalClock } from "./attendance-rules";
 
 /**
  * Editable SMS message templates stored in system_settings.
@@ -50,8 +51,9 @@ export async function buildStatusMessage(
   studentName: string,
   classroom?: string | null,
   at?: Date,
+  timezone = "Africa/Addis_Ababa",
 ): Promise<string> {
   const templates = await getSmsTemplates();
-  const time = (at ?? new Date()).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+  const time = formatLocalClock(at ?? new Date(), timezone);
   return renderTemplate(templates[status], { studentName, time, classroom, status });
 }

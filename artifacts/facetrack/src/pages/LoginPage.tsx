@@ -28,7 +28,7 @@ const FEATURES = [
   {
     icon: BellRing,
     title: "Instant parent alerts",
-    desc: "SMS notifications the moment a student is late or absent.",
+    desc: "Parent SMS after every arrival, with separate late and absent alerts.",
   },
 ] as const;
 

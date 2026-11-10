@@ -13,7 +13,7 @@ import {
 } from "@workspace/db";
 import { z } from "zod/v4";
 import { requireAuth, requireStaff, requireAdminLevel } from "../lib/auth";
-import { enqueueJob } from "../lib/jobs";
+import { enqueueAttendanceSms, enqueueJob } from "../lib/jobs";
 import { writeAudit } from "../lib/audit";
 import { getSystemSettings, setSettings, setSystemSetting, hhmmToMinutes, isValidTimezone } from "../lib/system-settings";
 import { invalidateSmsSettingsCache } from "../lib/sms";
@@ -279,9 +279,7 @@ router.post("/reviews/:id/decision", requireStaff, async (req, res): Promise<voi
         notes: `reassigned from review #${reviewId}`,
       }).returning();
       attendance = { id: created.id, status, alreadyMarked: false, studentId: target.id };
-      if (status === "late") {
-        await enqueueJob({ type: "send_sms", worker: "api", payload: { studentId: target.id, status } });
-      }
+      await enqueueAttendanceSms(target.id, status, created.markedAt);
     }
     await db.update(matchReviewsTable).set({ studentId: target.id }).where(eq(matchReviewsTable.id, reviewId));
     await writeAudit({
@@ -320,9 +318,7 @@ router.post("/reviews/:id/decision", requireStaff, async (req, res): Promise<voi
         confidence: review.confidence,
       }).returning();
       attendance = { id: created.id, status, alreadyMarked: false };
-      if (status === "late") {
-        await enqueueJob({ type: "send_sms", worker: "api", payload: { studentId: review.studentId, status } });
-      }
+      await enqueueAttendanceSms(review.studentId, status, created.markedAt);
       await writeAudit({
         actorAdminId: adminId(req),
         action: "attendance.gate_camera.approved",
@@ -492,7 +488,7 @@ router.post("/attendance/absent-sweep", requireAdminLevel, async (req, res): Pro
       source: "manual",
       notes: "absent sweep",
     }).returning();
-    await enqueueJob({ type: "send_sms", worker: "api", payload: { studentId: student.id, status: "absent" } });
+    await enqueueAttendanceSms(student.id, "absent", log.markedAt);
     smsQueued++;
     publishEvent("attendance.created", { studentId: student.id, studentName: student.name, status: "absent", method: "manual" });
     await writeAudit({

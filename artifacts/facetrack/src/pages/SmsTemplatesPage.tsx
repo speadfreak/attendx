@@ -104,8 +104,8 @@ export default function SmsTemplatesPage() {
         ) : (
           <div className="space-y-4">
             {([
-              { key: "present", label: "PRESENT ARRIVAL", tone: "green", hint: "Sent on demand when parents need arrival confirmation." },
-              { key: "late", label: "LATE ARRIVAL", tone: "amber", hint: "Auto-sent when a late check-in is committed (face, QR or manual)." },
+              { key: "present", label: "PRESENT ARRIVAL", tone: "green", hint: "Auto-sent after every new present check-in (face, QR, gate camera or manual)." },
+              { key: "late", label: "LATE ARRIVAL", tone: "amber", hint: "Auto-sent after every new late check-in." },
               { key: "absent", label: "ABSENT ALERT", tone: "red", hint: "Wired in: fires from the end-of-day absent sweep and manual absent marks." },
             ] as const).map((row) => (
               <GlowCard key={row.key} accent variant="gradient" className="p-5">
@@ -135,7 +135,7 @@ export default function SmsTemplatesPage() {
 
         <GlowCard variant="gradient" className="p-4">
           <p className="text-[11px] text-white/35 leading-relaxed">
-            <strong className="text-white/60">How sending works:</strong> late & absent marks enqueue an SMS job; the worker
+            <strong className="text-white/60">How sending works:</strong> present, late & absent marks enqueue an SMS job; the worker
             renders your template (student name, time, classroom) and delivers via Twilio when configured — otherwise the
             message is recorded as a simulated delivery in SMS Logs. The end-of-day absent sweep marks every student
             without a record and notifies each parent with the absent template.

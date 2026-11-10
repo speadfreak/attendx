@@ -97,7 +97,7 @@ Run the push command only after confirming `DATABASE_URL` points at the intended
 
 ## Phase 4 — attendance time rules & gate integrity
 
-**Attendance time rules** (Operations → System Settings, admin-level): `entranceTime` (arrivals at/before it → present), `lateCutoffTime` (after it → late; parent SMS queued), `absenceCutoffTime` (the absent sweep refuses to run before it passes — pass `{"force":true}` to override), and `attendanceTimezone` (IANA, default `Africa/Addis_Ababa`). Every present/late decision (webcam face, gate camera batch, QR door terminal, review approve/reassign) and all "today" boundaries now follow the school's timezone instead of the server clock (which is UTC on Vercel).
+**Attendance time rules** (Operations → System Settings, admin-level): `entranceTime` (arrivals at/before it → present), `lateCutoffTime` (after it → late), `absenceCutoffTime` (the absent sweep refuses to run before it passes — pass `{"force":true}` to override), and `attendanceTimezone` (IANA, default `Africa/Addis_Ababa`). Every newly recorded present/late arrival (webcam face, gate camera batch, QR door terminal, review approve/reassign, or manual entry) queues the matching parent SMS, using the recorded attendance time formatted in the school's timezone. "Today" boundaries follow that timezone instead of the server clock (which is UTC on Vercel).
 
 **Gate Integrity** (Operations → Gate Integrity card): the Pi agent batches Arduino pass events (`ultrasonic` HC-SR04 + `ir_beam` break-beam) to `POST /api/gate/sensor-events` (Pi token auth). Epoch-aligned windows (`gateWindowSeconds`, default 60 s) are compared three ways: camera-matched attendance (`source=gate-camera`) vs ultrasonic vs IR. `gateDiscrepancyPct` (default 10%) raises:
 

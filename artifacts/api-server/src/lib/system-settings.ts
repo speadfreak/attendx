@@ -7,7 +7,7 @@ export const DEFAULT_SYSTEM_SETTINGS = {
   fanMode: "auto" as const,
   // ── Phase 4: attendance time rules (admin-controlled) ──────────
   // Arrivals at/before entranceTime (local) → "present".
-  // After entranceTime → "late" (a late SMS is queued).
+  // After entranceTime → "late"; parent SMS is queued for every arrival.
   // Students with NO record once local time passes absenceCutoffTime
   // are marked absent by the sweep.
   entranceTime: "08:00",
