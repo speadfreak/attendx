@@ -206,12 +206,12 @@ export default function AdminsPage() {
 
   const getRoleBadge = (role: string) => {
     if (role === "super_admin") {
-      return <span className="st-badge st-badge-purple"><ShieldCheck className="w-2.5 h-2.5" /> Super Admin</span>;
+      return <span className="gx-chip gx-chip-violet"><ShieldCheck className="w-2.5 h-2.5" /> Super Admin</span>;
     }
     if (role === "teacher") {
-      return <span className="st-badge st-badge-amber"><ShieldAlert className="w-2.5 h-2.5" /> Teacher</span>;
+      return <span className="gx-chip gx-chip-amber"><ShieldAlert className="w-2.5 h-2.5" /> Teacher</span>;
     }
-    return <span className="st-badge st-badge-green"><ShieldCheck className="w-2.5 h-2.5" /> Admin</span>;
+    return <span className="gx-chip gx-chip-emerald"><ShieldCheck className="w-2.5 h-2.5" /> Admin</span>;
   };
 
   return (
@@ -219,12 +219,12 @@ export default function AdminsPage() {
       {showAddDialog && <AdminFormDialog onClose={() => setShowAddDialog(false)} />}
       {editingAdmin && <AdminFormDialog admin={editingAdmin} onClose={() => setEditingAdmin(null)} />}
 
-      <div className="flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
+      <div className="gx-page-header flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Admin Management</h1>
+          <h1 className="gx-title-gradient text-3xl font-bold tracking-tight">Admin Management</h1>
           <p className="text-muted-foreground">Manage system administrator accounts</p>
         </div>
-        <Button className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => setShowAddDialog(true)}>
+        <Button className="gx-btn-accent gx-gradient-pan gx-focus-ring text-white" onClick={() => setShowAddDialog(true)}>
           <Plus className="w-4 h-4 mr-2" /> Add Admin
         </Button>
       </div>
@@ -233,15 +233,15 @@ export default function AdminsPage() {
         {isLoading ? (
           Array(3).fill(0).map((_, i) => <Skeleton key={i} className="h-20 w-full" />)
         ) : !admins?.length ? (
-          <Card className="bg-card border-border">
-            <CardContent className="h-32 flex items-center justify-center text-muted-foreground">
+          <Card className="gx-panel bg-card border-border">
+            <CardContent className="gx-empty-tint h-32 flex items-center justify-center text-muted-foreground rounded-xl">
               No admins found.
             </CardContent>
           </Card>
         ) : (
           admins.map((a) => (
             <motion.div key={a.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
-              <Card className={`bg-card border-border transition-colors ${a.id === currentAdmin?.id ? "border-primary/30 bg-primary/5" : ""}`}>
+              <Card className={`gx-panel gx-glow-hover bg-card border-border transition-colors ${a.id === currentAdmin?.id ? "border-primary/30 bg-primary/5" : ""}`}>
                 <CardContent className="flex items-center justify-between p-4">
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center text-lg font-bold border border-border">

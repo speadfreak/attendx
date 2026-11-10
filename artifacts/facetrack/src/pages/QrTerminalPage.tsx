@@ -517,8 +517,8 @@ export default function QrTerminalPage() {
           </div>
         )}
 
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <SectionTitle sub="DOOR TERMINAL · TAP BADGE TO CHECK IN">
+        <div className="gx-page-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <SectionTitle className="gx-title-gradient" sub="DOOR TERMINAL · TAP BADGE TO CHECK IN">
             QR TERMINAL
           </SectionTitle>
           <div className="flex items-center gap-2">
@@ -540,7 +540,7 @@ export default function QrTerminalPage() {
         </div>
 
         {editingTerminal && (
-          <GlowCard className="p-4 flex flex-col sm:flex-row gap-2 items-start sm:items-center">
+          <GlowCard variant="gradient" className="p-4 flex flex-col sm:flex-row gap-2 items-start sm:items-center">
             <label className="text-xs text-white/50 flex items-center gap-2">
               <Terminal size={13} className="text-cyan-400" /> Terminal ID (this door):
             </label>
@@ -631,7 +631,7 @@ export default function QrTerminalPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* ── Scanner ── */}
           <div className="lg:col-span-5 space-y-4">
-            <GlowCard accent className="overflow-hidden">
+            <GlowCard accent variant="gradient" className="overflow-hidden">
               <div className="relative bg-black" style={{ aspectRatio: "4/3" }}>
                 <div id={SCANNER_REGION_ID} className="w-full h-full [&>video]:w-full [&>video]:h-full [&>video]:object-cover" />
                 {cameraState !== "ready" && (
@@ -727,7 +727,7 @@ export default function QrTerminalPage() {
             </GlowCard>
 
             {/* Manual entry + counters */}
-            <GlowCard className="p-4">
+            <GlowCard variant="gradient" className="p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Keyboard size={13} className="text-purple-400" />
                 <p className="text-[10px] uppercase tracking-widest text-white/40">Manual / USB scanner entry</p>
@@ -745,15 +745,15 @@ export default function QrTerminalPage() {
                 <button type="submit" className="st-badge st-badge-purple px-4">submit</button>
               </form>
               <div className="grid grid-cols-3 gap-2 mt-4">
-                <div className="rounded-lg bg-emerald-500/8 border border-emerald-500/15 p-2.5 text-center">
+                <div className="gx-stat rounded-lg bg-emerald-500/8 border border-emerald-500/15 p-2.5 text-center">
                   <p className="counter-num text-lg text-emerald-400">{counter.valid}</p>
                   <p className="text-[8px] uppercase tracking-widest text-white/30">valid today</p>
                 </div>
-                <div className="rounded-lg bg-amber-500/8 border border-amber-500/15 p-2.5 text-center">
+                <div className="gx-stat rounded-lg bg-amber-500/8 border border-amber-500/15 p-2.5 text-center">
                   <p className="counter-num text-lg text-amber-400">{counter.duplicate}</p>
                   <p className="text-[8px] uppercase tracking-widest text-white/30">duplicates</p>
                 </div>
-                <div className="rounded-lg bg-red-500/8 border border-red-500/15 p-2.5 text-center">
+                <div className="gx-stat rounded-lg bg-red-500/8 border border-red-500/15 p-2.5 text-center">
                   <p className="counter-num text-lg text-red-400">{counter.anomalies}</p>
                   <p className="text-[8px] uppercase tracking-widest text-white/30">blocked</p>
                 </div>
@@ -763,7 +763,7 @@ export default function QrTerminalPage() {
 
           {/* ── Live door feed ── */}
           <div className="lg:col-span-7">
-            <GlowCard className="p-5 h-full">
+            <GlowCard variant="gradient" className="p-5 h-full">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <StatusDot tone="green" pulse />

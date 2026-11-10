@@ -43,21 +43,25 @@ export function SectionTitle({
   sub,
   right,
   size = "page",
+  className,
 }: {
   children: ReactNode;
   sub?: ReactNode;
   right?: ReactNode;
   size?: "page" | "section";
+  /** Extra classes for the h1 — e.g. "gx-title-gradient" for domain accents. */
+  className?: string;
 }) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-1">
       <div>
         <h1
-          className={
+          className={cn(
             size === "page"
               ? "text-2xl sm:text-3xl font-black tracking-tight gx-gradient-text"
-              : "text-sm font-semibold uppercase tracking-widest gx-gradient-text"
-          }
+              : "text-sm font-semibold uppercase tracking-widest gx-gradient-text",
+            className,
+          )}
           style={{ fontFamily: "'Orbitron', monospace" }}
         >
           {children}

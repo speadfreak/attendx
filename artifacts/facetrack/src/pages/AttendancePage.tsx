@@ -444,8 +444,8 @@ export default function AttendancePage() {
     <div className="relative">
       <MeshBackground />
       <div className="relative z-10 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <SectionTitle sub="REALTIME AI FACE + QR ATTENDANCE">
+        <div className="gx-page-header flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <SectionTitle className="gx-title-gradient" sub="REALTIME AI FACE + QR ATTENDANCE">
             ACTIVE SCAN
           </SectionTitle>
           <div className="w-full sm:w-56">
@@ -473,7 +473,7 @@ export default function AttendancePage() {
                   key={t.id}
                   onClick={() => setTab(t.id)}
                   className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all ${
-                    tab === t.id ? "bg-purple-600/30 text-purple-200 shadow-[0_0_12px_rgba(155,91,255,0.25)]" : "text-white/40 hover:text-white/70"
+                    tab === t.id ? "gx-nav-pill text-purple-200" : "text-white/40 hover:text-white/70"
                   }`}
                 >
                   <t.icon size={13} /> {t.label}
@@ -490,7 +490,7 @@ export default function AttendancePage() {
             {tab === "face" && (
               <div className="space-y-3">
                 {/* camera controls */}
-                <GlowCard className="p-3 flex flex-wrap items-center gap-2">
+                <GlowCard variant="gradient" className="p-3 flex flex-wrap items-center gap-2">
                   <Layers size={13} className="text-purple-400" />
                   <span className="text-[10px] uppercase tracking-widest text-white/35">cameras</span>
                   <button
@@ -559,8 +559,7 @@ export default function AttendancePage() {
                 {/* manual scan button */}
                 {!autoMode && (
                   <button
-                    className="py-3 rounded-xl text-sm font-semibold text-white transition-all"
-                    style={{ background: "linear-gradient(135deg,#7C3AED,#9B5BFF)", boxShadow: "0 0 18px rgba(124,58,237,0.35)" }}
+                    className="gx-btn-accent gx-gradient-pan py-3 rounded-xl text-sm font-semibold text-white transition-all"
                     onClick={() => {
                       const first = document.querySelector<HTMLVideoElement>("video");
                       const cv = document.querySelector<HTMLCanvasElement>("canvas");
@@ -573,7 +572,7 @@ export default function AttendancePage() {
                 )}
 
                 {modelStatus === "loading" && (
-                  <GlowCard className="px-4 py-3">
+                  <GlowCard className="gx-empty-tint px-4 py-3">
                     <div className="w-full bg-white/5 rounded-full h-1 overflow-hidden">
                       <div className="h-full bg-purple-500 animate-pulse rounded-full w-3/4" />
                     </div>
@@ -622,7 +621,7 @@ export default function AttendancePage() {
 
             {/* ── QR TAB ── */}
             {tab === "qr" && (
-              <GlowCard className="p-4">
+              <GlowCard variant="gradient" className="p-4">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm text-white/70 flex items-center gap-2">
                     <QrCode size={15} className="text-cyan-400" /> Live QR scanning
@@ -672,7 +671,7 @@ export default function AttendancePage() {
 
             {/* ── MANUAL TAB ── */}
             {tab === "manual" && (
-              <GlowCard className="p-5">
+              <GlowCard variant="gradient" className="p-5">
                 <span className="text-sm text-white/70 flex items-center gap-2 mb-4">
                   <Keyboard size={15} className="text-purple-400" /> Manual entry
                 </span>
@@ -703,8 +702,7 @@ export default function AttendancePage() {
                   </div>
                   <button
                     type="submit"
-                    className="w-full py-2.5 rounded-xl text-sm font-semibold text-white"
-                    style={{ background: "linear-gradient(135deg,#7C3AED,#9B5BFF)" }}
+                    className="gx-btn-accent gx-gradient-pan w-full py-2.5 rounded-xl text-sm font-semibold text-white"
                     disabled={createAttendance.isPending || !manualStudentId}
                   >
                     {createAttendance.isPending && <Loader2 className="w-4 h-4 mr-2 inline animate-spin" />}
@@ -717,7 +715,7 @@ export default function AttendancePage() {
 
           {/* RIGHT: Live Stream */}
           <div className="lg:col-span-4">
-            <GlowCard className="p-5 h-full flex flex-col" style={{ minHeight: 420 }}>
+            <GlowCard variant="gradient" className="p-5 h-full flex flex-col" style={{ minHeight: 420 }}>
               <div className="flex items-center justify-between mb-4 shrink-0">
                 <div className="flex items-center gap-2">
                   <StatusDot tone="green" pulse />

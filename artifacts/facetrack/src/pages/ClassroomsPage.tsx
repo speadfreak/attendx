@@ -337,14 +337,13 @@ export default function ClassroomsPage() {
     <div className="relative">
       <MeshBackground />
       <div className="relative z-10 space-y-5 max-w-6xl mx-auto">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <SectionTitle sub="ZONES, HOMEROOM TEACHERS & SEATING MAPS">
+        <div className="gx-page-header flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <SectionTitle className="gx-title-gradient" sub="ZONES, HOMEROOM TEACHERS & SEATING MAPS">
             CLASSROOMS
           </SectionTitle>
           <button
             onClick={openAdd}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-white"
-            style={{ background: "linear-gradient(135deg,#7C3AED,#9B5BFF)", boxShadow: "0 0 16px rgba(124,58,237,0.35)" }}
+            className="gx-btn-accent gx-gradient-pan flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold text-white"
           >
             <Plus size={14} /> Add Classroom
           </button>
@@ -355,13 +354,13 @@ export default function ClassroomsPage() {
             {Array(4).fill(0).map((_, i) => <GlowSkeleton key={i} className="h-32" />)}
           </div>
         ) : !classrooms?.length ? (
-          <GlowCard className="p-6">
+          <GlowCard variant="gradient" className="gx-empty-tint p-6">
             <GlowEmpty icon={<School size={26} />} title="No classrooms yet" hint="Create your first classroom zone to enroll students into it." />
           </GlowCard>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {classrooms.map((c: any) => (
-              <GlowCard key={c.id} accent className="p-5">
+              <GlowCard key={c.id} accent variant="gradient" className="gx-glow-hover p-5">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/25 flex items-center justify-center">
@@ -433,7 +432,7 @@ export default function ClassroomsPage() {
                   <button type="button" className="st-badge st-badge-slate px-3 py-1.5" onClick={() => setShowAdd(false)}>Cancel</button>
                   <button
                     type="submit"
-                    className="st-badge st-badge-purple px-4 py-1.5"
+                    className="gx-btn-accent gx-gradient-pan rounded-lg px-4 py-1.5 text-xs font-semibold text-white"
                     disabled={createClassroom.isPending || updateClassroom.isPending}
                   >
                     {editing ? "Save changes" : "Create"}

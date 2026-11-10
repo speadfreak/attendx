@@ -136,13 +136,13 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
   };
 
   const rootCls = chrome === "panel"
-    ? "rounded-2xl border border-violet-200/10 bg-[#191323] shadow-[0_14px_40px_rgba(18,8,30,0.18)] p-5 sm:p-6"
+    ? "gx-panel rounded-2xl p-5 sm:p-6"
     : "";
 
   return chrome === "panel" ? (
     <article className={rootCls}>{smsHealthInner()}</article>
   ) : (
-    <GlowCard className="p-5">{smsHealthInner()}</GlowCard>
+    <GlowCard variant="gradient" className="p-5">{smsHealthInner()}</GlowCard>
   );
 
   function smsHealthInner() {

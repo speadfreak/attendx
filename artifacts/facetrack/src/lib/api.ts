@@ -516,6 +516,73 @@ export interface SmsTestSendResult {
   error: { message: string; code: string | null; fix: string | null } | null;
 }
 
+// ── Fraud Radar (Phase 6 proxy-fraud signals) ────────────────────
+
+export type FraudSignalKind =
+  | "impossible_travel"
+  | "burst_scan"
+  | "badge_sharing"
+  | "proxy_farm"
+  | "geofence_violation";
+export type FraudSignalSeverity = "low" | "medium" | "high" | "critical";
+export type FraudSignalStatus = "open" | "acknowledged" | "resolved" | "dismissed";
+
+/**
+ * One row of GET /fraud-signals — mirrors `serializeSignal` in
+ * artifacts/api-server/src/routes/fraud.ts (spread SignalRow + ISO dates).
+ */
+export interface FraudSignal {
+  id: number;
+  kind: string;
+  severity: string;
+  /** 0-100 confidence from the inline fraud engine. */
+  score: number;
+  studentId: number | null;
+  studentName: string | null;
+  terminalId: string | null;
+  gateId: string | null;
+  primaryScanId: number | null;
+  relatedScanIds: number[];
+  detail: string | null;
+  /** Structured evidence JSON string: speedKmh, distanceKm, count, windowSec… */
+  evidence: string | null;
+  status: string;
+  dedupeKey: string | null;
+  resolvedByAdminId: number | null;
+  resolvedAt: string | null;
+  resolveNote: string | null;
+  createdAt: string;
+}
+
+/** GET /fraud-signals/summary — radar header tiles. */
+export interface FraudSummary {
+  byStatus: Record<FraudSignalStatus, number>;
+  byKind: Record<string, number>;
+  openCritical: number;
+}
+
+/** One row of GET /gates — mirrors `serializeGate` in routes/gates.ts. */
+export interface GateRecord {
+  gateId: string;
+  name: string;
+  /** null = geofence disabled for this gate */
+  latitude: number | null;
+  longitude: number | null;
+  geofenceRadiusM: number;
+  terminalIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** PUT /gates/:gateId body (zod `gateInput`); null lat/lng clears the geofence. */
+export interface GateUpsertInput {
+  name: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  geofenceRadiusM?: number;
+  terminalIds?: string[];
+}
+
 // ── Endpoint wrappers ───────────────────────────────────────────
 
 /**
@@ -617,4 +684,36 @@ export const api = {
   smsHealth: () => get<SmsDeliveryHealth>("/sms-logs/health"),
   smsTestSend: (to: string, body?: string, channel?: "sms" | "whatsapp") =>
     post<SmsTestSendResult>("/sms/test-send", { to, body, channel }),
+
+  // ── Fraud Radar (proxy-fraud signals) ──
+  listFraudSignals: (params?: {
+    status?: FraudSignalStatus;
+    kind?: string;
+    severity?: FraudSignalSeverity;
+    studentId?: number;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const q = new URLSearchParams();
+    if (params?.status) q.set("status", params.status);
+    if (params?.kind) q.set("kind", params.kind);
+    if (params?.severity) q.set("severity", params.severity);
+    if (params?.studentId) q.set("studentId", String(params.studentId));
+    if (params?.limit) q.set("limit", String(params.limit));
+    if (params?.offset) q.set("offset", String(params.offset));
+    const qs = q.toString();
+    return get<FraudSignal[]>(`/fraud-signals${qs ? `?${qs}` : ""}`);
+  },
+  fraudSummary: () => get<FraudSummary>("/fraud-signals/summary"),
+  /** Triage decision — mirrors POST /reviews/:id/decision conventions. */
+  decideFraudSignal: (
+    id: number,
+    body: { status: "acknowledged" | "resolved" | "dismissed"; note?: string },
+  ) => post<FraudSignal>(`/fraud-signals/${id}/decide`, body),
+
+  // ── Gates & Geofence (geofenced QR registry) ──
+  listGates: () => get<GateRecord[]>("/gates"),
+  upsertGate: (gateId: string, body: GateUpsertInput) =>
+    put<GateRecord>(`/gates/${encodeURIComponent(gateId)}`, body),
+  deleteGate: (gateId: string) => del<{ ok: boolean }>(`/gates/${encodeURIComponent(gateId)}`),
 };

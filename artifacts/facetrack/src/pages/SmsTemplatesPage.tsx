@@ -62,21 +62,21 @@ export default function SmsTemplatesPage() {
     <div className="relative">
       <MeshBackground />
       <div className="relative z-10 space-y-5 max-w-4xl mx-auto">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <SectionTitle sub="PARENT NOTIFICATIONS · EDITABLE WITH VARIABLES">
+        <div className="gx-page-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <SectionTitle className="gx-title-gradient" sub="PARENT NOTIFICATIONS · EDITABLE WITH VARIABLES">
             SMS TEMPLATES
           </SectionTitle>
           <button
             onClick={save}
             disabled={!dirty || saving}
-            className="st-badge st-badge-purple px-4 py-2 disabled:opacity-40"
+            className="gx-btn-accent gx-gradient-pan gx-focus-ring inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold text-white disabled:opacity-40 disabled:pointer-events-none"
           >
             {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Save templates
           </button>
         </div>
 
         {/* variables palette */}
-        <GlowCard className="p-4">
+        <GlowCard variant="gradient" className="p-4">
           <div className="flex items-center gap-2 mb-2">
             <Variable size={13} className="text-cyan-400" />
             <span className="text-[10px] uppercase tracking-widest text-white/40">Variables — click to copy</span>
@@ -108,7 +108,7 @@ export default function SmsTemplatesPage() {
               { key: "late", label: "LATE ARRIVAL", tone: "amber", hint: "Auto-sent when a late check-in is committed (face, QR or manual)." },
               { key: "absent", label: "ABSENT ALERT", tone: "red", hint: "Wired in: fires from the end-of-day absent sweep and manual absent marks." },
             ] as const).map((row) => (
-              <GlowCard key={row.key} accent className="p-5">
+              <GlowCard key={row.key} accent variant="gradient" className="p-5">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <MessageSquare size={14} className={`st-${row.tone}`} />
@@ -133,7 +133,7 @@ export default function SmsTemplatesPage() {
           </div>
         )}
 
-        <GlowCard className="p-4">
+        <GlowCard variant="gradient" className="p-4">
           <p className="text-[11px] text-white/35 leading-relaxed">
             <strong className="text-white/60">How sending works:</strong> late & absent marks enqueue an SMS job; the worker
             renders your template (student name, time, classroom) and delivers via Twilio when configured — otherwise the

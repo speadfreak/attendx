@@ -736,3 +736,295 @@ html { scrollbar-width: thin; scrollbar-color: rgba(155, 91, 255, 0.45) rgba(8, 
     animation: none !important;
   }
 }
+
+/* ============================================================
+   ATTENDX PHASE 6 — APP-WIDE AURORA
+   Rolls the login-page aurora chemistry across every surface.
+   100% additive & namespaced (gx-*). Accent system is driven by
+   the CSS vars --gx-accent-from / --gx-accent-mid / --gx-accent-to
+   (RGB triplets) — a page sets them once on its root via a
+   .gx-theme-* class and every child utility inherits the domain
+   chemistry. NO blue/indigo hues anywhere.
+   ============================================================ */
+:root {
+  --gx-accent-from: 155, 91, 255;
+  --gx-accent-mid: 232, 66, 176;
+  --gx-accent-to: 251, 113, 133;
+}
+
+/* ── Domain chemistry themes (accent gradient stops) ── */
+.gx-theme-dashboard  { --gx-accent-from: 52, 211, 153; --gx-accent-mid: 251, 191, 36; --gx-accent-to: 167, 139, 250; }
+.gx-theme-students   { --gx-accent-from: 52, 211, 153; --gx-accent-mid: 163, 230, 53; --gx-accent-to: 45, 212, 191; }
+.gx-theme-attendance { --gx-accent-from: 251, 191, 36; --gx-accent-mid: 251, 146, 60; --gx-accent-to: 234, 88, 12; }
+.gx-theme-qr         { --gx-accent-from: 45, 212, 191; --gx-accent-mid: 34, 211, 238; --gx-accent-to: 103, 232, 249; }
+.gx-theme-operations { --gx-accent-from: 139, 92, 246; --gx-accent-mid: 192, 38, 211; --gx-accent-to: 232, 66, 176; }
+.gx-theme-review     { --gx-accent-from: 251, 191, 36; --gx-accent-mid: 251, 113, 133; --gx-accent-to: 244, 63, 94; }
+.gx-theme-sms        { --gx-accent-from: 139, 92, 246; --gx-accent-mid: 192, 38, 211; --gx-accent-to: 232, 66, 176; }
+.gx-theme-fraud      { --gx-accent-from: 251, 113, 133; --gx-accent-mid: 248, 113, 113; --gx-accent-to: 239, 68, 68; }
+.gx-theme-gates      { --gx-accent-from: 45, 212, 191; --gx-accent-mid: 52, 211, 153; --gx-accent-to: 16, 185, 129; }
+.gx-theme-default    { --gx-accent-from: 148, 163, 184; --gx-accent-mid: 139, 92, 246; --gx-accent-to: 167, 139, 250; }
+
+/* ── Accent helpers (var-driven gradients any element can wear) ── */
+.gx-accent-grad {
+  background-image: linear-gradient(115deg,
+    rgb(var(--gx-accent-from)) 0%,
+    rgb(var(--gx-accent-mid)) 45%,
+    rgb(var(--gx-accent-to)) 100%);
+}
+.gx-accent-border { border-color: rgba(var(--gx-accent-from), 0.22); }
+.gx-accent-text {
+  background: linear-gradient(94deg,
+    color-mix(in oklab, rgb(var(--gx-accent-from)) 55%, #FFFFFF) 0%,
+    rgb(var(--gx-accent-from)) 42%,
+    rgb(var(--gx-accent-to)) 82%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* ── Page header: radial accent glow behind the title + gradient
+   hairline underline. isolate keeps the ::before glow behind text. ── */
+.gx-page-header {
+  position: relative;
+  isolation: isolate;
+  padding-bottom: 0.75rem;
+}
+.gx-page-header::before {
+  content: '';
+  position: absolute;
+  top: -2.75rem; left: -2.5rem;
+  width: 26rem; height: 11rem;
+  max-width: 92vw;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(52% 62% at 22% 42%, rgba(var(--gx-accent-from), 0.13), transparent 72%),
+    radial-gradient(46% 55% at 58% 62%, rgba(var(--gx-accent-to), 0.09), transparent 72%);
+  filter: blur(8px);
+}
+.gx-page-header::after {
+  content: '';
+  position: absolute;
+  left: 1px; bottom: 0;
+  width: min(40ch, 55%);
+  height: 1px;
+  background: linear-gradient(90deg,
+    rgba(var(--gx-accent-from), 0.75),
+    rgba(var(--gx-accent-to), 0.42) 55%,
+    transparent);
+  pointer-events: none;
+}
+
+/* ── Animated page-title gradient (accent-driven, reduced-motion aware) ── */
+.gx-title-gradient {
+  background: linear-gradient(94deg,
+    color-mix(in oklab, rgb(var(--gx-accent-from)) 42%, #FFFFFF) 0%,
+    rgb(var(--gx-accent-from)) 36%,
+    rgb(var(--gx-accent-mid)) 62%,
+    rgb(var(--gx-accent-to)) 84%,
+    color-mix(in oklab, rgb(var(--gx-accent-to)) 62%, #FFFFFF) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .gx-title-gradient {
+    background-size: 210% 210%;
+    animation: gx-gradient-pan 9s ease-in-out infinite;
+  }
+}
+
+/* ── Gradient chips: subtle gradient fill + 1px gradient border + hover glow ── */
+.gx-chip {
+  --chip-c1: var(--gx-accent-from);
+  --chip-c2: var(--gx-accent-to);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(135deg, rgba(var(--chip-c1), 0.16), rgba(var(--chip-c2), 0.09)) padding-box,
+    linear-gradient(135deg, rgba(var(--chip-c1), 0.55), rgba(var(--chip-c2), 0.38)) border-box;
+  color: rgb(var(--chip-c1));
+  transition: box-shadow 0.2s ease;
+}
+.gx-chip:hover { box-shadow: 0 0 12px rgba(var(--chip-c1), 0.28); }
+.gx-chip-emerald { --chip-c1: 52, 211, 153;  --chip-c2: 163, 230, 53; }
+.gx-chip-lime    { --chip-c1: 163, 230, 53;  --chip-c2: 52, 211, 153; }
+.gx-chip-teal    { --chip-c1: 45, 212, 191;  --chip-c2: 34, 211, 238; }
+.gx-chip-cyan    { --chip-c1: 34, 211, 238;  --chip-c2: 103, 232, 249; }
+.gx-chip-amber   { --chip-c1: 251, 191, 36;  --chip-c2: 251, 146, 60; }
+.gx-chip-orange  { --chip-c1: 251, 146, 60;  --chip-c2: 234, 88, 12; }
+.gx-chip-rose    { --chip-c1: 251, 113, 133; --chip-c2: 244, 63, 94; }
+.gx-chip-red     { --chip-c1: 248, 113, 113; --chip-c2: 239, 68, 68; }
+.gx-chip-violet  { --chip-c1: 167, 139, 250; --chip-c2: 232, 66, 176; }
+.gx-chip-fuchsia { --chip-c1: 232, 66, 176;  --chip-c2: 251, 113, 133; }
+.gx-chip-slate   { --chip-c1: 148, 163, 184; --chip-c2: 203, 213, 225; }
+
+/* ── Gradient-tinted table header row (apply to the <thead> or its <tr>) ── */
+tr.gx-table-head,
+.gx-table-head {
+  background: linear-gradient(90deg,
+    rgba(var(--gx-accent-from), 0.12),
+    rgba(var(--gx-accent-to), 0.06) 55%,
+    transparent);
+  box-shadow: inset 0 -1px 0 rgba(var(--gx-accent-from), 0.20), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+.gx-table-head th { text-shadow: 0 0 12px rgba(var(--gx-accent-from), 0.25); }
+
+/* ── Table body row hover glow ── */
+.gx-row-hover tbody tr { transition: background-color 0.15s ease, box-shadow 0.15s ease; }
+.gx-row-hover tbody tr:hover {
+  background-color: rgba(var(--gx-accent-from), 0.05);
+  box-shadow: inset 2px 0 0 rgba(var(--gx-accent-from), 0.35), 0 0 16px rgba(var(--gx-accent-from), 0.05);
+}
+
+/* ── Glass panel: accent gradient border + inner grain ── */
+.gx-panel {
+  position: relative;
+  border: 1px solid transparent;
+  border-radius: 1rem;
+  background:
+    linear-gradient(165deg, rgba(26, 12, 44, 0.72) 0%, rgba(10, 6, 20, 0.86) 100%) padding-box,
+    linear-gradient(135deg,
+      rgba(var(--gx-accent-from), 0.42),
+      rgba(var(--gx-accent-to), 0.26) 55%,
+      rgba(var(--gx-accent-mid), 0.30)) border-box;
+  box-shadow:
+    0 0 22px rgba(var(--gx-accent-from), 0.09),
+    0 12px 42px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+.gx-panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+}
+
+/* ── Stat card: corner accent glow + top-right gradient tick ── */
+.gx-stat { position: relative; overflow: hidden; }
+.gx-stat::before {
+  content: '';
+  position: absolute;
+  top: -45%; right: -20%;
+  width: 75%; height: 150%;
+  pointer-events: none;
+  background: radial-gradient(50% 50% at 60% 42%, rgba(var(--gx-accent-from), 0.16), transparent 70%);
+  filter: blur(16px);
+}
+.gx-stat::after {
+  content: '';
+  position: absolute;
+  top: 0; right: 12%;
+  width: 5rem; height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, rgba(var(--gx-accent-to), 0.75));
+  pointer-events: none;
+}
+
+/* ── Hover glow driven by the page accent vars ── */
+.gx-glow-hover {
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+}
+.gx-glow-hover:hover {
+  box-shadow:
+    0 0 20px rgba(var(--gx-accent-from), 0.16),
+    0 0 46px rgba(var(--gx-accent-to), 0.09),
+    0 12px 40px rgba(0, 0, 0, 0.40);
+}
+
+/* ── Accent-driven primary button (pair with gx-gradient-pan for motion) ── */
+.gx-btn-accent {
+  background-image: linear-gradient(115deg,
+    rgb(var(--gx-accent-from)) 0%,
+    rgb(var(--gx-accent-mid)) 42%,
+    rgb(var(--gx-accent-to)) 100%);
+  box-shadow:
+    0 0 18px rgba(var(--gx-accent-from), 0.30),
+    0 8px 26px rgba(var(--gx-accent-to), 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.20);
+  border: none;
+}
+
+/* ── Soft aurora tint for empty / error / placeholder states ── */
+.gx-empty-tint {
+  background: radial-gradient(62% 82% at 50% 28%, rgba(var(--gx-accent-from), 0.07), transparent 74%);
+}
+
+/* ── Full-viewport page aurora backdrop (fixed, -z, very subtle).
+   Positioning via utilities in Layout; this class paints + drifts. ── */
+.gx-aurora-page {
+  pointer-events: none;
+  background:
+    radial-gradient(55% 45% at 10% 4%, rgba(var(--gx-accent-from), 0.07), transparent 72%),
+    radial-gradient(45% 40% at 92% 8%, rgba(var(--gx-accent-mid), 0.05), transparent 72%),
+    radial-gradient(50% 45% at 86% 95%, rgba(var(--gx-accent-to), 0.06), transparent 72%),
+    radial-gradient(40% 40% at 5% 92%, rgba(var(--gx-accent-from), 0.05), transparent 74%);
+}
+.gx-aurora-page::before,
+.gx-aurora-page::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(110px);
+  will-change: transform;
+}
+.gx-aurora-page::before {
+  width: 42vmax; height: 42vmax;
+  top: -14vmax; left: -9vmax;
+  background: radial-gradient(circle at 35% 35%, rgba(var(--gx-accent-from), 0.10), transparent 62%);
+}
+.gx-aurora-page::after {
+  width: 36vmax; height: 36vmax;
+  bottom: -14vmax; right: -10vmax;
+  background: radial-gradient(circle at 55% 45%, rgba(var(--gx-accent-to), 0.08), transparent 62%);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .gx-aurora-page::before { animation: gx-aurora-drift-1 34s ease-in-out infinite alternate; }
+  .gx-aurora-page::after  { animation: gx-aurora-drift-3 42s ease-in-out infinite alternate; }
+}
+
+/* ── Sidebar active nav pill (accent gradient + glow) ── */
+.gx-nav-pill {
+  background:
+    linear-gradient(135deg, rgba(var(--gx-accent-from), 0.16), rgba(var(--gx-accent-to), 0.10)) padding-box,
+    linear-gradient(135deg, rgba(var(--gx-accent-from), 0.45), rgba(var(--gx-accent-to), 0.30)) border-box;
+  border: 1px solid transparent;
+  box-shadow: 0 0 16px rgba(var(--gx-accent-from), 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.gx-nav-hover:hover {
+  background: rgba(var(--gx-accent-from), 0.07);
+  box-shadow: inset 0 0 0 1px rgba(var(--gx-accent-from), 0.12), 0 0 14px rgba(var(--gx-accent-from), 0.10);
+}
+
+/* ── Topbar gradient hairline bottom (element itself stays glassy) ── */
+.gx-topbar-line { position: relative; }
+.gx-topbar-line::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -1px;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(var(--gx-accent-from), 0.45) 18%,
+    rgba(var(--gx-accent-to), 0.30) 50%,
+    rgba(var(--gx-accent-from), 0.30) 82%,
+    transparent);
+  pointer-events: none;
+}

@@ -61,7 +61,7 @@ export function RiskRadarCard() {
   const worrying = (counts?.critical ?? 0) + (counts?.elevated ?? 0);
 
   return (
-    <GlowCard className="p-5">
+    <GlowCard variant="gradient" className="p-5">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
         <div className="flex items-center gap-2 min-w-0">
           <Radar size={14} className="text-purple-400 shrink-0" />

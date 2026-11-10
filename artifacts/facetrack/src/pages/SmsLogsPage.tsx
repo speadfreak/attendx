@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useListSmsLogs, type SmsLog } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "framer-motion";
-import { MessageSquare, AlertCircle, CheckCircle2, Phone } from "lucide-react";
+import { MessageSquare, AlertCircle, AlertTriangle, CheckCircle2, Phone } from "lucide-react";
 import { format, formatDistanceToNowStrict } from "date-fns";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -115,15 +116,17 @@ function StatusChip({ log }: { log: SmsLogRow }) {
 export default function SmsLogsPage() {
   const [status, setStatus] = useState<string>("all");
 
-  const { data: logs, isLoading } = useListSmsLogs({
+  const { data: logs, isLoading, isError, error, refetch } = useListSmsLogs({
     status: status === "all" ? undefined : status
   });
 
+  const errorMessage = error instanceof Error ? error.message : "Unknown error";
+
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
+      <div className="gx-page-header flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Communication Logs</h1>
+          <h1 className="gx-title-gradient text-3xl font-bold tracking-tight">Communication Logs</h1>
           <p className="text-muted-foreground">Automated parent notifications — real carrier delivery status</p>
         </div>
 
@@ -143,11 +146,23 @@ export default function SmsLogsPage() {
         </div>
       </div>
 
-      <Card className="bg-card border-border">
+      <Card className="gx-panel bg-card border-border">
         <CardContent className="p-0">
+          {isError ? (
+            <div className="gx-empty-tint flex flex-col items-center justify-center gap-3 rounded-md m-4 border border-destructive/30 bg-destructive/5 px-6 py-10 text-center">
+              <AlertTriangle className="w-8 h-8 text-destructive" />
+              <div>
+                <p className="font-medium text-destructive">Failed to load SMS logs</p>
+                <p className="mt-1 text-sm text-muted-foreground">{errorMessage}</p>
+              </div>
+              <Button variant="outline" size="sm" className="gx-glow-hover" onClick={() => refetch()}>
+                Retry
+              </Button>
+            </div>
+          ) : (
           <Table>
             <TableHeader className="bg-muted/50">
-              <TableRow>
+              <TableRow className="gx-table-head">
                 <TableHead>Recipient</TableHead>
                 <TableHead>Phone Number</TableHead>
                 <TableHead className="w-1/3">Message</TableHead>
@@ -166,7 +181,7 @@ export default function SmsLogsPage() {
                 ))
               ) : logs?.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={5} className="gx-empty-tint h-32 text-center text-muted-foreground">
                     <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
                     No SMS logs found.
                   </TableCell>
@@ -193,7 +208,7 @@ export default function SmsLogsPage() {
                       <div className="flex flex-wrap items-center gap-1.5">
                         <StatusChip log={log} />
                         {log.errorCode && (
-                          <span className="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[10px] leading-none text-amber-600 dark:text-amber-400">
+                          <span className="gx-chip gx-chip-amber font-mono">
                             err {log.errorCode}
                           </span>
                         )}
@@ -217,6 +232,7 @@ export default function SmsLogsPage() {
               )}
             </TableBody>
           </Table>
+          )}
         </CardContent>
       </Card>
     </motion.div>

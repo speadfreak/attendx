@@ -19,6 +19,8 @@ import SmsLogsPage from "@/pages/SmsLogsPage";
 import AdminsPage from "@/pages/AdminsPage";
 import OperationsPage from "@/pages/OperationsPage";
 import ReviewQueuePage from "@/pages/ReviewQueuePage";
+import FraudSignalsPage from "@/pages/FraudSignalsPage";
+import GatesPage from "@/pages/GatesPage";
 import QrTerminalPage from "@/pages/QrTerminalPage";
 import QrManagerPage from "@/pages/QrManagerPage";
 import SmsTemplatesPage from "@/pages/SmsTemplatesPage";
@@ -88,12 +90,14 @@ function Router() {
       <Route path="/students">{() => <ProtectedRoute component={StudentsPage} />}</Route>
       <Route path="/classrooms">{() => <ProtectedRoute component={ClassroomsPage} />}</Route>
       <Route path="/review-queue">{() => <ProtectedRoute component={ReviewQueuePage} />}</Route>
+      <Route path="/fraud">{() => <ProtectedRoute component={FraudSignalsPage} />}</Route>
       <Route path="/reports">{() => <ProtectedRoute component={ReportsPage} />}</Route>
       <Route path="/sms-logs">{() => <ProtectedRoute component={SmsLogsPage} />}</Route>
       <Route path="/sms-templates">{() => <ProtectedRoute component={SmsTemplatesPage} roles={["super_admin", "admin"]} />}</Route>
       <Route path="/audit">{() => <ProtectedRoute component={AuditPage} roles={["super_admin", "admin"]} />}</Route>
       <Route path="/admins">{() => <ProtectedRoute component={AdminsPage} roles={["super_admin", "admin"]} />}</Route>
       <Route path="/operations">{() => <ProtectedRoute component={OperationsPage} roles={["super_admin", "admin"]} />}</Route>
+      <Route path="/gates">{() => <ProtectedRoute component={GatesPage} roles={["super_admin", "admin"]} />}</Route>
       <Route component={NotFound} />
     </Switch>
   );

@@ -102,12 +102,12 @@ export default function ReviewQueuePage() {
     <div className="relative">
       <MeshBackground />
       <div className="relative z-10 space-y-5 max-w-6xl mx-auto">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <SectionTitle sub="AMBIGUOUS FACE MATCHES · ONE-CLICK DECISIONS">
+        <div className="gx-page-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <SectionTitle className="gx-title-gradient" sub="AMBIGUOUS FACE MATCHES · ONE-CLICK DECISIONS">
             REVIEW QUEUE
           </SectionTitle>
           <div className="flex items-center gap-2">
-            <span className="st-badge st-badge-amber">
+            <span className="gx-chip gx-chip-amber">
               <ShieldAlert size={11} /> {pendingCount} pending
             </span>
           </div>
@@ -116,7 +116,7 @@ export default function ReviewQueuePage() {
         {isLoading ? (
           <div className="space-y-3"><FeedSkeletonRow rows={4} /></div>
         ) : !reviews?.length ? (
-          <GlowCard className="p-6">
+          <GlowCard variant="gradient" className="gx-empty-tint p-6">
             <GlowEmpty
               icon={<ScanFace size={26} />}
               title="Queue is clear"
@@ -129,7 +129,7 @@ export default function ReviewQueuePage() {
               const cands = candidates[review.id];
               const tone = confidenceTone(review.confidence);
               return (
-                <GlowCard key={review.id} accent className="p-5">
+                <GlowCard key={review.id} accent variant="gradient" className="p-5">
                   <div className="flex items-start justify-between gap-3 mb-4">
                     <div className="flex items-center gap-3">
                       <div

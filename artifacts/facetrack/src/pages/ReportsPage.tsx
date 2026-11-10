@@ -254,8 +254,8 @@ export default function ReportsPage() {
     <div className="relative">
       <MeshBackground />
       <div className="relative z-10 space-y-5 max-w-7xl mx-auto">
-        <div className="flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
-          <SectionTitle sub="CONFIDENCE HEATMAPS, STREAKS & BRANDED EXPORTS">
+        <div className="gx-page-header flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
+          <SectionTitle className="gx-title-gradient" sub="CONFIDENCE HEATMAPS, STREAKS & BRANDED EXPORTS">
             REPORTS & ANALYTICS
           </SectionTitle>
           <div className="flex gap-2">
@@ -269,7 +269,7 @@ export default function ReportsPage() {
             <button
               onClick={handlePdf}
               disabled={summaryLoading}
-              className="st-badge st-badge-purple px-4 py-2 disabled:opacity-40"
+              className="gx-btn-accent gx-gradient-pan inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold text-white disabled:opacity-40 disabled:pointer-events-none"
             >
               {summaryLoading ? <Loader2 size={12} className="animate-spin" /> : <FileText size={12} />} PDF report
             </button>
@@ -287,7 +287,7 @@ export default function ReportsPage() {
               key={t.id}
               onClick={() => setTab(t.id)}
               className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all ${
-                tab === t.id ? "bg-purple-600/30 text-purple-200 shadow-[0_0_12px_rgba(155,91,255,0.25)]" : "text-white/40 hover:text-white/70"
+                tab === t.id ? "gx-nav-pill text-purple-200" : "text-white/40 hover:text-white/70"
               }`}
             >
               <t.icon size={13} /> {t.label}
@@ -296,7 +296,7 @@ export default function ReportsPage() {
         </div>
 
         {/* filters */}
-        <GlowCard className="p-4">
+        <GlowCard variant="gradient" className="p-4">
           <div className="flex flex-col sm:flex-row gap-4 items-end sm:items-center">
             <div className="flex items-center gap-2 text-white/40">
               <Filter className="w-4 h-4" />
@@ -348,7 +348,7 @@ export default function ReportsPage() {
 
         {/* ── RECORDS TAB ── */}
         {tab === "records" && (
-          <GlowCard>
+          <GlowCard variant="gradient">
             <div className="grid grid-cols-4 border-b border-white/5">
               {[
                 { label: "Present", value: presentCount, cls: "text-emerald-400" },
@@ -372,7 +372,7 @@ export default function ReportsPage() {
               ) : (
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 bg-[#120826]/95 backdrop-blur">
-                    <tr className="text-left text-[10px] uppercase tracking-widest text-white/35">
+                    <tr className="gx-table-head text-left text-[10px] uppercase tracking-widest text-white/35">
                       <th className="px-4 py-3">Student</th>
                       <th className="px-4 py-3">Classroom</th>
                       <th className="px-4 py-3">Status</th>
@@ -399,7 +399,7 @@ export default function ReportsPage() {
 
         {/* ── HEATMAP TAB ── */}
         {tab === "heatmap" && (
-          <GlowCard className="p-5">
+          <GlowCard variant="gradient" className="p-5">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-sm font-semibold uppercase tracking-widest gx-gradient-text">ATTENDANCE CONFIDENCE HEATMAP</h3>
@@ -454,7 +454,7 @@ export default function ReportsPage() {
         {/* ── INSIGHTS TAB ── */}
         {tab === "insights" && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <GlowCard className="p-5 lg:col-span-2">
+            <GlowCard variant="gradient" className="p-5 lg:col-span-2">
               <h3 className="text-sm font-semibold uppercase tracking-widest gx-gradient-text mb-4">7-DAY TREND</h3>
               {summaryLoading || !summary ? (
                 <ChartSkeleton />
@@ -486,7 +486,7 @@ export default function ReportsPage() {
             </GlowCard>
 
             {/* method mix + classroom table */}
-            <GlowCard className="p-5">
+            <GlowCard variant="gradient" className="p-5">
               <h3 className="text-sm font-semibold uppercase tracking-widest gx-gradient-text mb-4">CHECK-IN METHOD MIX</h3>
               {summaryLoading || !summary ? (
                 <GlowSkeleton className="h-40" />
@@ -522,7 +522,7 @@ export default function ReportsPage() {
               )}
             </GlowCard>
 
-            <GlowCard className="p-5">
+            <GlowCard variant="gradient" className="p-5">
               <h3 className="text-sm font-semibold uppercase tracking-widest gx-gradient-text mb-4">CLASSROOM LEADERBOARD</h3>
               {summaryLoading || !summary ? (
                 <GlowSkeleton className="h-40" />

@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { ensureSchema } from "./lib/schema-bootstrap";
 import { startServerJobWorker } from "./lib/jobs";
 import { startReviewRetentionWorker } from "./lib/retention";
 import { reconcilePendingSms } from "./lib/sms-reconcile";
@@ -27,6 +28,14 @@ if (rawPort) {
   if (Number.isNaN(port) || port <= 0) {
     throw new Error(`Invalid PORT value: "${rawPort}"`);
   }
+
+  // Boot-time schema bootstrap (Phase 6 self-healing). The request-path
+  // middleware in app.ts covers serverless invocations; this warms it for
+  // the long-lived server. Failures are logged loudly inside ensureSchema
+  // and swallowed here so the app still boots in degraded mode.
+  ensureSchema().catch((err) => {
+    logger.error({ err }, "Boot-time schema bootstrap failed — continuing in degraded mode");
+  });
 
   app.listen(port, (err) => {
     if (err) {

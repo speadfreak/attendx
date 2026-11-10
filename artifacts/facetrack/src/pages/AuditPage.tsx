@@ -90,8 +90,8 @@ export default function AuditPage() {
     <div className="relative">
       <MeshBackground />
       <div className="relative z-10 space-y-5 max-w-6xl mx-auto">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <SectionTitle sub="EVERY SENSITIVE ACTION · SEARCHABLE FOREVER">
+        <div className="gx-page-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <SectionTitle className="gx-title-gradient" sub="EVERY SENSITIVE ACTION · SEARCHABLE FOREVER">
             AUDIT TRAIL
           </SectionTitle>
           <div className="flex items-center gap-2">
@@ -102,7 +102,7 @@ export default function AuditPage() {
           </div>
         </div>
 
-        <GlowCard className="p-4">
+        <GlowCard variant="gradient" className="p-4">
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-white/25" />
@@ -124,7 +124,7 @@ export default function AuditPage() {
           </div>
         </GlowCard>
 
-        <GlowCard className="p-2">
+        <GlowCard variant="gradient" className="p-2">
           {isLoading ? (
             <div className="p-3 space-y-2">
               {Array(10).fill(0).map((_, i) => <GlowSkeleton key={i} className="h-10 !rounded-lg" />)}

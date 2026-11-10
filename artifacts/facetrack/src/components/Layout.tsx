@@ -1,13 +1,16 @@
 import { ReactNode, useState, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLiveEvents, type LiveStatus } from "@/hooks/useLiveEvents";
 import { NotificationCenter } from "@/components/NotificationCenter";
 import { openCommandPalette } from "@/components/CommandPalette";
+import { api, type FraudSummary } from "@/lib/api";
 import {
   LayoutDashboard, Users, UserCheck, School,
   FileText, MessageSquare, LogOut, UserCog, Menu, X, ServerCog,
   QrCode, DoorOpen, ScrollText, ShieldAlert, Search, Command, ScanFace,
+  MapPin, Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -18,7 +21,32 @@ interface NavItem {
   label: string;
   icon: React.ElementType;
   roles?: Array<"super_admin" | "admin" | "teacher">;
+  /** Optional live count badge — "fraud" wires the open-signal count. */
+  badge?: "fraud";
 }
+
+/**
+ * Page → accent chemistry map (pure presentation). Sets the --gx-accent-*
+ * vars on the layout root so the aurora backdrop + every gx-* utility in the
+ * active page inherits the domain gradient. No data/logic impact.
+ */
+const PAGE_THEMES: Record<string, string> = {
+  "/dashboard": "gx-theme-dashboard",
+  "/attendance": "gx-theme-attendance",
+  "/qr-terminal": "gx-theme-qr",
+  "/students": "gx-theme-students",
+  "/classrooms": "gx-theme-students",
+  "/review-queue": "gx-theme-review",
+  "/fraud": "gx-theme-fraud",
+  "/reports": "gx-theme-default",
+  "/qr-manager": "gx-theme-qr",
+  "/sms-logs": "gx-theme-sms",
+  "/audit": "gx-theme-default",
+  "/sms-templates": "gx-theme-sms",
+  "/admins": "gx-theme-default",
+  "/operations": "gx-theme-operations",
+  "/gates": "gx-theme-gates",
+};
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard",    label: "Dashboard",        icon: LayoutDashboard },
@@ -27,6 +55,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/students",     label: "Students",         icon: Users },
   { href: "/classrooms",   label: "Classrooms",       icon: School },
   { href: "/review-queue", label: "Review Queue",     icon: ShieldAlert },
+  { href: "/fraud",        label: "Fraud Radar",      icon: ShieldAlert, badge: "fraud" },
   { href: "/reports",      label: "Reports",          icon: FileText },
   { href: "/qr-manager",   label: "QR Badges",        icon: QrCode },
   { href: "/sms-logs",     label: "SMS Logs",         icon: MessageSquare },
@@ -34,6 +63,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/sms-templates", label: "SMS Templates",   icon: MessageSquare, roles: ["super_admin", "admin"] },
   { href: "/admins",       label: "Admins",           icon: UserCog, roles: ["super_admin", "admin"] },
   { href: "/operations",   label: "Operations",       icon: ServerCog, roles: ["super_admin", "admin"] },
+  { href: "/gates",        label: "Gates & Geofence", icon: MapPin, roles: ["super_admin", "admin"] },
 ];
 
 export function RoleBadge({ role }: { role?: string }) {
@@ -64,6 +94,86 @@ export function LiveBadge() {
   );
 }
 
+/**
+ * Subtle network dot — mirrors navigator.onLine so staff can tell spooled
+ * (offline) kiosk scans from failed uploads. Sits next to the install button.
+ */
+function NetDot() {
+  const [online, setOnline] = useState<boolean>(() => (typeof navigator === "undefined" ? true : navigator.onLine));
+  useEffect(() => {
+    const up = () => setOnline(true);
+    const down = () => setOnline(false);
+    window.addEventListener("online", up);
+    window.addEventListener("offline", down);
+    return () => {
+      window.removeEventListener("online", up);
+      window.removeEventListener("offline", down);
+    };
+  }, []);
+  return (
+    <span
+      title={online ? "Network online" : "Network offline — scans will spool locally"}
+      className={`st-dot ${online ? "st-dot-green" : "st-dot-red"} ${online ? "" : "animate-pulse"}`}
+    />
+  );
+}
+
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+};
+
+/** PWA install pill — renders only while the browser advertises installability. */
+function InstallAppButton() {
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+
+  useEffect(() => {
+    const onPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
+    };
+    const onInstalled = () => setDeferredPrompt(null);
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
+  if (!deferredPrompt) return null;
+  return (
+    <button
+      onClick={() => {
+        void deferredPrompt.prompt();
+        setDeferredPrompt(null);
+      }}
+      className="inline-flex items-center gap-1.5 px-3 py-2 min-h-11 rounded-full text-[10px] font-mono tracking-widest text-purple-300 bg-purple-500/10 border border-purple-500/25 hover:bg-purple-500/20 transition-colors"
+      title="Install AttendX as an app"
+    >
+      <Download size={11} />
+      INSTALL APP
+    </button>
+  );
+}
+
+/** Open fraud-signal count for the sidebar badge — cheap 60s poll. */
+function FraudNavBadge() {
+  const { data } = useQuery<FraudSummary>({
+    queryKey: ["fraud-summary-nav"],
+    queryFn: api.fraudSummary,
+    refetchInterval: 60000,
+    staleTime: 30000,
+  });
+  const open = data?.byStatus?.open ?? 0;
+  if (!open) return null;
+  return (
+    <span className="gx-chip gx-chip-red font-mono">
+      {open > 99 ? "99+" : open}
+    </span>
+  );
+}
+
 /** Global toast bridge for command-palette actions (gx-toast events). */
 function GlobalToastBridge() {
   const { toast } = useToast();
@@ -86,6 +196,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const { admin, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const pageTheme = PAGE_THEMES[location] ?? "gx-theme-default";
 
   const sidebarRef = useRef<HTMLElement>(null);
   const navItemsRef = useRef<HTMLDivElement[]>([]);
@@ -148,19 +259,24 @@ export function Layout({ children }: { children: ReactNode }) {
               onClick={onNavigate}
               className={`nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer text-sm transition-colors ${
                 isActive
-                  ? "active bg-purple-600/15 text-purple-300 font-medium"
-                  : "text-white/40 hover:bg-purple-500/8 hover:text-white/80"
+                  ? "active gx-nav-pill text-purple-200 font-medium"
+                  : "gx-nav-hover text-white/40 hover:text-white/80"
               }`}
             >
-              <div className={`relative flex items-center justify-center w-6 h-6 rounded-md ${
-                isActive ? "bg-purple-600/30" : ""
+              <div className={`relative flex items-center justify-center w-6 h-6 rounded-md transition-colors ${
+                isActive ? "gx-accent-grad bg-purple-500/25" : ""
               }`}>
-                {isActive && <div className="absolute inset-0 rounded-md bg-purple-500/20 blur-sm" />}
-                <Icon size={15} className={`relative z-10 ${isActive ? "text-purple-400" : "text-white/40"}`} />
+                {isActive && <div className="absolute inset-0 rounded-md bg-purple-500/30 blur-sm" />}
+                <Icon size={15} className={`relative z-10 ${isActive ? "text-white" : "text-white/40"}`} />
               </div>
               {item.label}
-              {isActive && (
-                <div className="ml-auto w-1 h-1 rounded-full bg-purple-400" style={{ boxShadow: "0 0 4px #a855f7" }} />
+              {(item.badge === "fraud" || isActive) && (
+                <div className="ml-auto flex items-center gap-1.5">
+                  {item.badge === "fraud" && <FraudNavBadge />}
+                  {isActive && (
+                    <div className="w-1 h-1 rounded-full bg-purple-400" style={{ boxShadow: "0 0 4px #a855f7" }} />
+                  )}
+                </div>
               )}
             </div>
           </Link>
@@ -170,14 +286,19 @@ export function Layout({ children }: { children: ReactNode }) {
   );
 
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className={`min-h-screen bg-background flex isolate ${pageTheme}`}>
+      {/* ── App-wide aurora backdrop (pure presentation, behind content) ── */}
+      <div
+        aria-hidden="true"
+        className="gx-aurora-page pointer-events-none fixed inset-0 -z-10 overflow-hidden"
+      />
       <GlobalToastBridge />
 
       {/* ── Desktop Sidebar ─────────────────────────────── */}
       <aside
         ref={sidebarRef}
-        className="w-60 border-r border-white/5 flex-col hidden md:flex shrink-0 relative"
-        style={{ background: "linear-gradient(180deg, #0d0515 0%, #080510 100%)" }}
+        className="w-60 border-r gx-accent-border flex-col hidden md:flex shrink-0 relative backdrop-blur-xl"
+        style={{ background: "linear-gradient(180deg, rgba(13,5,21,0.84) 0%, rgba(8,5,16,0.92) 100%)" }}
       >
         <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-purple-500/40 to-transparent" />
 
@@ -197,7 +318,7 @@ export function Layout({ children }: { children: ReactNode }) {
               className="text-base font-black text-white leading-none tracking-wider"
               style={{ fontFamily: "'Orbitron', monospace" }}
             >
-              ATTEND<span className="text-purple-400">X</span>
+              ATTEND<span className="text-gradient">X</span>
             </h1>
             <p className="text-[9px] text-purple-400/50 tracking-widest mt-0.5">COMMAND CENTER</p>
           </div>
@@ -208,7 +329,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <div className="px-3 pb-2">
           <button
             onClick={() => openCommandPalette()}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-white/35 hover:text-purple-300 hover:bg-purple-500/8 transition-colors"
+            className="gx-glow-hover w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-white/35 hover:text-purple-300 hover:bg-purple-500/8 transition-colors"
             style={{ border: "1px dashed rgba(155,91,255,0.18)" }}
           >
             <Search size={13} />
@@ -262,16 +383,16 @@ export function Layout({ children }: { children: ReactNode }) {
 
       {/* ── Mobile Drawer ──────────────────────────────── */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 flex flex-col md:hidden transition-transform duration-300 border-r border-white/5 ${
+        className={`fixed inset-y-0 left-0 z-50 w-64 flex flex-col md:hidden transition-transform duration-300 border-r gx-accent-border backdrop-blur-xl ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
-        style={{ background: "linear-gradient(180deg, #0d0515 0%, #080510 100%)" }}
+        style={{ background: "linear-gradient(180deg, rgba(13,5,21,0.90) 0%, rgba(8,5,16,0.95) 100%)" }}
       >
         <div className="p-4 flex items-center justify-between border-b border-white/5">
           <div className="flex items-center gap-2">
             <img src="/attendx-emblem.png" alt="AttendX emblem" className="w-7 h-7 rounded-lg object-cover" style={{ filter: "drop-shadow(0 0 6px rgba(155,91,255,0.6))" }} />
             <h1 className="font-black text-white tracking-wider text-sm" style={{ fontFamily: "'Orbitron', monospace" }}>
-              ATTEND<span className="text-purple-400">X</span>
+              ATTEND<span className="text-gradient">X</span>
             </h1>
           </div>
           <Button variant="ghost" size="icon" onClick={() => setMobileOpen(false)} className="text-white/40 h-7 w-7">
@@ -298,11 +419,11 @@ export function Layout({ children }: { children: ReactNode }) {
       {/* ── Main ──────────────────────────────────────── */}
       <main className="min-w-0 flex-1 flex flex-col min-h-screen overflow-hidden">
         {/* Desktop topbar */}
-        <header className="hidden md:flex h-12 items-center px-5 justify-between shrink-0 border-b border-white/5 sticky top-0 z-30"
-          style={{ background: "rgba(8,5,16,0.85)", backdropFilter: "blur(12px)" }}>
+        <header className="gx-topbar-line hidden md:flex h-12 items-center px-5 justify-between shrink-0 border-b border-white/5 sticky top-0 z-30"
+          style={{ background: "rgba(8,5,16,0.68)", backdropFilter: "blur(14px)" }}>
           <button
             onClick={() => openCommandPalette()}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-white/30 hover:text-white/60 hover:bg-purple-500/8 transition-colors w-72"
+            className="gx-glow-hover flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-white/30 hover:text-white/60 hover:bg-purple-500/8 transition-colors w-72"
             style={{ border: "1px solid rgba(155,91,255,0.12)", background: "rgba(20,8,40,0.5)" }}
           >
             <Search size={13} />
@@ -312,6 +433,8 @@ export function Layout({ children }: { children: ReactNode }) {
             </kbd>
           </button>
           <div className="flex items-center gap-3">
+            <NetDot />
+            <InstallAppButton />
             <LiveBadge />
             <NotificationCenter />
           </div>
@@ -319,8 +442,8 @@ export function Layout({ children }: { children: ReactNode }) {
 
         {/* Mobile header */}
         <header
-          className="md:hidden h-14 flex items-center px-4 justify-between shrink-0 sticky top-0 z-30 border-b border-white/5"
-          style={{ background: "rgba(8,5,16,0.95)", backdropFilter: "blur(12px)" }}
+          className="gx-topbar-line md:hidden h-14 flex items-center px-4 justify-between shrink-0 sticky top-0 z-30 border-b border-white/5"
+          style={{ background: "rgba(8,5,16,0.80)", backdropFilter: "blur(14px)" }}
         >
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" onClick={() => setMobileOpen(true)} className="text-white/50 -ml-2 h-8 w-8">
@@ -328,10 +451,12 @@ export function Layout({ children }: { children: ReactNode }) {
             </Button>
             <img src="/attendx-emblem.png" alt="AttendX emblem" className="w-6 h-6 rounded-md object-cover" style={{ filter: "drop-shadow(0 0 4px rgba(155,91,255,0.6))" }} />
             <span className="font-black text-sm text-white tracking-wider" style={{ fontFamily: "'Orbitron', monospace" }}>
-              ATTEND<span className="text-purple-400">X</span>
+              ATTEND<span className="text-gradient">X</span>
             </span>
           </div>
           <div className="flex items-center gap-2">
+            <NetDot />
+            <InstallAppButton />
             <LiveBadge />
             <NotificationCenter />
           </div>

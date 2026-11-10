@@ -45,11 +45,11 @@ import { SmsHealthCard } from "@/components/SmsHealthCard";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
-const panel = "rounded-2xl border border-violet-200/10 bg-[#191323] shadow-[0_14px_40px_rgba(18,8,30,0.18)]";
+const panel = "gx-panel rounded-2xl";
 const label = "text-[11px] font-semibold uppercase tracking-[0.15em] text-violet-200/55";
 const quiet = "text-sm text-violet-100/55";
-const actionClass = "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-violet-200/15 bg-violet-200/[0.06] px-3.5 text-sm font-medium text-violet-50 transition-colors hover:bg-violet-200/[0.12] disabled:pointer-events-none disabled:opacity-45";
-const accentAction = "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-violet-400 px-3.5 text-sm font-semibold text-[#1b1026] transition-colors hover:bg-violet-300 disabled:pointer-events-none disabled:opacity-45";
+const actionClass = "gx-glow-hover inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-violet-200/15 bg-violet-200/[0.06] px-3.5 text-sm font-medium text-violet-50 transition-colors hover:bg-violet-200/[0.12] disabled:pointer-events-none disabled:opacity-45";
+const accentAction = "gx-btn-accent gx-gradient-pan gx-focus-ring inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3.5 text-sm font-semibold text-white transition-all disabled:pointer-events-none disabled:opacity-45";
 const dangerAction = "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-rose-300/20 bg-rose-400/10 px-3.5 text-sm font-semibold text-rose-200 transition-colors hover:bg-rose-400/15 disabled:pointer-events-none disabled:opacity-45";
 const inputClass = "min-h-10 w-full rounded-lg border border-violet-200/15 bg-[#110d18] px-3 text-sm text-violet-50 outline-none placeholder:text-violet-100/30 focus:border-violet-300/45 focus:ring-2 focus:ring-violet-300/15";
 
@@ -97,7 +97,7 @@ function summarizeGateWindow(cameraCount: number, events: GateSensorEvent[]) {
 
 function ErrorNotice({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <div className="flex items-start gap-2.5 rounded-xl border border-rose-300/15 bg-rose-300/[0.06] p-3 text-sm text-rose-100/80" role="alert">
+    <div className="flex items-start gap-2.5 gx-empty-tint rounded-xl border border-rose-300/15 bg-rose-300/[0.06] p-3 text-sm text-rose-100/80" role="alert">
       <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-300" />
       <span className="min-w-0 flex-1">{message}</span>
       {onRetry && <button type="button" className="text-xs font-semibold text-rose-200 underline underline-offset-4" onClick={onRetry}>Retry</button>}
@@ -442,7 +442,7 @@ export default function OperationsPage() {
 
   return (
     <div className="mx-auto w-full max-w-[1480px] min-w-0 space-y-4 sm:space-y-6 pb-10">
-      <header className="relative overflow-hidden rounded-2xl border border-violet-200/10 bg-[radial-gradient(ellipse_at_top_right,rgba(139,92,246,0.16),transparent_48%),linear-gradient(120deg,#21172e,#17111f)] px-5 py-6 sm:px-7 sm:py-8">
+      <header className="gx-top-sheen relative overflow-hidden rounded-2xl border border-violet-200/10 bg-[radial-gradient(ellipse_at_top_right,rgba(139,92,246,0.16),transparent_48%),linear-gradient(120deg,#21172e,#17111f)] px-5 py-6 sm:px-7 sm:py-8">
         <div className="absolute -right-16 -top-24 h-64 w-64 rounded-full border border-violet-200/[0.07]" aria-hidden="true" />
         <div className="absolute -right-2 -top-9 h-36 w-36 rounded-full border border-violet-200/[0.08]" aria-hidden="true" />
         <div className="relative flex flex-col justify-between gap-5 md:flex-row md:items-end">
@@ -451,7 +451,7 @@ export default function OperationsPage() {
               <span className="h-1.5 w-1.5 rounded-full bg-violet-300" />
               <span className={label}>AttendX / Phase 02</span>
             </div>
-            <h1 className="text-3xl font-semibold tracking-[-0.04em] text-violet-50 sm:text-4xl">Operations</h1>
+            <h1 className="gx-title-gradient text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">Operations</h1>
             <p className="mt-2 max-w-xl text-sm leading-relaxed text-violet-100/60">
               Device health, attendance processing, and review controls in one place.
             </p>
@@ -1034,7 +1034,7 @@ export default function OperationsPage() {
 
 function Metric({ icon: Icon, title, value, sub }: { icon: typeof Activity; title: string; value: string; sub?: string }) {
   return (
-    <div className="min-h-[76px] rounded-xl border border-violet-100/[0.08] bg-violet-100/[0.025] p-3" data-testid={`metric-${title.toLowerCase().replaceAll(" ", "-")}`}>
+    <div className="gx-stat min-h-[76px] rounded-xl border border-violet-100/[0.08] bg-violet-100/[0.025] p-3" data-testid={`metric-${title.toLowerCase().replaceAll(" ", "-")}`}>
       <p className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-violet-100/40"><Icon size={12} />{title}</p>
       <p className="mt-2 truncate text-sm font-semibold text-violet-50" title={value}>{value}</p>
       {sub && <p className="mt-0.5 truncate text-[10px] text-violet-100/40" title={sub}>{sub}</p>}
@@ -1052,7 +1052,7 @@ function ClearRecordControl({ title, detail, count, loading, disabled, onRefresh
   onClear: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200/10 bg-rose-200/[0.025] p-3">
+    <div className="gx-glow-hover flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200/10 bg-rose-200/[0.025] p-3">
       <div className="min-w-0">
         <p className="text-xs font-semibold text-violet-50">{title}</p>
         <p className="mt-0.5 text-[10px] text-violet-100/45">{detail} · {loading ? "Counting…" : `${count ?? "—"} records`}</p>
@@ -1075,8 +1075,8 @@ function ConsoleAction({ icon: Icon, title, action, disabled, onRun }: {
   onRun: (action: "worker-status" | "restart-worker" | "camera-status" | "recent-logs") => void;
 }) {
   return (
-    <button type="button" onClick={() => onRun(action)} disabled={disabled} className="group flex min-h-[66px] items-center gap-3 rounded-xl border border-violet-100/[0.09] bg-violet-100/[0.025] p-3 text-left transition-colors hover:border-violet-200/20 hover:bg-violet-100/[0.06] disabled:pointer-events-none disabled:opacity-45" data-testid={`button-console-${action}`}>
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-300/10 text-violet-200"><Icon size={16} /></span>
+    <button type="button" onClick={() => onRun(action)} disabled={disabled} className="gx-glow-hover group flex min-h-[66px] items-center gap-3 rounded-xl border border-violet-100/[0.09] bg-violet-100/[0.025] p-3 text-left transition-colors hover:border-violet-200/20 hover:bg-violet-100/[0.06] disabled:pointer-events-none disabled:opacity-45" data-testid={`button-console-${action}`}>
+      <span className="gx-accent-grad flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white shadow-[0_0_14px_rgba(139,92,246,0.35)]"><Icon size={16} /></span>
       <span className="min-w-0 flex-1">
         <span className="block text-xs font-semibold text-violet-50">{title}</span>
         <span className="mt-0.5 block text-[10px] text-violet-100/40">{action === "restart-worker" ? "Service restart" : `Queue ${action.replaceAll("-", " ")}`}</span>
@@ -1117,7 +1117,7 @@ function GateCounter({ icon: Icon, title, value, sub, tone }: {
 }) {
   const toneClass = tone === "violet" ? "text-violet-300" : tone === "emerald" ? "text-emerald-300" : "text-cyan-300";
   return (
-    <div className="min-h-[92px] rounded-xl border border-violet-100/[0.08] bg-violet-100/[0.025] p-3" data-testid={`metric-gate-${title.toLowerCase().replaceAll(" ", "-")}`}>
+    <div className="gx-stat min-h-[92px] rounded-xl border border-violet-100/[0.08] bg-violet-100/[0.025] p-3" data-testid={`metric-gate-${title.toLowerCase().replaceAll(" ", "-")}`}>
       <p className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-violet-100/40"><Icon size={12} className={toneClass} />{title}</p>
       <p className="mt-1.5 font-mono text-2xl font-semibold tabular-nums text-violet-50">{value}</p>
       <p className="mt-0.5 truncate text-[10px] text-violet-100/40" title={sub}>{sub}</p>

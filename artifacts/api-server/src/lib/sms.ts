@@ -400,7 +400,12 @@ export async function sendSms(params: {
   if (!to) {
     const detail = `Parent phone "${params.parentPhone}" is not a valid phone number (could not normalize with default country ${config.defaultCountry}).`;
     logger.error({ studentId }, "SMS skipped: invalid parent phone");
-    await logFailure(providerBase, detail);
+    // Bookkeeping-only failure must not mask the real, actionable error.
+    try {
+      await logFailure(providerBase, detail);
+    } catch (logErr) {
+      logger.error({ err: logErr, studentId }, "sms_logs failure write failed — propagating original SmsDeliveryError");
+    }
     throw new SmsDeliveryError(detail, { provider: providerBase, code: "21211", fix: "Fix the parent phone value on the student record (E.164 or local 09… format)." });
   }
 
@@ -431,17 +436,25 @@ export async function sendSms(params: {
       // It can still fail at the carrier (async 21612 and friends) — the
       // status webhook + reconciliation sweep upgrade this row to the real
       // sent/delivered/undelivered/failed verdict.
-      await db.insert(smsLogsTable).values({
-        studentId,
-        parentPhone: params.parentPhone,
-        message,
-        status: twilioEnabled() ? "queued" : "simulated",
-        provider,
-        errorMessage: null,
-        providerSid,
-        channel,
-        statusUpdatedAt: twilioEnabled() ? new Date() : null,
-      });
+      // The log write is bookkeeping: if it fails (e.g. sms_logs is missing
+      // the Phase 6 columns), the carrier has ALREADY accepted the message —
+      // reclassifying the send as failed here would be a lie and would burn
+      // retries on an already-sent message. Log loudly and return success.
+      try {
+        await db.insert(smsLogsTable).values({
+          studentId,
+          parentPhone: params.parentPhone,
+          message,
+          status: twilioEnabled() ? "queued" : "simulated",
+          provider,
+          errorMessage: null,
+          providerSid,
+          channel,
+          statusUpdatedAt: twilioEnabled() ? new Date() : null,
+        });
+      } catch (logErr) {
+        console.error("[sms] carrier accepted message but sms_logs write failed", logErr);
+      }
       return { channel, provider: providerBase, providerSid };
     } catch (err) {
       const delivery = err instanceof SmsDeliveryError
@@ -453,7 +466,14 @@ export async function sendSms(params: {
       // and another attempt remains. Auth/config faults never fall through.
       const canFallback = i + 1 < attempts.length && (delivery.channelSwitchable || delivery.code === "63007");
       if (!canFallback) {
-        await logFailure(provider, delivery.message + (delivery.fix ? ` → FIX: ${delivery.fix}` : ""), delivery.code, channel);
+        // The failure log is bookkeeping — if it throws (missing Phase 6
+        // columns, DB hiccup) we must still surface the ORIGINAL
+        // SmsDeliveryError with its code + fix hint, not the raw pg error.
+        try {
+          await logFailure(provider, delivery.message + (delivery.fix ? ` → FIX: ${delivery.fix}` : ""), delivery.code, channel);
+        } catch (logErr) {
+          logger.error({ err: logErr, studentId, channel }, "sms_logs failure write failed — propagating original SmsDeliveryError");
+        }
         throw delivery;
       }
     }

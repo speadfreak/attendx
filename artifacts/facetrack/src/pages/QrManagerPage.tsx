@@ -251,9 +251,11 @@ export default function QrManagerPage() {
     <div className="relative">
       <MeshBackground />
       <div className="relative z-10 space-y-5 max-w-7xl mx-auto">
-        <SectionTitle sub="ISSUE · ROTATE · REVOKE · PRINT — THE FULL BADGE FLEET">
-          QR BADGE MANAGER
-        </SectionTitle>
+        <div className="gx-page-header">
+          <SectionTitle className="gx-title-gradient" sub="ISSUE · ROTATE · REVOKE · PRINT — THE FULL BADGE FLEET">
+            QR BADGE MANAGER
+          </SectionTitle>
+        </div>
 
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
@@ -267,7 +269,7 @@ export default function QrManagerPage() {
               { label: "Revoked badges", value: stats.revokedBadges, icon: Ban, tone: "amber" },
               { label: "Students w/o badge", value: stats.studentsWithoutActiveBadge, icon: Users, tone: stats.studentsWithoutActiveBadge > 0 ? "amber" : "green" },
             ].map((s, i) => (
-              <GlowCard key={i} className="p-4">
+              <GlowCard key={i} variant="gradient" className="gx-stat p-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-[9px] uppercase tracking-widest text-white/35">{s.label}</p>
@@ -291,7 +293,7 @@ export default function QrManagerPage() {
               key={t.id}
               onClick={() => setTab(t.id)}
               className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all ${
-                tab === t.id ? "bg-purple-600/30 text-purple-200 shadow-[0_0_12px_rgba(155,91,255,0.25)]" : "text-white/40 hover:text-white/70"
+                tab === t.id ? "gx-nav-pill text-purple-200" : "text-white/40 hover:text-white/70"
               }`}
             >
               <t.icon size={13} /> {t.label}
@@ -303,7 +305,7 @@ export default function QrManagerPage() {
         {tab === "console" && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
             <div className="lg:col-span-8">
-              <GlowCard className="p-4">
+              <GlowCard variant="gradient" className="p-4">
                 <div className="flex flex-col sm:flex-row gap-2 mb-4">
                   <div className="relative flex-1">
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-white/25" />
@@ -375,21 +377,20 @@ export default function QrManagerPage() {
             </div>
 
             <div className="lg:col-span-4 space-y-3">
-              <GlowCard accent className="p-4">
+              <GlowCard accent variant="gradient" className="p-4">
                 <p className="text-[10px] uppercase tracking-widest text-white/35 mb-3">Issue actions</p>
                 <div className="space-y-2">
                   <button
                     disabled={!selected.size || busy}
                     onClick={() => issue(Array.from(selected))}
-                    className="w-full py-2.5 rounded-lg text-xs font-semibold text-white transition-all disabled:opacity-40"
-                    style={{ background: "linear-gradient(135deg,#7C3AED,#9B5BFF)", boxShadow: "0 0 16px rgba(124,58,237,0.35)" }}
+                    className="gx-btn-accent gx-gradient-pan w-full py-2.5 rounded-lg text-xs font-semibold text-white transition-all disabled:opacity-40"
                   >
                     Issue {selected.size || ""} badge{selected.size === 1 ? "" : "s"}
                   </button>
                   <button
                     disabled={classroomId === "all" || busy}
                     onClick={issueAll}
-                    className="w-full py-2.5 rounded-lg text-xs font-semibold text-purple-200 border border-purple-500/25 bg-purple-500/10 hover:bg-purple-500/20 transition-all disabled:opacity-40"
+                    className="gx-glow-hover w-full py-2.5 rounded-lg text-xs font-semibold text-purple-200 border border-purple-500/25 bg-purple-500/10 hover:bg-purple-500/20 transition-all disabled:opacity-40"
                   >
                     <School size={12} className="inline mr-1.5" /> Whole-classroom batch
                   </button>
@@ -400,7 +401,7 @@ export default function QrManagerPage() {
                 </div>
               </GlowCard>
 
-              <GlowCard className="p-4">
+              <GlowCard variant="gradient" className="p-4">
                 <p className="text-[10px] uppercase tracking-widest text-white/35 mb-3">Badge inventory</p>
                 {issuesLoading ? (
                   <FeedSkeletonRow rows={4} />
@@ -444,7 +445,7 @@ export default function QrManagerPage() {
 
         {/* ── Print sheet ── */}
         {tab === "print" && (
-          <GlowCard className="p-4">
+          <GlowCard variant="gradient" className="p-4">
             <div className="gx-no-print flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
               <div className="flex items-center gap-2">
                 <Printer size={15} className="text-purple-400" />
@@ -465,7 +466,7 @@ export default function QrManagerPage() {
                 )}
                 <button
                   onClick={() => window.print()}
-                  className="st-badge st-badge-purple px-4 py-2"
+                  className="gx-btn-accent gx-gradient-pan inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold text-white"
                 >
                   <Printer size={12} /> Print sheet
                 </button>
@@ -506,7 +507,7 @@ export default function QrManagerPage() {
 
         {/* ── Scan log ── */}
         {tab === "scans" && (
-          <GlowCard className="p-4">
+          <GlowCard variant="gradient" className="p-4">
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm text-white/70 flex items-center gap-2">
                 <ShieldCheck size={14} className="text-emerald-400" /> Every tap & every anomaly

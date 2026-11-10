@@ -48,7 +48,7 @@ function StatCard({
       ref={cardRef}
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
-      className="gx-card gx-card-accent rounded-2xl p-5 relative overflow-hidden cursor-default"
+      className="gx-stat gx-card gx-card-accent rounded-2xl p-5 relative overflow-hidden cursor-default"
     >
       <div
         className="absolute -bottom-6 -right-6 w-28 h-28 rounded-full blur-2xl opacity-20"
@@ -123,7 +123,7 @@ function OccupancyCard() {
   };
 
   return (
-    <GlowCard accent className="p-5">
+    <GlowCard accent variant="gradient" className="p-5">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <span className="relative flex h-2.5 w-2.5">
@@ -269,12 +269,12 @@ export default function DashboardPage() {
       <MeshBackground />
       <div className="relative z-10 space-y-6 max-w-7xl mx-auto">
         {/* ── Header ── */}
-        <div ref={headerRef} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <SectionTitle sub={<>LIVE MONITORING ACTIVE · REALTIME PUSH</>}>
+        <div ref={headerRef} className="gx-page-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <SectionTitle className="gx-title-gradient" sub={<>LIVE MONITORING ACTIVE · REALTIME PUSH</>}>
             SYSTEM OVERVIEW
           </SectionTitle>
           <div
-            className="flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] text-purple-300/60 border border-purple-500/15"
+            className="gx-glow-hover flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] text-purple-300/60 border border-purple-500/15"
             style={{ background: "rgba(124,58,237,0.06)" }}
           >
             <Eye size={12} className="text-purple-400" />
@@ -303,7 +303,7 @@ export default function DashboardPage() {
 
         {/* ── Charts Row ── */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <GlowCard className="lg:col-span-2 p-5">
+          <GlowCard variant="gradient" className="lg:col-span-2 p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold uppercase tracking-widest gx-gradient-text">ATTENDANCE TREND</h3>
               <div className="flex items-center gap-1 p-1 rounded-lg bg-black/30 border border-white/5">
@@ -313,7 +313,7 @@ export default function DashboardPage() {
                     onClick={() => setTrendRange(r)}
                     className={`px-2.5 py-1 rounded-md text-[10px] uppercase font-semibold tracking-wider transition-all ${
                       trendRange === r
-                        ? "bg-purple-600/30 text-purple-200 shadow-[0_0_10px_rgba(155,91,255,0.3)]"
+                        ? "gx-nav-pill text-purple-200"
                         : "text-white/35 hover:text-white/60"
                     }`}
                   >
@@ -330,7 +330,7 @@ export default function DashboardPage() {
 
         {/* ── Live feed + Classroom monitor ── */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <GlowCard className="p-5">
+          <GlowCard variant="gradient" className="p-5">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <Zap size={13} className="text-purple-400" />
@@ -349,7 +349,7 @@ export default function DashboardPage() {
             </div>
           </GlowCard>
 
-          <GlowCard className="lg:col-span-2 p-5">
+          <GlowCard variant="gradient" className="lg:col-span-2 p-5">
             <h3 className="text-sm font-semibold uppercase tracking-widest gx-gradient-text mb-4">CLASSROOM MONITOR</h3>
             {classroomsLoading ? (
               <ChartSkeleton height="h-52 sm:h-64" />
@@ -389,7 +389,7 @@ export default function DashboardPage() {
           ].map((item, i) => {
             const Icon = item.icon;
             return (
-              <GlowCard key={i} className="p-4 flex items-center gap-3">
+              <GlowCard key={i} variant="gradient" className="p-4 flex items-center gap-3">
                 <div
                   className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                   style={{ background: `rgba(${item.color},0.1)`, border: `1px solid rgba(${item.color},0.2)` }}

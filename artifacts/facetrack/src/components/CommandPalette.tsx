@@ -8,6 +8,7 @@ import {
   LayoutDashboard, Users, School, FileText, QrCode, ScanFace, Scan,
   UserCheck, MessageSquare, UserCog, ServerCog, ScrollText, Bell,
   Sparkles, LogOut, Clock, CheckCircle2, XCircle, DoorOpen, ShieldAlert,
+  MapPin,
 } from "lucide-react";
 
 /**
@@ -147,11 +148,13 @@ export function CommandPalette() {
       { href: "/reports", label: "Reports & Analytics", icon: FileText },
       { href: "/sms-logs", label: "SMS Logs", icon: MessageSquare },
       { href: "/review-queue", label: "Review Queue", icon: ShieldAlert },
+      { href: "/fraud", label: "Fraud Radar · Proxy Signals", icon: ShieldAlert },
     ];
     if (!isTeacher) {
       pages.push(
         { href: "/admins", label: "Admins & Roles", icon: UserCog },
         { href: "/operations", label: "Operations · Pi Control", icon: ServerCog },
+        { href: "/gates", label: "Gates & Geofence", icon: MapPin },
         { href: "/audit", label: "Audit Trail", icon: ScrollText },
         { href: "/sms-templates", label: "SMS Templates", icon: MessageSquare },
       );

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, matchReviewsTable, piDevicesTable, jobsTable, qrScanLogsTable, studentsTable, gateIntegrityAlertsTable, fraudSignalsTable } from "@workspace/db";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
+import { logger } from "../lib/logger";
 
 /**
  * Central notification feed. Aggregates the events that used to be buried in
@@ -137,31 +138,39 @@ router.get("/notifications", requireAuth, async (_req, res): Promise<void> => {
     });
   }
 
-  // 6. Open proxy-fraud signals (last 24h) — Phase 6
-  const fraudSignals = await db
-    .select({
-      id: fraudSignalsTable.id,
-      kind: fraudSignalsTable.kind,
-      severity: fraudSignalsTable.severity,
-      score: fraudSignalsTable.score,
-      studentName: studentsTable.name,
-      createdAt: fraudSignalsTable.createdAt,
-    })
-    .from(fraudSignalsTable)
-    .leftJoin(studentsTable, eq(fraudSignalsTable.studentId, studentsTable.id))
-    .where(and(eq(fraudSignalsTable.status, "open"), gte(fraudSignalsTable.createdAt, new Date(now - 24 * 3600 * 1000))))
-    .orderBy(desc(fraudSignalsTable.createdAt))
-    .limit(6);
-  for (const s of fraudSignals) {
-    items.push({
-      id: `fraud-${s.id}`,
-      severity: s.severity === "critical" || s.severity === "high" ? "critical" : s.severity === "medium" ? "warning" : "info",
-      category: "review",
-      title: `Proxy-fraud signal: ${s.kind}`,
-      detail: `${s.studentName ?? "Unknown student"} · score ${s.score}/100 · severity ${s.severity}`,
-      at: s.createdAt.toISOString(),
-      link: "/review-queue",
-    });
+  // 6. Open proxy-fraud signals (last 24h) — Phase 6. The fraud_signals
+  // table comes from migration 0007; if it is missing (bootstrap failed /
+  // disabled), degrade to a feed without fraud entries instead of 500-ing
+  // the whole notifications response. Reviews/jobs/QR sections above must
+  // survive a missing Phase 6 table.
+  try {
+    const fraudSignals = await db
+      .select({
+        id: fraudSignalsTable.id,
+        kind: fraudSignalsTable.kind,
+        severity: fraudSignalsTable.severity,
+        score: fraudSignalsTable.score,
+        studentName: studentsTable.name,
+        createdAt: fraudSignalsTable.createdAt,
+      })
+      .from(fraudSignalsTable)
+      .leftJoin(studentsTable, eq(fraudSignalsTable.studentId, studentsTable.id))
+      .where(and(eq(fraudSignalsTable.status, "open"), gte(fraudSignalsTable.createdAt, new Date(now - 24 * 3600 * 1000))))
+      .orderBy(desc(fraudSignalsTable.createdAt))
+      .limit(6);
+    for (const s of fraudSignals) {
+      items.push({
+        id: `fraud-${s.id}`,
+        severity: s.severity === "critical" || s.severity === "high" ? "critical" : s.severity === "medium" ? "warning" : "info",
+        category: "review",
+        title: `Proxy-fraud signal: ${s.kind}`,
+        detail: `${s.studentName ?? "Unknown student"} · score ${s.score}/100 · severity ${s.severity}`,
+        at: s.createdAt.toISOString(),
+        link: "/review-queue",
+      });
+    }
+  } catch (err) {
+    logger.warn({ err }, "notifications: fraud_signals section unavailable — skipping (is migration 0007 applied?)");
   }
 
   items.sort((a, b) => b.at.localeCompare(a.at));

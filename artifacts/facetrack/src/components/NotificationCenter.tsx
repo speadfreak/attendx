@@ -90,8 +90,8 @@ export function NotificationCenter() {
             <span className="text-xs font-semibold text-white/70 uppercase tracking-widest">System Events</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="st-badge st-badge-red">{counts.critical} critical</span>
-            <span className="st-badge st-badge-amber">{counts.warning} review</span>
+            <span className="gx-chip gx-chip-red">{counts.critical} critical</span>
+            <span className="gx-chip gx-chip-amber">{counts.warning} review</span>
           </div>
         </div>
         <div className="max-h-[380px] overflow-y-auto">

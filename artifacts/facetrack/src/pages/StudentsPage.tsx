@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Search, Plus, UserCircle, QrCode, MoreHorizontal, Pencil, Trash2,
+  Search, AlertTriangle, Plus, UserCircle, QrCode, MoreHorizontal, Pencil, Trash2,
   Scan, Camera, Loader2, CheckCircle2, Brain, Upload, FileSpreadsheet, MapPin,
   Flame, TrendingUp, MessageSquare, Printer, RotateCcw, Ban, X,
   Fingerprint, IdCard, Users, Download, Sparkles,
@@ -424,22 +424,22 @@ function StudentDetailDrawer({
             <>
               {/* ── Streaks + stats ── */}
               <div className="grid grid-cols-4 gap-2">
-                <GlowCard className="p-3 text-center">
+                <GlowCard variant="gradient" className="gx-stat p-3 text-center">
                   <Flame size={14} className="mx-auto text-amber-400" />
                   <p className="counter-num text-xl mt-1 gx-gradient-text">{summary.streaks.current}</p>
                   <p className="text-[8px] uppercase tracking-widest text-white/30">streak</p>
                 </GlowCard>
-                <GlowCard className="p-3 text-center">
+                <GlowCard variant="gradient" className="gx-stat p-3 text-center">
                   <TrendingUp size={14} className="mx-auto text-emerald-400" />
                   <p className="counter-num text-xl mt-1 gx-gradient-text">{summary.streaks.longest}</p>
                   <p className="text-[8px] uppercase tracking-widest text-white/30">best</p>
                 </GlowCard>
-                <GlowCard className="p-3 text-center">
+                <GlowCard variant="gradient" className="gx-stat p-3 text-center">
                   <CheckCircle2 size={14} className="mx-auto text-emerald-400" />
                   <p className="counter-num text-xl mt-1 gx-gradient-text">{summary.stats.present}</p>
                   <p className="text-[8px] uppercase tracking-widest text-white/30">present</p>
                 </GlowCard>
-                <GlowCard className="p-3 text-center">
+                <GlowCard variant="gradient" className="gx-stat p-3 text-center">
                   <span className="counter-num text-xl gx-gradient-text block mt-4">{summary.stats.rate != null ? `${Math.round(summary.stats.rate * 100)}%` : "—"}</span>
                   <p className="text-[8px] uppercase tracking-widest text-white/30">rate</p>
                 </GlowCard>
@@ -459,7 +459,7 @@ function StudentDetailDrawer({
               {/* ── Calendar heatmap ── */}
               <div>
                 <p className="text-[10px] uppercase tracking-widest text-white/35 mb-2">ATTENDANCE HEATMAP · LAST 90 DAYS</p>
-                <GlowCard className="p-4">
+                <GlowCard variant="gradient" className="p-4">
                   <CalendarHeatmap days={summary.heatmap} weeks={13} />
                 </GlowCard>
               </div>
@@ -545,7 +545,7 @@ function StudentDetailDrawer({
                   {issueQr && (
                     <div className="flex items-center gap-3 rounded-xl p-3 bg-white/[0.03] border border-purple-500/15">
                       <div className="bg-white p-1.5 rounded-lg">
-                        <QRCodeSVG value={issueQr.token} size={84} level="M" includeMargin />
+                        <QRCodeSVG value={issueQr.token} size={84} level="M" marginSize={2} />
                       </div>
                       <div className="min-w-0 text-[10px] text-white/50">
                         <p className="font-mono text-purple-300 mb-0.5">{issueQr.serial}</p>
@@ -565,7 +565,7 @@ function StudentDetailDrawer({
                     <span className="text-xs text-white/70 font-mono">{summary.student.parentPhone}</span>
                   </div>
                   {summary.sms.length === 0 ? (
-                    <p className="text-xs text-white/30 italic py-2">No SMS sent to this parent yet.</p>
+                    <p className="gx-empty-tint rounded-lg text-xs text-white/30 italic py-3 px-3">No SMS sent to this parent yet.</p>
                   ) : (
                     <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
                       {summary.sms.map((s) => (
@@ -829,6 +829,9 @@ function BulkEnrollWizard({ classrooms, onClose, onDone }: {
 // ─────────────────────────────────────────────────────────────
 export default function StudentsPage() {
   const [searchParams] = useSearchParams();
+  // Raw input state stays controlled & responsive; `search` is the 300ms
+  // debounced value that actually feeds the (network) student query.
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [classroomFilter, setClassroomFilter] = useState<string>("all");
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -838,12 +841,19 @@ export default function StudentsPage() {
   const [drawerStudent, setDrawerStudent] = useState<Student | null>(null);
   const { toast } = useToast();
 
+  // 300ms debounce: only fire the student query after typing pauses.
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
   const { data: classrooms = [] } = useListClassrooms();
-  const { data: students, isLoading, refetch } = useListStudents({
+  const { data: students, isLoading, isError, error, refetch } = useListStudents({
     search: search || undefined,
     classroomId: classroomFilter === "all" ? undefined : Number(classroomFilter),
   });
   const studentRows = ((students ?? []) as unknown as Student[]);
+  const studentErrorMessage = error instanceof Error ? error.message : "Unknown error";
 
   // Command palette "open student" focus support
   useEffect(() => {
@@ -875,9 +885,11 @@ export default function StudentsPage() {
     <div className="relative">
       <MeshBackground />
       <div className="relative z-10 space-y-5">
-        <SectionTitle sub="IDENTITIES, HEATMAPS, STREAKS & BADGES">
-          STUDENT DATABASE
-        </SectionTitle>
+        <div className="gx-page-header">
+          <SectionTitle className="gx-title-gradient" sub="IDENTITIES, HEATMAPS, STREAKS & BADGES">
+            STUDENT DATABASE
+          </SectionTitle>
+        </div>
 
         {/* identity coverage strip */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -887,7 +899,7 @@ export default function StudentsPage() {
             { label: "Partial identity", value: identityStats.faceOnly + identityStats.qrOnly, icon: IdCard, tone: "amber" },
             { label: "No identity method", value: identityStats.noIdentity, icon: UserCircle, tone: "red" },
           ].map((s, i) => (
-            <GlowCard key={i} className="p-3.5 flex items-center justify-between">
+            <GlowCard key={i} variant="gradient" className="gx-stat p-3.5 flex items-center justify-between">
               <div>
                 <p className="text-[9px] uppercase tracking-widest text-white/35">{s.label}</p>
                 <p className="counter-num text-xl mt-1 gx-gradient-text">{s.value}</p>
@@ -924,10 +936,10 @@ export default function StudentsPage() {
         {/* header actions */}
         <div className="flex flex-wrap justify-between gap-3 items-start sm:items-center">
           <div className="flex flex-wrap gap-2">
-            <Button className="bg-purple-600 hover:bg-purple-500 text-white" onClick={() => setShowAddDialog(true)}>
+            <Button className="gx-btn-accent gx-gradient-pan gx-focus-ring text-white" onClick={() => setShowAddDialog(true)}>
               <Plus className="w-4 h-4 mr-2" /> Add Student
             </Button>
-            <Button variant="outline" className="border-purple-500/30 text-purple-300 hover:bg-purple-500/10" onClick={() => setShowBulk(true)}>
+            <Button variant="outline" className="gx-glow-hover border-purple-500/30 text-purple-300 hover:bg-purple-500/10" onClick={() => setShowBulk(true)}>
               <Upload className="w-4 h-4 mr-2" /> Bulk Enrollment
             </Button>
           </div>
@@ -940,8 +952,8 @@ export default function StudentsPage() {
               <Input
                 placeholder="Search students..."
                 className="pl-9 bg-black/30 border-purple-500/15 text-white/80"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
               />
             </div>
             <div className="w-full sm:w-[200px]">
@@ -958,7 +970,7 @@ export default function StudentsPage() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="border-white/5 hover:bg-transparent">
+                  <TableRow className="gx-table-head border-white/5 hover:bg-transparent">
                     <TableHead className="text-white/40">Student</TableHead>
                     <TableHead className="text-white/40">ID</TableHead>
                     <TableHead className="text-white/40">Classroom</TableHead>
@@ -971,6 +983,26 @@ export default function StudentsPage() {
                   {isLoading ? (
                     <TableRow>
                       <TableCell colSpan={6} className="p-0"><TableSkeleton rows={5} cols={6} /></TableCell>
+                    </TableRow>
+                  ) : isError ? (
+                    <TableRow>
+                      <TableCell colSpan={6}>
+                        <div className="gx-empty-tint rounded-xl flex flex-col items-center justify-center gap-3 py-10 text-center">
+                          <AlertTriangle className="w-8 h-8 text-red-400" />
+                          <div>
+                            <p className="font-medium text-red-400">Failed to load students</p>
+                            <p className="mt-1 text-sm text-white/40">{studentErrorMessage}</p>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gx-glow-hover border-red-500/30 text-red-300 hover:bg-red-500/10"
+                            onClick={() => refetch()}
+                          >
+                            Retry
+                          </Button>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ) : !students?.length ? (
                     <TableRow>
