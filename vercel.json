@@ -37,7 +37,6 @@
     { "source": "/(.*)", "destination": { "service": "facetrack" } }
   ],
   "crons": [
-    { "path": "/api/internal/cron", "schedule": "0 3 * * *" },
-    { "path": "/api/internal/cron", "schedule": "*/5 * * * *" }
+    { "path": "/api/internal/cron", "schedule": "0 3 * * *" }
   ]
 }

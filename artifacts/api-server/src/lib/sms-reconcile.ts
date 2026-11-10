@@ -88,15 +88,18 @@ export async function reconcilePendingSms(limit = 25, minAgeSeconds = MIN_AGE_SE
   if (!pending.length) return summary;
   summary.checked = pending.length;
 
-  for (const row of pending) {
-    if (!row.providerSid) continue;
+  // Parallel fetch (bounded by `limit`): every pending row's Twilio lookup is
+  // in flight at once, so a sweep costs ~one call latency instead of
+  // limit × latency. Each row's DB write and event publish are independent.
+  await Promise.all(pending.map(async (row) => {
+    if (!row.providerSid) return;
     const remote = await fetchTwilioMessage(row.providerSid);
     if (!remote) {
       summary.errors += 1;
-      continue;
+      return;
     }
     const mapped = mapTwilioStatus(remote.status);
-    if (!mapped || mapped === row.status) continue;
+    if (!mapped || mapped === row.status) return;
 
     const errorCode = remote.error_code != null ? String(remote.error_code) : null;
     await db
@@ -120,7 +123,7 @@ export async function reconcilePendingSms(limit = 25, minAgeSeconds = MIN_AGE_SE
       errorCode,
     });
     logger.info({ logId: row.id, sid: row.providerSid, from: row.status, to: mapped, errorCode }, "SMS status reconciled");
-  }
+  }));
 
   return summary;
 }

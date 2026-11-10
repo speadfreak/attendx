@@ -38,7 +38,16 @@ and use `fetch(new URL('path', process.env.API_SERVER_URL))` in that service's f
 
 Import the GitHub repository with the **repository root** as the project root. `vercel.json` drives everything (Framework Preset *Other*), including per-service `installCommand`, `buildCommand`, `outputDirectory`, and the SPA/sandbox rewrites.
 
-Scheduled processing stays configured at the top level: `/api/internal/cron` runs daily at 03:00 UTC (Vercel sends `Authorization: Bearer $CRON_SECRET`; the route verifies it). Hobby-plan crons run once per day — keep the daily schedule unless your plan supports more; Operations can retry failed jobs manually.
+Scheduled processing stays configured at the top level: `/api/internal/cron` runs **once daily at 03:00 UTC** (Vercel sends `Authorization: Bearer $CRON_SECRET`; the route verifies it). This is deliberately Hobby-plan compliant: **Hobby crons are limited to one run per day**, and a more frequent schedule (e.g. `*/5 * * * *`) fails the deployment — so there is exactly ONE cron and it must stay daily unless you upgrade to Pro.
+
+Frequent SMS delivery reconciliation does **not** depend on the cron. It runs through four serverless-safe paths:
+
+1. **Twilio status webhook** (primary): set `PUBLIC_BASE_URL` and every send carries a StatusCallback, so carrier verdicts (sent/delivered/undelivered/failed + error code) arrive in real time at `/api/webhooks/twilio/status`.
+2. **Traffic-piggybacked sweep**: a global middleware fires a throttled (60s) background reconcile on every API request — any active page keeps statuses fresh with zero cron involvement.
+3. **Inline sweep on page open**: GET `/api/sms-logs` and `/api/sms-logs/health` await a hard-budgeted (4s) reconcile throttled to 30s, so opening the SMS Logs page pulls fresh Twilio verdicts for rows as young as ~8 seconds.
+4. **Daily cron recovery**: the single daily cron run includes a reconcile pass for anything missed when traffic was zero.
+
+**Optional — stricter reconciliation without upgrading to Pro:** register the same endpoint on an external cron service (e.g. cron-job.org, every 5 minutes) pointing at `https://YOUR-VERCEL-DOMAIN/api/internal/cron` with a custom header `Authorization: Bearer <CRON_SECRET>`. The route already authenticates exactly the same way for any caller.
 
 ## Required Vercel environment variables
 
@@ -49,6 +58,7 @@ Project-level env vars are shared by all services. Add them in Project → Setti
 | `DATABASE_URL` | Reachable PostgreSQL connection string. Prefer a provider's **pooled** connection URL for serverless traffic. |
 | `SESSION_SECRET` | Long random secret used to sign admin JWTs **and the QR badge HMAC signatures**. Changing it invalidates every issued badge. |
 | `CRON_SECRET` | Long random secret used to authenticate scheduled processing requests. |
+| `PUBLIC_BASE_URL` | Optional; public origin of this deployment (e.g. `https://attendx.vercel.app`). Enables Twilio StatusCallback pushes so delivery statuses update in real time without polling. |
 | `TWILIO_ACCOUNT_SID` | Optional; enables live SMS delivery. |
 | `TWILIO_AUTH_TOKEN` | Optional; enables live SMS delivery. |
 | `TWILIO_FROM_NUMBER` | Optional fallback sender (E.164). International delivery should use a Messaging Service instead. |
@@ -79,7 +89,7 @@ Run the push command only after confirming `DATABASE_URL` points at the intended
 ## Serverless behavior
 
 - The Express app deploys as a single Vercel Function (Fluid compute) via the `express` framework. `src/index.ts` stays for local/Replit dev (listens on `PORT`, runs the in-process job/retention workers); on Vercel the default-exported `src/app.ts` serves requests with **no interval workers**.
-- SMS jobs are processed during the request that queues them; the daily cron route is the recovery path. Pi maintenance/fan jobs sit in PostgreSQL until the Pi polls `/api/jobs/next`.
+- SMS jobs are processed during the request that queues them; the daily cron route is the deep recovery path. Delivery-status freshness is carried by the status webhook + the traffic-piggybacked reconcile middleware + the inline sweep on the SMS Logs endpoints (see "Scheduled processing" above) — no frequent cron required. Pi maintenance/fan jobs sit in PostgreSQL until the Pi polls `/api/jobs/next`.
 - **Live feed**: `/api/events/stream` is Server-Sent Events. On serverless the stream lives for the function's max duration; clients auto-reconnect and fall back to 10s polling, so recycling is transparent. No WebSocket infrastructure needed.
 - **QR badges**: HMAC-signed with `SESSION_SECRET`; rotating a badge instantly invalidates older prints (version pinning).
 - **Face recognition**: descriptors extracted in the browser (face-api.js), matched server-side — no GPU/native deps.
