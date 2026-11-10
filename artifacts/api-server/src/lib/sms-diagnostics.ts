@@ -1,5 +1,5 @@
 import { db, studentsTable } from "@workspace/db";
-import { twilioEnabled, getSmsSenderConfig, normalizePhone, activeSmsProvider, afroMessageEnabled, afroIdentifierId, type SmsSenderConfig } from "./sms";
+import { twilioEnabled, getSmsSenderConfig, normalizePhone, activeSmsProvider, afroMessageEnabled, afroIdentifierId, textbeeEnabled, textbeeListDevices, textbeeWebhookUrl, ensureTextbeeWebhook, getTextbeeSigningSecret, type SmsSenderConfig } from "./sms";
 import { logger } from "./logger";
 
 /**
@@ -142,6 +142,29 @@ export interface SmsDiagnostics {
     senderName: string | null;
     callbackConfigured: boolean;
   };
+  /** Phase 6.4: TextBee gateway facts (school Android phone + local SIM). */
+  textbee: {
+    enabled: boolean;
+    error: string | null;
+    device: {
+      id: string | null;
+      name: string | null;
+      model: string | null;
+      enabled: boolean | null;
+      lastHeartbeat: string | null;
+      heartbeatAgeSeconds: number | null;
+      batteryPct: number | null;
+      batteryCharging: boolean | null;
+      networkType: string | null;
+      sentCount: number | null;
+      sims: Array<{ subscriptionId: number | null; carrier: string | null; serviceState: string | null }>;
+    } | null;
+    webhook: {
+      url: string | null;
+      secretConfigured: boolean;
+      registration: string | null;
+    };
+  };
   sender: {
     messagingServiceSid: string | null;
     messagingServiceName: string | null;
@@ -205,6 +228,16 @@ export async function runSmsDiagnostics(): Promise<SmsDiagnostics> {
       senderName: config.afroSenderName,
       callbackConfigured: !!(process.env.PUBLIC_BASE_URL ?? process.env.TWILIO_STATUS_CALLBACK_BASE),
     },
+    textbee: {
+      enabled: textbeeEnabled(),
+      error: null,
+      device: null,
+      webhook: {
+        url: textbeeWebhookUrl(),
+        secretConfigured: !!(await getTextbeeSigningSecret()),
+        registration: null,
+      },
+    },
     sender: {
       messagingServiceSid: config.messagingServiceSid,
       messagingServiceName: null,
@@ -219,6 +252,93 @@ export async function runSmsDiagnostics(): Promise<SmsDiagnostics> {
     destinations: [],
     recommendations: [],
   };
+
+  // ── TextBee active: probe the gateway phone + webhook registration. ──
+  if (provider === "textbee") {
+    // Kick subscription repair/create (fire-and-forget — never blocks).
+    void ensureTextbeeWebhook()
+      .then((r) => {
+        diagnostics.textbee.webhook.registration = r.detail;
+      })
+      .catch(() => {});
+
+    try {
+      const devices = await textbeeListDevices();
+      const device = devices?.find((d) => d.enabled && d.isDefault) ?? devices?.find((d) => d.enabled) ?? devices?.[0] ?? null;
+      if (device) {
+        const heartbeatAge = device.lastHeartbeat ? Math.round((Date.now() - new Date(device.lastHeartbeat).getTime()) / 1000) : null;
+        diagnostics.textbee.device = {
+          id: device._id,
+          name: device.name,
+          model: device.model ? `${device.brand ?? ""} ${device.model}`.trim() : null,
+          enabled: device.enabled,
+          lastHeartbeat: device.lastHeartbeat ?? null,
+          heartbeatAgeSeconds: heartbeatAge,
+          batteryPct: device.batteryInfo?.percentage ?? null,
+          batteryCharging: device.batteryInfo?.isCharging ?? null,
+          networkType: device.networkInfo?.networkType ?? null,
+          sentCount: device.sentSMSCount ?? null,
+          sims: (device.simInfo?.sims ?? []).map((sim) => ({
+            subscriptionId: sim.subscriptionId ?? null,
+            carrier: sim.carrierName ?? null,
+            serviceState: sim.serviceState ?? null,
+          })),
+        };
+
+        diagnostics.recommendations.push({
+          severity: "info",
+          title: "TextBee is the active SMS gateway",
+          detail: `Outbound notifications go out over the school's own Android phone (${diagnostics.textbee.device.model ?? "device"}) using the LOCAL SIM — no international corridor, nothing to geo-block. Carrier verdicts arrive via the textbee delivery webhook + a reconcile sweep, so sms_logs show the real sent/delivered/failed truth.`,
+        });
+
+        if (!device.enabled) {
+          diagnostics.recommendations.push({
+            severity: "critical",
+            title: "Gateway phone is disabled",
+            detail: "The textbee app on the school phone reports Enabled = off. Open the app and toggle the device back on — sends will fail until then.",
+          });
+        }
+        if (heartbeatAge == null || heartbeatAge > 600) {
+          diagnostics.recommendations.push({
+            severity: "warning",
+            title: "Gateway phone heartbeat is stale",
+            detail: heartbeatAge == null
+              ? "The phone has never reported a heartbeat. Open the textbee app, sign in, and keep it connected."
+              : `Last heartbeat was ${Math.round(heartbeatAge / 60)} minutes ago. The phone may be offline/asleep — open the textbee app, plug it in, and disable battery optimization for reliable delivery.`,
+          });
+        }
+        const sims = diagnostics.textbee.device.sims;
+        if (sims.length && !sims.some((s) => (s.serviceState ?? "").toUpperCase() === "IN_SERVICE")) {
+          diagnostics.recommendations.push({
+            severity: "critical",
+            title: "No SIM is in service on the gateway phone",
+            detail: "Every SIM reports out-of-service — check the SIM slots, signal, and whether the lines have SMS credit/bundles.",
+          });
+        }
+      } else {
+        diagnostics.recommendations.push({
+          severity: "critical",
+          title: "No textbee gateway phone registered",
+          detail: "TEXTBEE_API_KEY is set but the account has no usable device. Install the textbee Android app on the school phone (textbee.dev/download), add the device, and keep it online.",
+        });
+      }
+    } catch (err) {
+      diagnostics.textbee.error = err instanceof Error ? err.message : String(err);
+      diagnostics.recommendations.push({
+        severity: "warning",
+        title: "TextBee device probe failed",
+        detail: `${diagnostics.textbee.error} — the gateway API may be unreachable; sends still proceed but health facts are stale.`,
+      });
+    }
+    if (!diagnostics.textbee.webhook.url) {
+      diagnostics.recommendations.push({
+        severity: "warning",
+        title: "Delivery webhook is not configured",
+        detail: "PUBLIC_BASE_URL is unset, so textbee cannot push delivery verdicts — rows wait for the reconcile sweep instead of updating instantly. Set PUBLIC_BASE_URL (e.g. https://your-app.vercel.app).",
+      });
+    }
+    return diagnostics;
+  }
 
   // ── AfroMessage active: no Twilio probing, report the afro corridor state. ──
   if (provider === "afromessage") {
@@ -255,7 +375,7 @@ export async function runSmsDiagnostics(): Promise<SmsDiagnostics> {
     diagnostics.recommendations.push({
       severity: "critical",
       title: "No live SMS gateway is configured",
-      detail: "Notifications are simulated only. For Ethiopia set AFROMESSAGE_TOKEN (recommended — the Ethiopia-native corridor); alternatively set TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN for Twilio delivery.",
+      detail: "Notifications are simulated only. For Ethiopia set TEXTBEE_API_KEY (recommended — sends via the school's own Android phone and local SIM, impossible to geo-block) or AFROMESSAGE_TOKEN; alternatively set TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN for Twilio delivery.",
     });
     return diagnostics;
   }

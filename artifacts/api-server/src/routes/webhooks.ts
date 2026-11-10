@@ -1,8 +1,8 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import { db, smsLogsTable } from "@workspace/db";
-import { and, eq, like } from "drizzle-orm";
-import { mapAfroStatus, mapTwilioStatus, AFROMESSAGE_CALLBACK_SECRET } from "../lib/sms";
+import { and, desc, eq, inArray, like } from "drizzle-orm";
+import { mapAfroStatus, mapTwilioStatus, mapTextbeeStatus, normalizePhone, AFROMESSAGE_CALLBACK_SECRET, getTextbeeSigningSecret, textbeeEnabled } from "../lib/sms";
 import { logger } from "../lib/logger";
 import { publishEvent } from "../lib/events";
 
@@ -240,6 +240,191 @@ router.get("/webhooks/afromessage/status", (req: Request, res: Response): void =
 });
 router.post("/webhooks/afromessage/status", (req: Request, res: Response): void => {
   void handleAfroStatus(req, res);
+});
+
+/**
+ * TextBee delivery webhook (Phase 6.4 Android-SIM gateway).
+ *
+ * When PUBLIC_BASE_URL is configured, AttendX auto-registers a delivery
+ * subscription on textbee (lib/sms.ts → ensureTextbeeWebhook) pointing at
+ * this endpoint, covering MESSAGE_SENT / MESSAGE_DELIVERED / MESSAGE_FAILED /
+ * SMS_STATUS_UPDATED. The POSTed body is the event payload itself:
+ *
+ *   { smsId, smsBatchId?, status?, recipient?, errorCode?, errorMessage?,
+ *     webhookEvent?, message, deviceId, idempotencyKey, … }
+ *
+ * Security: when a signing secret is known (TEXTBEE_WEBHOOK_SECRET env or
+ * the one stored at auto-registration), the request MUST carry a valid
+ * signature — either the current `X-Textbee-Signature: t=<ts>,v1=<hex>`
+ * (hex HMAC-SHA256 of "<ts>.<raw body>", ts within 300s) or the legacy
+ * `X-Signature` (hex HMAC-SHA256 of the raw body). Unsigned calls are
+ * rejected with 403. With no secret configured (dev mode) unsigned calls
+ * are accepted and logged, so local flows keep working.
+ */
+function validTextbeeSignature(req: Request, secret: string): boolean {
+  const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
+  const raw = rawBody ? rawBody.toString("utf8") : JSON.stringify(req.body ?? {});
+
+  // Current scheme: X-Textbee-Signature: t=<unix-seconds>,v1=<hex-digest>
+  const tbSig = req.header("x-textbee-signature");
+  if (tbSig) {
+    const match = /^t=(\d+),v1=([0-9a-f]{64})$/.exec(tbSig.trim());
+    if (match) {
+      const [, timestamp, v1] = match;
+      const age = Math.abs(Date.now() / 1000 - Number(timestamp));
+      if (age <= 300) {
+        const expected = createHmac("sha256", secret).update(`${timestamp}.${raw}`).digest("hex");
+        const a = Buffer.from(v1);
+        const b = Buffer.from(expected);
+        if (a.length === b.length && timingSafeEqual(a, b)) return true;
+      }
+      return false;
+    }
+  }
+
+  // Legacy scheme: X-Signature = hex HMAC-SHA256(raw body)
+  const legacy = req.header("x-signature");
+  if (legacy) {
+    const expected = createHmac("sha256", secret).update(Buffer.from(raw, "utf8")).digest("hex");
+    const a = Buffer.from(legacy.trim());
+    const b = Buffer.from(expected);
+    return a.length === b.length && timingSafeEqual(a, b);
+  }
+  return false;
+}
+
+const TEXTBEE_EVENTS: Record<string, string | null> = {
+  MESSAGE_SENT: "sent",
+  MESSAGE_DELIVERED: "delivered",
+  MESSAGE_FAILED: "failed",
+  UNKNOWN_STATE: null, // status field carries the truth (or nothing)
+  SMS_STATUS_UPDATED: null,
+  MESSAGE_RECEIVED: null, // inbound — not a delivery verdict
+};
+
+router.post("/webhooks/textbee", (req: Request, res: Response): void => {
+  void (async () => {
+    const secret = textbeeEnabled() ? await getTextbeeSigningSecret() : null;
+    if (secret && !validTextbeeSignature(req, secret)) {
+      logger.warn(
+        { hasTextbeeSig: !!req.header("x-textbee-signature"), hasLegacySig: !!req.header("x-signature") },
+        "textbee webhook: rejected (missing/invalid signature)",
+      );
+      res.status(403).json({ ok: false, error: "invalid signature" });
+      return;
+    }
+    if (!secret) {
+      logger.warn("textbee webhook: no signing secret configured — accepting unsigned call (dev mode)");
+    }
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const eventRaw = typeof body.webhookEvent === "string" ? body.webhookEvent : typeof body.event === "string" ? body.event : null;
+    const smsId = typeof body.smsId === "string" ? body.smsId : null;
+    const smsBatchId = typeof body.smsBatchId === "string" ? body.smsBatchId : null;
+    const recipient = typeof body.recipient === "string" ? body.recipient : null;
+    const statusRaw = typeof body.status === "string" ? body.status : null;
+    const errorCode = typeof body.errorCode === "string" ? body.errorCode : null;
+    const errorMessage = typeof body.errorMessage === "string" ? body.errorMessage : null;
+
+    // Event → forced status; status field → mapped status. Neither → nothing to do.
+    const fromEvent = eventRaw && eventRaw in TEXTBEE_EVENTS ? TEXTBEE_EVENTS[eventRaw] : null;
+    const mapped = fromEvent ?? (statusRaw ? mapTextbeeStatus(statusRaw) : null);
+    if (!smsId && !smsBatchId) {
+      logger.info({ eventRaw, keys: Object.keys(body) }, "textbee webhook: no message id (acknowledged)");
+      res.status(200).json({ ok: true, ignored: true });
+      return;
+    }
+    if (!mapped) {
+      logger.info({ smsId, eventRaw, statusRaw }, "textbee webhook: no status change to apply (acknowledged)");
+      res.status(200).json({ ok: true, ignored: true });
+      return;
+    }
+
+    try {
+      // Match: exact sms id → batch + recipient → recipient + message fallback.
+      const candidates = await db
+        .select({ id: smsLogsTable.id, status: smsLogsTable.status, parentPhone: smsLogsTable.parentPhone, message: smsLogsTable.message, providerSid: smsLogsTable.providerSid })
+        .from(smsLogsTable)
+        .where(and(like(smsLogsTable.provider, "textbee%"), inArray(smsLogsTable.status, ["queued", "sent"]), smsId
+          ? eq(smsLogsTable.providerSid, `tbsms:${smsId}`)
+          : smsBatchId
+            ? eq(smsLogsTable.providerSid, `tbbatch:${smsBatchId}`)
+            : like(smsLogsTable.provider, "textbee%")))
+        .orderBy(desc(smsLogsTable.sentAt))
+        .limit(5);
+
+      type SmsLogCandidate = { id: number; status: string; parentPhone: string; message: string; providerSid: string | null };
+      let row: SmsLogCandidate | null = candidates[0] ?? null;
+      if (row && smsBatchId && recipient && !smsId) {
+        // Batch match: confirm the recipient belongs to this row.
+        const { getSmsSenderConfig } = await import("../lib/sms");
+        const { defaultCountry } = await getSmsSenderConfig();
+        const normalizedRecipient = normalizePhone(recipient, defaultCountry);
+        const rowRecipient = normalizePhone(row.parentPhone, defaultCountry);
+        if (normalizedRecipient && rowRecipient && normalizedRecipient !== rowRecipient) {
+          // Wrong row for this batch message — try the recipient+message fallback.
+          row = null;
+        }
+      }
+      if (!row && recipient) {
+        const { getSmsSenderConfig } = await import("../lib/sms");
+        const { defaultCountry } = await getSmsSenderConfig();
+        const normalizedRecipient = normalizePhone(recipient, defaultCountry);
+        if (normalizedRecipient) {
+          const fallback = await db
+            .select({ id: smsLogsTable.id, status: smsLogsTable.status, parentPhone: smsLogsTable.parentPhone, message: smsLogsTable.message, providerSid: smsLogsTable.providerSid })
+            .from(smsLogsTable)
+            .where(and(like(smsLogsTable.provider, "textbee%"), inArray(smsLogsTable.status, ["queued", "sent"])))
+            .orderBy(desc(smsLogsTable.sentAt))
+            .limit(10);
+          row = fallback.find((r) => {
+            const rowRecipient = normalizePhone(r.parentPhone, defaultCountry);
+            return rowRecipient === normalizedRecipient && (!body.message || typeof body.message !== "string" || r.message === body.message);
+          }) ?? null;
+        }
+      }
+
+      if (!row) {
+        logger.info({ smsId, smsBatchId, recipient, mapped }, "textbee webhook: no matching pending log row");
+        res.status(200).json({ ok: true, ignored: true });
+        return;
+      }
+
+      const STATUS_RANK_TB: Record<string, number> = { queued: 0, sent: 1, undelivered: 2, failed: 2, delivered: 3 };
+      const currentRank = STATUS_RANK_TB[row.status] ?? 0;
+      const nextRank = STATUS_RANK_TB[mapped] ?? 0;
+      if (nextRank < currentRank) {
+        logger.info({ logId: row.id, from: row.status, to: mapped }, "textbee webhook: ignored regressive status");
+        res.status(200).json({ ok: true, ignored: true });
+        return;
+      }
+
+      await db
+        .update(smsLogsTable)
+        .set({
+          status: mapped,
+          errorCode,
+          errorMessage,
+          statusUpdatedAt: new Date(),
+          ...(smsId ? { providerSid: `tbsms:${smsId}` } : {}),
+        })
+        .where(eq(smsLogsTable.id, row.id));
+
+      publishEvent("sms.status", {
+        logId: row.id,
+        providerSid: smsId ? `tbsms:${smsId}` : row.providerSid,
+        from: row.status,
+        to: mapped,
+        errorCode,
+      });
+      logger.info({ logId: row.id, smsId, from: row.status, to: mapped, errorCode, event: eventRaw }, "SMS status updated via TextBee webhook");
+    } catch (err) {
+      logger.error({ err, smsId }, "textbee webhook: update failed");
+    }
+  })();
+
+  // Respond immediately — textbee retries non-2xx up to 10 times.
+  res.status(200).json({ ok: true });
 });
 
 export default router;

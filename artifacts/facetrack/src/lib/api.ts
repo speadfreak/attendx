@@ -473,12 +473,15 @@ export interface AbsenceRiskSummary {
 // ── SMS Delivery Health (Phase 5) ─────────────────────────────
 
 export interface SmsConfigStatus {
-  /** Phase 6.3: the gateway that actually carries outbound SMS. */
-  provider?: "afromessage" | "twilio" | "simulation";
+  /** Phase 6.4: the gateway that actually carries outbound SMS. */
+  provider?: "textbee" | "afromessage" | "twilio" | "simulation";
   twilioEnabled: boolean;
   /** Phase 6.3: AfroMessage (Ethiopia-native) gateway facts — additive. */
   afro?: AfroMessageStatus;
   afroEnabled?: boolean;
+  /** Phase 6.4: TextBee (Android-SIM gateway) facts — additive. */
+  textbee?: TextbeeStatus;
+  textbeeEnabled?: boolean;
   channelMode: "sms" | "whatsapp" | "auto";
   hasMessagingService: boolean;
   hasFromNumber: boolean;
@@ -512,6 +515,36 @@ export interface AfroMessageStatus {
   callbackConfigured: boolean;
 }
 
+/** Phase 6.4: TextBee (textbee.dev) Android-SIM gateway facts — additive. */
+export interface TextbeeStatus {
+  enabled: boolean;
+  webhookUrl: string | null;
+  webhookSecretConfigured: boolean;
+}
+
+export interface TextbeeDiagnostics {
+  enabled: boolean;
+  error: string | null;
+  device: {
+    id: string | null;
+    name: string | null;
+    model: string | null;
+    enabled: boolean | null;
+    lastHeartbeat: string | null;
+    heartbeatAgeSeconds: number | null;
+    batteryPct: number | null;
+    batteryCharging: boolean | null;
+    networkType: string | null;
+    sentCount: number | null;
+    sims: Array<{ subscriptionId: number | null; carrier: string | null; serviceState: string | null }>;
+  } | null;
+  webhook: {
+    url: string | null;
+    secretConfigured: boolean;
+    registration: string | null;
+  };
+}
+
 export interface SmsDiagnostics {
   checkedAt: string;
   /** Phase 6.3: which gateway actually carries outbound SMS. */
@@ -525,6 +558,8 @@ export interface SmsDiagnostics {
   };
   /** Phase 6.3: AfroMessage gateway facts — additive, may be absent on older API. */
   afro?: AfroMessageStatus;
+  /** Phase 6.4: TextBee gateway facts — additive, may be absent on older API. */
+  textbee?: TextbeeDiagnostics;
   sender: {
     messagingServiceSid: string | null;
     messagingServiceName: string | null;
@@ -566,16 +601,18 @@ export interface SmsDeliveryHealth {
 
 export interface SmsTestSendResult {
   ok: boolean;
-  /** Phase 6.3: which gateway carried this test send. */
-  provider?: "afromessage" | "twilio" | "simulation";
+  /** Phase 6.4: which gateway carried this test send. */
+  provider?: "textbee" | "afromessage" | "twilio" | "simulation";
   normalizedTo: string;
   sender: {
-    via: "messaging-service" | "from-number" | "afromessage" | "simulation";
+    via: "textbee" | "messaging-service" | "from-number" | "afromessage" | "simulation";
     messagingServiceSid: string | null;
     fromNumber: string | null;
     /** AfroMessage sender facts — additive */
     afroSenderName?: string | null;
     identifierId?: string | null;
+    /** TextBee device facts — additive */
+    device?: { id: string; name: string | null; model: string | null; enabled: boolean } | null;
   };
   attempts: Array<{ channel: string; ok: boolean; error: { message: string; code: string | null; fix: string | null } | null }>;
   error: { message: string; code: string | null; fix: string | null } | null;

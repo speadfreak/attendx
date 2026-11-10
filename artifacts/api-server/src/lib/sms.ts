@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { db, smsLogsTable } from "@workspace/db";
 import { logger } from "./logger";
 import { getSystemSettings } from "./system-settings";
@@ -7,6 +8,22 @@ const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 const TWILIO_FROM_ENV = process.env.TWILIO_FROM_NUMBER;
 const TWILIO_MESSAGING_SERVICE_ENV = process.env.TWILIO_MESSAGING_SERVICE_SID;
+
+// ── TextBee credentials (Android-SIM SMS gateway, textbee.dev) — env only ──
+// TextBee turns the school's own Android phone into the gateway: messages go
+// out over the LOCAL SIM (ethio tel / Safaricom), so there is no international
+// corridor to be geo-blocked — this is what finally fixes Ethiopia delivery.
+export const TEXTBEE_API_KEY = process.env.TEXTBEE_API_KEY ?? null;
+export const TEXTBEE_DEVICE_ID = process.env.TEXTBEE_DEVICE_ID ?? null;
+/** Optional SIM pick (subscriptionId from the textbee app's SIM Cards view). */
+const TEXTBEE_SIM_SUBSCRIPTION_ID = process.env.TEXTBEE_SIM_SUBSCRIPTION_ID
+  ? Number(process.env.TEXTBEE_SIM_SUBSCRIPTION_ID)
+  : null;
+export const TEXTBEE_BASE_URL = (process.env.TEXTBEE_BASE_URL ?? "https://api.textbee.dev/api/v1").replace(/\/$/, "");
+/** Webhook signing secret (≥20 chars). When set, it is (re)used when AttendX
+ *  auto-registers its delivery subscription; overrides the DB-stored secret
+ *  when verifying incoming webhook signatures. */
+export const TEXTBEE_WEBHOOK_SECRET = process.env.TEXTBEE_WEBHOOK_SECRET ?? null;
 
 // ── AfroMessage credentials (Ethiopia-native SMS gateway) — env only ──
 // The API token is the JWT issued by api.afromessage.com → Tokens. Its
@@ -51,20 +68,25 @@ export function afroIdentifierId(): string | null {
   return AFROMESSAGE_IDENTIFIER_ENV ?? jwtPayloadClaim(AFROMESSAGE_TOKEN, "identifier");
 }
 
-export type SmsProviderName = "afromessage" | "twilio" | "simulation";
+export type SmsProviderName = "textbee" | "afromessage" | "twilio" | "simulation";
+
+export function textbeeEnabled(): boolean {
+  return !!TEXTBEE_API_KEY;
+}
 
 /**
  * The provider that will actually carry outbound SMS.
- * Precedence: explicit SMS_PROVIDER env override → AfroMessage (when its
- * token is configured — it is the reliable Ethiopia corridor, unlike Twilio,
- * where Ethio Telecom blocks unregistered international senders) → Twilio →
- * simulation.
+ * Precedence: explicit SMS_PROVIDER env override → TextBee (own Android phone
+ * + local SIM — no international corridor, nothing for Ethio Telecom or any
+ * other carrier to block) → AfroMessage → Twilio → simulation.
  */
 export function activeSmsProvider(): SmsProviderName {
   const forced = (process.env.SMS_PROVIDER ?? "").toLowerCase();
+  if (forced === "textbee" && textbeeEnabled()) return "textbee";
   if (forced === "afromessage" && afroMessageEnabled()) return "afromessage";
   if (forced === "twilio" && twilioEnabled()) return "twilio";
   if (forced === "simulation") return "simulation";
+  if (textbeeEnabled()) return "textbee";
   if (afroMessageEnabled()) return "afromessage";
   if (twilioEnabled()) return "twilio";
   return "simulation";
@@ -324,9 +346,339 @@ export function describeSmsProviderCode(code: string | null): SmsErrorHint | nul
         retryable: false,
         channelSwitchable: false,
       };
+    // ── TextBee gateway codes (device-carried, human-readable) ──
+    case "tb-auth":
+      return {
+        title: "TextBee authentication failed",
+        fix: "TEXTBEE_API_KEY is missing or wrong. Copy the API key again from textbee.dev → Dashboard → API Keys and set it in Vercel → Environment Variables.",
+        retryable: false,
+        channelSwitchable: false,
+      };
+    case "tb-device":
+      return {
+        title: "TextBee gateway phone is not ready",
+        fix: "No enabled device answered the send request. Open the textbee app on the school Android phone, make sure it is signed in, 'Enabled' is on, and the phone is online (heartbeats keep it live).",
+        retryable: true,
+        channelSwitchable: false,
+      };
+    case "tb-limit":
+      return {
+        title: "TextBee plan limit reached",
+        fix: "The free hosted plan's daily/monthly message limit is used up. AttendX requeues these automatically — or upgrade the plan / self-host textbee for unlimited sends.",
+        retryable: true,
+        channelSwitchable: false,
+      };
+    case "112":
+      return {
+        title: "SIM network error on the gateway phone (112)",
+        fix: "The SIM's radio rejected the send. Check signal bars on the gateway phone, confirm the SIM has SMS credit/bundle, and that SMS sending is not barred on the line. Retrying usually works once the network is stable.",
+        retryable: true,
+        channelSwitchable: false,
+      };
+    case "SMS_PERMISSION_MISSING":
+      return {
+        title: "textbee app lost the SMS permission",
+        fix: "On the gateway phone: Settings → Apps → textbee → Permissions → allow SMS. Then resend.",
+        retryable: true,
+        channelSwitchable: false,
+      };
     default:
       return null;
   }
+}
+
+// ── TextBee send (https://textbee.dev — Android SIM gateway) ─────────
+
+interface TextbeeSendData {
+  // Queued path
+  success?: boolean;
+  message?: string;
+  smsBatchId?: string;
+  recipientCount?: number;
+  estimatedCompletionAt?: string;
+  warning?: { code?: string; message?: string };
+  // Immediate path (Firebase batch response)
+  successCount?: number;
+  failureCount?: number;
+}
+
+export interface TextbeeSendResult {
+  /** `tbbatch:<id>` (queued ack) or `tbsms:<id>` when the API hands us the
+   *  message id directly; null when neither is exposed (immediate path) —
+   *  the reconcile sweep then matches by recipient + message and upgrades
+   *  providerSid to the precise textbee sms id. */
+  providerSid: string | null;
+  /** AttendX status at accept time — always "queued" for textbee. */
+  initialStatus: string | null;
+}
+
+/**
+ * Map TextBee's message statuses onto AttendX's honest sms_logs taxonomy.
+ * textbee: pending → dispatched → sent → delivered | failed
+ */
+export function mapTextbeeStatus(status: string): string | null {
+  switch (status.toLowerCase()) {
+    case "pending":
+    case "dispatched":
+      return "queued";
+    case "sent":
+      return "sent";
+    case "delivered":
+      return "delivered";
+    case "failed":
+      return "failed";
+    default: // "unknown", "received" (inbound) — keep current status
+      return null;
+  }
+}
+
+/** TextBee delivery webhook endpoint on this deployment. */
+export function textbeeWebhookUrl(): string | null {
+  if (!PUBLIC_BASE_URL) return null;
+  return `${PUBLIC_BASE_URL}/api/webhooks/textbee`;
+}
+
+/**
+ * TextBee REST helper — every call authenticates with the `x-api-key` header.
+ * Returns { ok, status, json } without throwing so callers can shape errors.
+ */
+async function textbeeRequest<T>(
+  method: "GET" | "POST" | "PATCH",
+  path: string,
+  body?: unknown,
+  timeoutMs = 12_000,
+): Promise<{ ok: boolean; status: number; json: T | null; raw: string }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${TEXTBEE_BASE_URL}${path}`, {
+      method,
+      headers: {
+        "x-api-key": TEXTBEE_API_KEY ?? "",
+        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+        Accept: "application/json",
+      },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      signal: controller.signal,
+    });
+    const raw = await res.text();
+    let json: T | null = null;
+    try {
+      json = JSON.parse(raw) as T;
+    } catch {
+      json = null;
+    }
+    return { ok: res.ok, status: res.status, json, raw };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export interface TextbeeDeviceView {
+  _id: string;
+  name: string | null;
+  model: string | null;
+  brand: string | null;
+  enabled: boolean;
+  isDefault: boolean;
+  lastHeartbeat: string | null;
+  batteryInfo?: { percentage?: number; isCharging?: boolean } | null;
+  networkInfo?: { networkType?: string } | null;
+  simInfo?: {
+    sims?: Array<{ subscriptionId?: number; carrierName?: string; serviceState?: string; simState?: string }> | null;
+  } | null;
+  sentSMSCount?: number;
+}
+
+/** List the gateway phones registered on the TextBee account (read-only). */
+export async function textbeeListDevices(): Promise<TextbeeDeviceView[] | null> {
+  if (!TEXTBEE_API_KEY) return null;
+  const res = await textbeeRequest<{ data?: TextbeeDeviceView[] }>("GET", "/gateway/devices", undefined, 8_000);
+  return res.ok && res.json?.data ? res.json.data : null;
+}
+
+/**
+ * Send one SMS through TextBee (POST /gateway/send-sms, x-api-key).
+ * The API pushes the message to the school's Android phone over FCM; the
+ * phone radios it out over the local SIM. Status truth arrives later via
+ * the delivery webhook (SMS_STATUS_UPDATED / MESSAGE_DELIVERED / FAILED) or
+ * the reconcile sweep polling GET /gateway/messages.
+ */
+export async function textbeeSend(params: { to: string; body: string }): Promise<TextbeeSendResult> {
+  if (!TEXTBEE_API_KEY) {
+    throw new SmsDeliveryError("TextBee is not configured: TEXTBEE_API_KEY is missing.", {
+      provider: "textbee",
+      code: "tb-auth",
+      fix: "Add TEXTBEE_API_KEY in Vercel → Settings → Environment Variables (textbee.dev → Dashboard → API Keys).",
+    });
+  }
+
+  const payload: Record<string, unknown> = { recipients: [params.to], message: params.body };
+  if (TEXTBEE_DEVICE_ID) payload.deviceId = TEXTBEE_DEVICE_ID;
+  if (TEXTBEE_SIM_SUBSCRIPTION_ID != null) payload.simSubscriptionId = TEXTBEE_SIM_SUBSCRIPTION_ID;
+
+  let res: Awaited<ReturnType<typeof textbeeRequest<TextbeeSendData>>>;
+  try {
+    // A pinned device routes through /devices/:id/send-sms; otherwise textbee
+    // resolves the default (or freshest-heartbeat enabled) device itself.
+    const path = TEXTBEE_DEVICE_ID
+      ? `/gateway/devices/${encodeURIComponent(TEXTBEE_DEVICE_ID)}/send-sms`
+      : "/gateway/send-sms";
+    res = await textbeeRequest<TextbeeSendData>("POST", path, payload);
+  } catch (err) {
+    throw new SmsDeliveryError(`TextBee unreachable: ${err instanceof Error ? err.message : String(err)}`, {
+      provider: "textbee",
+      retryable: true,
+    });
+  }
+
+  if (!res.ok) {
+    const detail = (res.json && typeof res.json === "object" && "message" in res.json && typeof (res.json as { message?: unknown }).message === "string"
+      ? (res.json as { message: string }).message
+      : null) ?? res.raw.slice(0, 300);
+    const authFail = res.status === 401 || res.status === 403;
+    const rateLimited = res.status === 429;
+    throw new SmsDeliveryError(`TextBee ${res.status}: ${detail}`, {
+      provider: "textbee",
+      code: authFail ? "tb-auth" : rateLimited ? "tb-limit" : null,
+      retryable: rateLimited || res.status >= 500,
+      fix: authFail
+        ? "TEXTBEE_API_KEY is invalid or revoked — copy the API key again from textbee.dev → Dashboard → API Keys and redeploy."
+        : rateLimited
+          ? null
+          : "The gateway phone may be offline/disabled. Open the textbee app on the school phone and confirm it shows 'Connected' and Enabled.",
+    });
+  }
+
+  const data = res.json;
+  // The send-response shape depends on the hosted queue:
+  //  - queued:  { success, smsBatchId, recipientCount, … }
+  //  - immediate (FCM direct): { successCount, failureCount, … } — no ids.
+  const batchId = data?.smsBatchId ?? null;
+  const accepted = batchId ? true : (data?.successCount ?? 0) > 0;
+  if (batchId) {
+    return { providerSid: `tbbatch:${batchId}`, initialStatus: "queued" };
+  }
+  if (!accepted) {
+    throw new SmsDeliveryError(`TextBee did not accept the message: ${res.raw.slice(0, 200)}`, {
+      provider: "textbee",
+      retryable: true,
+    });
+  }
+  // Immediate path — the sms id is not exposed at send time; the reconcile
+  // sweep matches this row by recipient + message and stamps the precise id.
+  return { providerSid: null, initialStatus: "queued" };
+}
+
+// ── TextBee webhook subscription auto-registration ───────────────────
+
+/** system_settings key holding the TextBee webhook signing secret. */
+export const TEXTBEE_WEBHOOK_SECRET_KEY = "textbeeWebhookSecret";
+
+let webhookEnsure: Promise<{ ok: boolean; detail: string }> | null = null;
+let webhookEnsureAt = 0;
+const WEBHOOK_ENSURE_TTL_MS = 10 * 60_000;
+
+/**
+ * The signing secret used to verify TextBee webhook calls: env override
+ * wins, else the value AttendX stored when it auto-registered the
+ * subscription (system_settings.textbeeWebhookSecret).
+ */
+export async function getTextbeeSigningSecret(): Promise<string | null> {
+  if (TEXTBEE_WEBHOOK_SECRET) return TEXTBEE_WEBHOOK_SECRET;
+  try {
+    const { settingValue } = await import("./system-settings");
+    const stored = await settingValue<string | null>(TEXTBEE_WEBHOOK_SECRET_KEY, null);
+    return typeof stored === "string" && stored.length >= 20 ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Make sure textbee pushes delivery events to THIS deployment:
+ *  1. list subscriptions (GET /webhooks — includes the signingSecret),
+ *  2. if one already targets our webhook URL and is active → snapshot its
+ *     secret into system_settings (env override wins) and we are done,
+ *  3. otherwise repair the closest "AttendX" subscription (PATCH deliveryUrl
+ *     + events) or create a fresh one (POST) with a generated secret,
+ *     persisting that secret for verification.
+ * Fired-and-forgotten from the send path; cached ~10 min. Failures never
+ * throw — the reconcile sweep + diagnostics carry the visibility.
+ */
+export async function ensureTextbeeWebhook(): Promise<{ ok: boolean; detail: string }> {
+  if (!TEXTBEE_API_KEY || !PUBLIC_BASE_URL) {
+    return { ok: false, detail: "TEXTBEE_API_KEY or PUBLIC_BASE_URL missing" };
+  }
+  if (webhookEnsure && Date.now() - webhookEnsureAt < WEBHOOK_ENSURE_TTL_MS) return webhookEnsure;
+
+  webhookEnsure = (async () => {
+    const targetUrl = textbeeWebhookUrl();
+    if (!targetUrl) return { ok: false, detail: "no webhook URL" };
+    try {
+      const list = await textbeeRequest<{ data?: Array<{
+        _id: string;
+        name?: string;
+        deliveryUrl?: string;
+        isActive?: boolean;
+        signingSecret?: string;
+        events?: string[];
+      }> }>("GET", "/webhooks", undefined, 8_000);
+      const subs = list.ok && list.json?.data ? list.json.data : [];
+
+      // 1. Already pointing at us?
+      const exact = subs.find((s) => s.deliveryUrl === targetUrl && s.isActive !== false);
+      if (exact) {
+        if (exact.signingSecret) {
+          const { setSystemSetting } = await import("./system-settings");
+          await setSystemSetting(TEXTBEE_WEBHOOK_SECRET_KEY, exact.signingSecret);
+        }
+        return { ok: true, detail: "subscription already registered" };
+      }
+
+      const events = ["MESSAGE_SENT", "MESSAGE_DELIVERED", "MESSAGE_FAILED", "SMS_STATUS_UPDATED"];
+      // 2. Repair a mis-pointed AttendX subscription (e.g. saved with the
+      //    site root URL — pushes 404 and textbee pauses it).
+      const repairable = subs.find((s) => (s.name ?? "").toLowerCase().includes("attendx")) ?? subs[0];
+      if (repairable?._id) {
+        const secret = TEXTBEE_WEBHOOK_SECRET ?? repairable.signingSecret ?? generateSigningSecret();
+        const patch = await textbeeRequest<{ data?: { signingSecret?: string } }>(
+          "PATCH",
+          `/webhooks/${encodeURIComponent(repairable._id)}`,
+          { deliveryUrl: targetUrl, events, signingSecret: secret, isActive: true },
+          8_000,
+        );
+        if (patch.ok) {
+          const { setSystemSetting } = await import("./system-settings");
+          await setSystemSetting(TEXTBEE_WEBHOOK_SECRET_KEY, secret);
+          return { ok: true, detail: `repaired subscription ${repairable._id}` };
+        }
+      }
+
+      // 3. Create a fresh subscription.
+      const secret = TEXTBEE_WEBHOOK_SECRET ?? generateSigningSecret();
+      const created = await textbeeRequest<{ data?: { signingSecret?: string } }>(
+        "POST",
+        "/webhooks",
+        { name: "AttendX", deliveryUrl: targetUrl, events, signingSecret: secret },
+        8_000,
+      );
+      if (created.ok) {
+        const { setSystemSetting } = await import("./system-settings");
+        await setSystemSetting(TEXTBEE_WEBHOOK_SECRET_KEY, secret);
+        return { ok: true, detail: "subscription created" };
+      }
+      return { ok: false, detail: `registration failed: HTTP ${created.status}` };
+    } catch (err) {
+      return { ok: false, detail: err instanceof Error ? err.message : String(err) };
+    }
+  })();
+  webhookEnsureAt = Date.now();
+  return webhookEnsure;
+}
+
+function generateSigningSecret(): string {
+  return `atx_${randomBytes(24).toString("hex")}`;
 }
 
 // ── AfroMessage send (https://afromessage.com/developers) ─────────────
@@ -609,14 +961,18 @@ export interface SendSmsResult {
 /**
  * Send a parent notification through the configured provider + channel
  * strategy:
- *  - AfroMessage (active when AFROMESSAGE_TOKEN is set): SMS only, Ethiopia-
- *    native corridor. Synchronous ack → row starts at `sent`; DLR callback
- *    upgrades delivered/undelivered/failed.
+ *  - TextBee (active when TEXTBEE_API_KEY is set): SMS only, carried by the
+ *    school's own Android phone over the local SIM — no international
+ *    corridor, immune to the geo-blocking that killed Twilio → Ethiopia.
+ *    Row starts at `queued`; the delivery webhook + reconcile sweep upgrade
+ *    it to sent/delivered/failed as the SIM reports reality.
+ *  - AfroMessage (when AFROMESSAGE_TOKEN is set): SMS only, Ethiopia-native
+ *    corridor. Synchronous ack → row starts at `sent`; DLR callback upgrades.
  *  - Twilio: `sms`/`whatsapp` per channel mode; `auto` retries channel-capable
  *    failures (21612, 21408, …) over WhatsApp when opted in.
  *  - No credentials → simulated rows (visible, honest, no side effects).
  * Every attempt outcome is persisted to sms_logs with the effective channel
- * encoded in `provider` ("afromessage" | "twilio" | "twilio:whatsapp" | "simulation[:…]").
+ * encoded in `provider` ("textbee" | "afromessage" | "twilio" | "twilio:whatsapp" | "simulation[:…]").
  */
 export async function sendSms(params: {
   studentId: number;
@@ -627,10 +983,11 @@ export async function sendSms(params: {
   const config = await getSmsSenderConfig();
   const to = normalizePhone(params.parentPhone, config.defaultCountry);
   const providerBase = activeSmsProvider();
-  if (providerBase === "afromessage" && config.channelMode === "whatsapp") {
-    // AfroMessage has no WhatsApp channel — honor the admin's intent as best
-    // we can by still sending SMS rather than dropping the notification.
-    logger.info({ studentId }, "channelMode=whatsapp ignored: active provider AfroMessage is SMS-only");
+  if ((providerBase === "afromessage" || providerBase === "textbee") && config.channelMode === "whatsapp") {
+    // AfroMessage / TextBee have no WhatsApp channel — honor the admin's
+    // intent as best we can by still sending SMS rather than dropping the
+    // notification.
+    logger.info({ studentId }, "channelMode=whatsapp ignored: active provider is SMS-only");
   }
 
   const logFailure = async (provider: string, detail: string, code: string | null = null, channel: SmsChannel | null = null) => {
@@ -659,9 +1016,9 @@ export async function sendSms(params: {
     throw new SmsDeliveryError(detail, { provider: providerBase, code: "21211", fix: "Fix the parent phone value on the student record (E.164 or local 09… format)." });
   }
 
-  // Channel attempts: AfroMessage (and simulation) are SMS-only. For Twilio,
-  // `sms`/`whatsapp` are explicit admin opt-ins; `auto` sends SMS first and
-  // only falls back to WhatsApp when a WhatsApp sender is explicitly
+  // Channel attempts: TextBee and AfroMessage (and simulation) are SMS-only.
+  // For Twilio, `sms`/`whatsapp` are explicit admin opt-ins; `auto` sends SMS
+  // first and only falls back to WhatsApp when a WhatsApp sender is explicitly
   // configured (TWILIO_WHATSAPP_FROM) — see TWILIO_WHATSAPP_FROM above.
   const attempts: SmsChannel[] =
     providerBase !== "twilio"
@@ -677,7 +1034,22 @@ export async function sendSms(params: {
     try {
       let providerSid: string | null = null;
       let initialStatus: string | null = null;
-      if (providerBase === "afromessage") {
+      if (providerBase === "textbee") {
+        logger.info({ studentId, channel: "sms" }, "Sending notification via TextBee (Android SIM gateway)");
+        const result = await textbeeSend({ to, body: message });
+        providerSid = result.providerSid;
+        // Honest label: textbee accepted the message — it is now between the
+        // API and the phone. The delivery webhook + reconcile sweep upgrade
+        // this row to sent/delivered/failed as the SIM reports reality.
+        initialStatus = result.initialStatus ?? "queued";
+        logger.info({ studentId, providerSid, initialStatus }, "TextBee notification accepted");
+        // Delivery verdicts land fast — kick the reconcile sweep like Twilio.
+        schedulePostSendReconcile();
+        // Fire-and-forget: make sure textbee pushes delivery events to THIS
+        // deployment (repairs a mis-pointed subscription, e.g. one saved with
+        // the site root URL). Never blocks or fails the send.
+        void ensureTextbeeWebhook().catch(() => {});
+      } else if (providerBase === "afromessage") {
         logger.info({ studentId, channel: "sms" }, "Sending notification via AfroMessage");
         const result = await afroSend({
           to,

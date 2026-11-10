@@ -58,12 +58,16 @@ Project-level env vars are shared by all services. Add them in Project → Setti
 | `DATABASE_URL` | Reachable PostgreSQL connection string. Prefer a provider's **pooled** connection URL for serverless traffic. |
 | `SESSION_SECRET` | Long random secret used to sign admin JWTs **and the QR badge HMAC signatures**. Changing it invalidates every issued badge. |
 | `CRON_SECRET` | Long random secret used to authenticate scheduled processing requests. |
-| `PUBLIC_BASE_URL` | Optional; public origin of this deployment (e.g. `https://attendx.vercel.app`). Enables provider status callbacks (Twilio StatusCallback / AfroMessage DLR) so delivery statuses update in real time without polling. |
+| `PUBLIC_BASE_URL` | Optional but **strongly recommended**; public origin of this deployment (e.g. `https://attendx.vercel.app`). Enables provider status callbacks (TextBee delivery webhook / Twilio StatusCallback / AfroMessage DLR) so delivery statuses update in real time without polling. |
+| `TEXTBEE_API_KEY` | **Recommended for Ethiopia.** API key from textbee.dev (Dashboard → API Keys, starts with `txb_`). When set, TextBee becomes the active SMS gateway: messages are pushed to **your own registered Android phone** (textbee app) and go out over its **local SIM** (ethio tel / Safaricom) — no international corridor, nothing for carriers to geo-block. |
+| `TEXTBEE_DEVICE_ID` | Optional; pins a specific gateway phone. Omit it — textbee then uses your default device, or the enabled device with the freshest heartbeat. |
+| `TEXTBEE_SIM_SUBSCRIPTION_ID` | Optional; pick the SIM to send from (subscriptionId shown in the textbee app's SIM Cards view, e.g. `1` = ethio tel, `6` = Safaricom on a typical dual-SIM phone). Omit → the app's default SIM. |
+| `TEXTBEE_WEBHOOK_SECRET` | Optional; ≥20-char signing secret for the textbee delivery webhook. When set, AttendX reuses it when auto-registering the subscription and requires valid `X-Textbee-Signature` HMACs. Otherwise a secret is generated and stored in the DB automatically — no action needed. |
 | `AFROMESSAGE_TOKEN` | **Recommended for Ethiopia.** Bearer JWT token from the AfroMessage dashboard (api.afromessage.com → Tokens). When set, AfroMessage becomes the active SMS gateway — the Ethiopia-native corridor that Twilio's international senders cannot reliably reach (Ethio Telecom blocks unregistered international sender IDs). The account identifier (system short-code id) is decoded automatically from the token's JWT payload. |
 | `AFROMESSAGE_SENDER_NAME` | Optional; custom FROM label shown to parents (e.g. `ATTENDX`). Must be registered/verified in the AfroMessage dashboard; 2-11 letters/digits. Can also be set at runtime in Operations → SMS Health (`smsAfroSenderName`, stored in the DB). Without it, messages arrive from the identifier's default short code. |
 | `AFROMESSAGE_IDENTIFIER_ID` | Optional; only needed for multi-identifier accounts. Defaults to the `identifier` claim inside `AFROMESSAGE_TOKEN`. |
 | `AFROMESSAGE_CALLBACK_SECRET` | Optional; shared secret required as `?token=…` on the DLR callback (`/api/webhooks/afromessage/status`). When set, the send path appends it to the callback URL automatically. |
-| `SMS_PROVIDER` | Optional; forces a provider when multiple gateways are configured (`afromessage` \| `twilio` \| `simulation`). Default precedence: AfroMessage → Twilio → simulation. |
+| `SMS_PROVIDER` | Optional; forces a provider when multiple gateways are configured (`textbee` \| `afromessage` \| `twilio` \| `simulation`). Default precedence: TextBee → AfroMessage → Twilio → simulation. |
 | `TWILIO_ACCOUNT_SID` | Optional; enables Twilio as a fallback SMS gateway. |
 | `TWILIO_AUTH_TOKEN` | Optional; enables live SMS delivery. |
 | `TWILIO_FROM_NUMBER` | Optional fallback sender (E.164). International delivery should use a Messaging Service instead. |
@@ -73,13 +77,22 @@ The three Twilio variables are optional; without them AttendX records simulated 
 
 ## SMS provider (Ethiopia corridor)
 
-AttendX supports two live gateways and picks one automatically:
+AttendX supports three live gateways and picks one automatically:
 
-1. **AfroMessage** (active when `AFROMESSAGE_TOKEN` is set) — the Ethiopia-native gateway. Sends go to `POST https://api.afromessage.com/api/send` with the Bearer token; the synchronous ack starts the log row at `sent`, and the DLR callback (`GET /api/webhooks/afromessage/status`) upgrades it to delivered/undelivered/failed when `PUBLIC_BASE_URL` is configured. Setup: dashboard → Tokens → copy the JWT into `AFROMESSAGE_TOKEN`; optionally register a Sender Name and save it in Operations → SMS Health.
-2. **Twilio** (active when Twilio creds are set and AfroMessage is not) — works for many countries but **not reliably for Ethiopia**: Ethio Telecom blocks unregistered international sender IDs (Twilio error 21612). Keep the credentials if you also message non-+251 numbers.
-3. **Simulation** — no credentials: rows are logged as `simulated`, nothing is sent.
+1. **TextBee** (active when `TEXTBEE_API_KEY` is set) — **the recommended Ethiopia setup**. TextBee turns the school's own Android phone into the gateway: AttendX POSTs to `https://api.textbee.dev/api/v1/gateway/send-sms` (`x-api-key` header), textbee pushes the message to the registered phone over Firebase, and the phone radios the SMS out over its **local SIM** — recipients see a real local number, and there is no international corridor for Ethio Telecom (or anyone) to block. Delivery truth arrives via the signed webhook `/api/webhooks/textbee` (auto-registered on the textbee account — AttendX repairs a mis-pointed subscription automatically) plus a reconcile sweep over `GET /gateway/messages`.
 
-Provider precedence (override with `SMS_PROVIDER`): AfroMessage → Twilio → simulation. SMS Health in Operations always shows the active gateway, its identifier/sender facts, and any config warnings.
+   Setup (2 minutes):
+   1. Install the textbee Android app on the school phone: [textbee.dev/download](https://textbee.dev/download) → sign in → keep the phone online, charged and **Enabled**.
+   2. Copy the API key (Dashboard → API Keys) into `TEXTBEE_API_KEY` in Vercel.
+   3. Set `PUBLIC_BASE_URL` so delivery verdicts stream back.
+   4. Optional: pick the SIM with `TEXTBEE_SIM_SUBSCRIPTION_ID` (see the SIM Cards section of the app; e.g. `1` = ethio tel, `6` = Safaricom).
+
+   Phone health (heartbeat, battery, SIM service state, sent count) is shown live in Operations → SMS Health. Common failure: carrier error `112` on the phone = no signal / no SMS credit on the SIM — check the phone itself.
+2. **AfroMessage** (active when `AFROMESSAGE_TOKEN` is set and TextBee is not) — the Ethiopia-native gateway. Sends go to `POST https://api.afromessage.com/api/send` with the Bearer token; the synchronous ack starts the log row at `sent`, and the DLR callback (`GET /api/webhooks/afromessage/status`) upgrades it to delivered/undelivered/failed when `PUBLIC_BASE_URL` is configured. Setup: dashboard → Tokens → copy the JWT into `AFROMESSAGE_TOKEN`; optionally register a Sender Name and save it in Operations → SMS Health.
+3. **Twilio** (active when Twilio creds are set and neither gateway above is) — works for many countries but **not reliably for Ethiopia**: Ethio Telecom blocks unregistered international sender IDs (Twilio error 21612). Keep the credentials if you also message non-+251 numbers.
+4. **Simulation** — no credentials: rows are logged as `simulated`, nothing is sent.
+
+Provider precedence (override with `SMS_PROVIDER`): TextBee → AfroMessage → Twilio → simulation. SMS Health in Operations always shows the active gateway, its device/identifier facts, and any config warnings.
 
 Leave `VITE_API_ORIGIN` unset: the browser calls `/api` on the same domain. It only exists for exotic split-origin setups.
 

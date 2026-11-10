@@ -28,7 +28,14 @@ app.use(
   }),
 );
 app.use(cors());
-app.use(express.json({ limit: "10mb" }));
+// Raw-body capture for HMAC webhook verification (textbee signs the exact
+// bytes it POSTs — JSON re-serialization would not reproduce the signature).
+app.use(express.json({
+  limit: "10mb",
+  verify: (req, _res, buf) => {
+    (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
+  },
+}));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Self-heal the Phase 6 schema (migration 0007) before any API route runs.

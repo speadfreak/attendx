@@ -2,7 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { z } from "zod/v4";
 import { requireAuth, requireAdminLevel } from "../lib/auth";
-import { getSmsSenderConfig, normalizePhone, twilioEnabled, twilioSend, afroMessageEnabled, afroIdentifierId, afroSend, activeSmsProvider, SmsDeliveryError, describeSmsProviderCode, invalidateSmsSettingsCache, TWILIO_WHATSAPP_FROM, PUBLIC_BASE_URL } from "../lib/sms";
+import { getSmsSenderConfig, normalizePhone, twilioEnabled, twilioSend, afroMessageEnabled, afroIdentifierId, afroSend, textbeeEnabled, textbeeSend, textbeeListDevices, textbeeWebhookUrl, ensureTextbeeWebhook, getTextbeeSigningSecret, activeSmsProvider, SmsDeliveryError, describeSmsProviderCode, invalidateSmsSettingsCache, TWILIO_WHATSAPP_FROM, PUBLIC_BASE_URL } from "../lib/sms";
 import { runSmsDiagnostics, getTwilioCarrierStatus, type TwilioCarrierStatus } from "../lib/sms-diagnostics";
 import { reconcilePendingSms, pendingDeliveryCount } from "../lib/sms-reconcile";
 import { writeAudit } from "../lib/audit";
@@ -26,15 +26,23 @@ router.get("/sms/config-status", requireAuth, async (_req, res): Promise<void> =
     config.fromNumber,
   );
   res.json({
-    // Phase 6.3: which gateway actually carries outbound SMS now.
+    // Phase 6.4: which gateway actually carries outbound SMS now.
     provider: activeSmsProvider(),
     twilioEnabled: twilioEnabled(),
     afroEnabled: afroMessageEnabled(),
+    textbeeEnabled: textbeeEnabled(),
     afro: {
       enabled: afroMessageEnabled(),
       identifierId: maskIdentifier(afroIdentifierId()),
       senderName: config.afroSenderName,
       callbackConfigured: !!PUBLIC_BASE_URL,
+    },
+    textbee: {
+      enabled: textbeeEnabled(),
+      webhookUrl: textbeeWebhookUrl(),
+      webhookSecretConfigured: !!(await getTextbeeSigningSecret()),
+      // Device facts come from the live API when diagnostics run; keep this
+      // endpoint dependency-free (it powers the header badge on every page).
     },
     channelMode: config.channelMode,
     hasMessagingService: !!config.messagingServiceSid,
@@ -113,7 +121,45 @@ router.post("/sms/test-send", requireAdminLevel, async (req, res): Promise<void>
   let lastError: SmsDeliveryError | null = null;
   let senderBlock: Record<string, unknown>;
 
-  if (provider === "afromessage") {
+  if (provider === "textbee") {
+    // Android-SIM gateway: single SMS attempt; verdicts arrive async.
+    const devices = await textbeeListDevices().catch(() => null);
+    const device = devices?.find((d) => d.enabled) ?? devices?.[0] ?? null;
+    senderBlock = {
+      via: "textbee",
+      messagingServiceSid: null,
+      fromNumber: null,
+      device: device ? { id: device._id, name: device.name, model: device.model, enabled: device.enabled } : null,
+    };
+    if (!device) {
+      attempts.push({
+        channel: "sms",
+        ok: false,
+        error: {
+          message: "No textbee gateway phone is reachable.",
+          code: "tb-device",
+          fix: "Open the textbee app on the school Android phone, sign in, keep it online and Enabled — then retry.",
+        },
+      });
+      lastError = new SmsDeliveryError("No enabled textbee device found", { provider: "textbee", code: "tb-device", retryable: true });
+    } else {
+      try {
+        await textbeeSend({ to, body: message });
+        attempts.push({ channel: "sms", ok: true, error: null });
+        // The subscription may not exist yet on a fresh deployment — kick it
+        // (repair/create) so delivery verdicts start flowing to this URL.
+        void ensureTextbeeWebhook().catch(() => {});
+      } catch (err) {
+        const delivery = err instanceof SmsDeliveryError ? err : new SmsDeliveryError(err instanceof Error ? err.message : String(err), { provider: "textbee" });
+        attempts.push({
+          channel: "sms",
+          ok: false,
+          error: { message: delivery.message, code: delivery.code, fix: delivery.fix },
+        });
+        lastError = delivery;
+      }
+    }
+  } else if (provider === "afromessage") {
     // Ethiopia-native gateway: single SMS attempt, synchronous ack.
     senderBlock = {
       via: "afromessage",

@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   MessageSquare, ShieldCheck, ShieldAlert, Activity, Send, RefreshCw,
   CheckCircle2, XCircle, Zap, Radio, CircleDollarSign, Globe, ChevronDown, ChevronUp,
-  AlertTriangle, Info,
+  AlertTriangle, Info, Smartphone,
 } from "lucide-react";
 import { GlowCard, StatusBadge } from "@/components/gx/Primitives";
 import { api, type SmsDiagnostics, type SmsTestSendResult } from "@/lib/api";
@@ -127,10 +127,13 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
   const trialAccount = carrier?.trial === true;
   const messagingServiceConfigured = carrier?.messagingServiceConfigured;
 
-  // Phase 6.3: which gateway actually carries outbound SMS now.
+  // Phase 6.4: which gateway actually carries outbound SMS now.
   const provider = configStatus?.provider ?? diagnostics?.provider;
   const afroStatus = configStatus?.afro ?? diagnostics?.afro;
   const afroActive = provider === "afromessage";
+  const textbeeStatus = configStatus?.textbee ?? diagnostics?.textbee;
+  const textbeeDevice = diagnostics?.textbee?.device ?? null;
+  const textbeeActive = provider === "textbee";
 
   // T4: on-demand "check with carrier now" — upgrades queued/sent sms_logs
   // rows via Twilio, then refreshes the local delivery stats.
@@ -202,9 +205,9 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
           <h3 className="text-sm font-semibold uppercase tracking-widest gx-gradient-text">SMS DELIVERY HEALTH</h3>
         </div>
         <StatusBadge
-          value={afroActive ? "valid" : settings?.smsMessagingServiceSid ? "valid" : "pending"}
-          label={afroActive ? "AFROMESSAGE" : settings?.smsMessagingServiceSid ? "SERVICE ROUTING" : settings?.smsFromNumber ? "RAW FROM" : "UNCONFIGURED"}
-          tone={afroActive ? "green" : settings?.smsMessagingServiceSid ? "green" : settings?.smsFromNumber ? "amber" : "red"}
+          value={textbeeActive ? "valid" : afroActive ? "valid" : settings?.smsMessagingServiceSid ? "valid" : "pending"}
+          label={textbeeActive ? "TEXTBEE GATEWAY" : afroActive ? "AFROMESSAGE" : settings?.smsMessagingServiceSid ? "SERVICE ROUTING" : settings?.smsFromNumber ? "RAW FROM" : "UNCONFIGURED"}
+          tone={textbeeActive ? "green" : afroActive ? "green" : settings?.smsMessagingServiceSid ? "green" : settings?.smsFromNumber ? "amber" : "red"}
         />
       </div>
 
@@ -237,6 +240,34 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
             >
               <RefreshCw size={12} className={reconciling ? "animate-spin" : ""} /> refresh carrier statuses
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Phase 6.4: TextBee active — school Android phone + local SIM corridor. */}
+      {textbeeActive && (
+        <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-emerald-400/25 bg-emerald-400/[0.06] p-3">
+          <Smartphone size={15} className="mt-0.5 shrink-0 text-emerald-400" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-emerald-200">
+              TextBee gateway active — your own Android phone + local SIM ✅
+            </p>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-emerald-100/70">
+              Messages go out over the school phone's SIM (ethio tel / Safaricom) — no international corridor, nothing to geo-block.
+              {textbeeDevice
+                ? ` Device ${textbeeDevice.model || textbeeDevice.name || "online"}${textbeeDevice.heartbeatAgeSeconds != null ? ` · heartbeat ${textbeeDevice.heartbeatAgeSeconds < 90 ? "live" : `${Math.round(textbeeDevice.heartbeatAgeSeconds / 60)} min ago`}` : ""}${textbeeDevice.batteryPct != null ? ` · battery ${textbeeDevice.batteryPct}%${textbeeDevice.batteryCharging ? " (charging)" : ""}` : ""}.`
+                : " Delivery verdicts stream to /api/webhooks/textbee."}
+            </p>
+            {textbeeDevice && textbeeDevice.sims.length > 0 && (
+              <p className="mt-1 flex flex-wrap gap-1">
+                {textbeeDevice.sims.map((sim) => (
+                  <span key={sim.subscriptionId ?? sim.carrier} className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 font-mono text-[10px] text-white/60">
+                    <span className={`h-1.5 w-1.5 rounded-full ${(sim.serviceState ?? "").toUpperCase() === "IN_SERVICE" ? "bg-emerald-400" : "bg-red-400"}`} />
+                    SIM {sim.subscriptionId ?? "?"} · {sim.carrier ?? "unknown"}
+                  </span>
+                ))}
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -398,7 +429,7 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
                 {testResult.ok
                   ? testResult.provider === "simulation"
                     ? "Simulated — no live SMS gateway is configured"
-                    : `Accepted by ${testResult.provider === "afromessage" ? "AfroMessage" : "Twilio"} — delivery in progress`
+                    : `Accepted by ${testResult.provider === "textbee" ? "TextBee (gateway phone)" : testResult.provider === "afromessage" ? "AfroMessage" : "Twilio"} — delivery in progress`
                   : "Delivery failed"}
               </p>
             </div>
@@ -426,7 +457,7 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
         onClick={() => setShowAdvanced((v) => !v)}
         aria-expanded={showAdvanced}
       >
-        <span className="inline-flex items-center gap-2"><Activity size={13} className="text-cyan-300" /> LIVE TWILIO DIAGNOSTICS {diagnostics?.twilio.balance != null ? `· balance $${diagnostics.twilio.balance}` : ""}</span>
+        <span className="inline-flex items-center gap-2"><Activity size={13} className="text-cyan-300" /> {textbeeActive ? "LIVE GATEWAY DIAGNOSTICS" : "LIVE TWILIO DIAGNOSTICS"} {diagnostics?.twilio.balance != null && !textbeeActive ? `· balance $${diagnostics.twilio.balance}` : textbeeDevice?.sentCount != null ? `· ${textbeeDevice.sentCount} sent` : ""}</span>
         {showAdvanced ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
       </button>
 
@@ -440,7 +471,7 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
             </div>
           ) : (
             <>
-              {diagnostics.twilio.enabled && (
+              {diagnostics.twilio.enabled && !textbeeActive && (
                 <div className="flex flex-wrap gap-2 text-[10px]">
                   <span className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-white/60">
                     <Radio size={11} className="text-emerald-400" /> account: {diagnostics.twilio.accountStatus ?? "?"}
