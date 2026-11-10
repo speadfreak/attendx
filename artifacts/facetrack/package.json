@@ -78,8 +78,8 @@
     "@vladmandic/face-api": "^1.7.15",
     "gsap": "^3.14.2",
     "html5-qrcode": "^2.3.8",
-    "qrcode.react": "^4.2.0",
-    "jspdf": "^2.5.2",
-    "jspdf-autotable": "^3.8.4"
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.9",
+    "qrcode.react": "^4.2.0"
   }
 }
