@@ -19,10 +19,17 @@ const router = Router();
 
 const adminId = (req: Request) => (req as Request & { admin?: { adminId: number } }).admin?.adminId ?? null;
 
-const pairingSchema = z.object({
+export const pairingSchema = z.object({
   name: z.string().trim().min(1).max(80),
   deviceType: z.enum(["pi", "phone"]).default("phone"),
-  gateId: z.string().trim().min(1).max(80).optional(),
+  // gateId semantics (owned by lib/devices.ts pairDevice):
+  //   absent / null → keep the current assignment (re-pair) or no gate (new)
+  //   ""            → explicitly UNASSIGN the gate
+  //   "gate_x"      → assign that gate
+  // Zod v4 `.optional()` alone REJECTS an explicit null in the JSON body —
+  // which is exactly the 400 the phone "Connect" flow hit (the ops dialog
+  // sends null for its "No gate" option). `.nullish()` accepts both.
+  gateId: z.string().trim().max(80).nullish(),
   mode: z.enum(["face", "qr"]).optional(),
 });
 

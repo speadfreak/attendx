@@ -166,7 +166,9 @@ function PairDialog({
       if (repairTarget) {
         return api.repairDevice(repairTarget.id, {
           name: input.name,
-          gateId: input.gateId,
+          // "" = the operator picked "No gate" → server unassigns. Never send
+          // null here: the server reads absent/null as "keep the current gate".
+          gateId: input.gateId ?? "",
           mode: input.mode,
         });
       }

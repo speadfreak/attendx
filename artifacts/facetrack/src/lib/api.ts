@@ -878,7 +878,13 @@ export const api = {
     post<DevicePairing>("/devices/pair", body),
   /** Re-pair an existing device — revokes the old session and issues a fresh token. */
   repairDevice: (id: string, body: { name: string; gateId?: string | null; mode?: "face" | "qr" }) =>
-    post<DevicePairing>(`/devices/${encodeURIComponent(id)}/pair`, body),
+    post<DevicePairing>(`/devices/${encodeURIComponent(id)}/pair`, {
+      name: body.name,
+      // null must never travel in the JSON body — the server reads an absent
+      // field as "keep the current gate" and an empty string as "unassign".
+      gateId: body.gateId === null ? undefined : body.gateId,
+      mode: body.mode,
+    }),
   /** Live command over SSE + mailbox — delivered on the device's next tick. */
   deviceCommand: (
     id: string,

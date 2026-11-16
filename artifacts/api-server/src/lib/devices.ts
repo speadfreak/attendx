@@ -53,7 +53,9 @@ export async function pairDevice(
   const tokenHash = hashPiToken(token);
 
   let deviceId = input.deviceId ?? null;
-  let gateId = input.gateId ?? null;
+  // "" never lands in the DB — new pairs treat it the same as "no gate".
+  // (Re-pair reads input.gateId directly below; "" there means explicit clear.)
+  let gateId = input.gateId === "" ? null : (input.gateId ?? null);
 
   if (deviceId) {
     // Re-pair: keep identity + config, mint a fresh session.
@@ -63,7 +65,9 @@ export async function pairDevice(
       .where(eq(gateDevicesTable.id, deviceId))
       .limit(1);
     if (!existing) throw new Error(`Device ${deviceId} not found`);
-    gateId = gateId ?? existing.assignedGateId;
+    // "" is an explicit "unassign" from the ops dialog; null/absent keeps the
+    // current gate; a real id reassigns (and rewires terminal_ids below).
+    gateId = input.gateId === "" ? null : (input.gateId ?? existing.assignedGateId ?? null);
     await db
       .update(gateDevicesTable)
       .set({
@@ -71,12 +75,24 @@ export async function pairDevice(
         deviceType: input.deviceType,
         mode: input.mode ?? undefined,
         status: "discovered",
+        assignedGateId: gateId,
         currentTokenHash: tokenHash,
         previousTokenHash: null,
         previousTokenValidUntil: null,
         tokenExpiresAt: expiresAt,
       })
       .where(eq(gateDevicesTable.id, deviceId));
+    // Detach from the previous gate's terminal list on reassign/clear, so
+    // gateForTerminal() can no longer resolve the stale gate for QR scans.
+    if (existing.assignedGateId && existing.assignedGateId !== gateId) {
+      await db
+        .update(gatesTable)
+        .set({
+          terminalIds: sql`array_remove(${gatesTable.terminalIds}, ${deviceId})`,
+          updatedAt: new Date(),
+        })
+        .where(eq(gatesTable.gateId, existing.assignedGateId));
+    }
   } else {
     const prefix = input.deviceType === "pi" ? "pi" : "ph";
     deviceId = `${prefix}_${randomBytes(4).toString("hex")}`;
