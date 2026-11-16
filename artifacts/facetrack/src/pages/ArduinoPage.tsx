@@ -8,13 +8,16 @@ import {
   CircleCheck,
   Copy,
   Cpu,
-  Download,
+  Eraser,
   FileDown,
   FileUp,
+  Hammer,
   Info,
   Loader2,
+  Save,
   ScanSearch,
   Terminal,
+  Trash2,
   TriangleAlert,
   Unplug,
   Upload,
@@ -25,6 +28,7 @@ import {
 import { SectionTitle, GlowCard, MeshBackground } from "@/components/gx/Primitives";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import {
   Select,
@@ -34,8 +38,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
+import { CodeEditor } from "@/components/arduino/CodeEditor";
+import { Hint } from "@/components/arduino/Hint";
+import { Plotter, extractPlotValues, mergePlot, MAX_PLOT_POINTS, MAX_PLOT_SERIES, type PlotState } from "@/components/arduino/Plotter";
+import { SerialTerminal } from "@/components/arduino/SerialTerminal";
 import {
   SerialMonitor,
   closePortQuietly,
@@ -53,6 +60,19 @@ import { validateIntelHexForUno } from "@/lib/arduino/hex";
 import { stk500Flash, stk500Identify } from "@/lib/arduino/stk500";
 import { SKETCHES } from "@/lib/arduino/sketches";
 import {
+  CompileFailedError,
+  CompileUnavailableError,
+  DEFAULT_FQBN,
+  FQBN_PRESETS,
+  compileSketch,
+  fqbnForChip,
+  loadBridgeUrl,
+  probeCompilers,
+  saveBridgeUrl,
+  type CompilerMode,
+  type CompilerProbe,
+} from "@/lib/arduino/compile";
+import {
   fetchGates,
   postGateSensorEvents,
   type GateSensorEvent,
@@ -60,13 +80,16 @@ import {
 import { cn } from "@/lib/utils";
 
 /**
- * ARDUINO GATE CONTROLLER STUDIO — Phase 7.
+ * ARDUINO GATE CONTROLLER STUDIO — Phase 7 IDE edition.
  *
- * A four-panel, IDE-like surface for the attendance gate hardware:
+ * A six-panel, IDE-like surface for the attendance gate hardware:
  *   01 Connection       — Web Serial auto-detect + STK500 board/chip identify
- *   02 Firmware flasher — Intel HEX parsing + hand-rolled STK500v1 programmer
- *   03 Serial monitor   — line-buffered ATX1 event stream → gate ingestion
- *   04 Sketch library   — compilable gate-firmware sources to build/flash
+ *   02 Sketch Lab       — highlighted C++ editor, compile via arduino-cli
+ *                         (server endpoint or the operator's local bridge)
+ *   03 Firmware flasher — Intel HEX parsing + hand-rolled STK500v1 programmer
+ *   04 Sketch library   — gate-firmware sources with terminal command tables
+ *   05 Control terminal — serial REPL (history + macros) → gate ingestion
+ *   06 Serial plotter   — live strip-chart of numeric sensor fields
  *
  * Works with zero hardware: every panel renders, actions are disabled with
  * explanatory tooltips when Web Serial is missing or no port is granted.
@@ -78,34 +101,6 @@ import { cn } from "@/lib/utils";
 
 const stamp = (d: Date): string =>
   `${d.toLocaleTimeString([], { hour12: false })}.${String(d.getMilliseconds()).padStart(3, "0")}`;
-
-/**
- * Tooltip wrapper so disabled controls still explain themselves.
- * Radix tooltips can't attach to a truly `disabled` <button> (no pointer
- * events), so the trigger anchors to an always-hoverable <span> around it.
- */
-function Hint({
-  children,
-  label,
-  side = "top",
-  wrapperClassName,
-}: {
-  children: React.ReactNode;
-  label: string;
-  side?: "top" | "bottom" | "left" | "right";
-  wrapperClassName?: string;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className={cn("inline-flex", wrapperClassName)}>{children}</span>
-      </TooltipTrigger>
-      <TooltipContent side={side} className="max-w-64 text-[11px]">
-        {label}
-      </TooltipContent>
-    </Tooltip>
-  );
-}
 
 function LedDot({ tone }: { tone: "idle" | "port" | "busy" | "on" | "flash" }) {
   const cls =
@@ -176,8 +171,8 @@ interface ActivityLine {
 
 function levelFor(text: string): ActivityLevel {
   if (/\b(fail|error|mismatch|corrupt|unsupported|no bootloader|did not sync|aborted)\b/i.test(text)) return "error";
-  if (/\b(press the reset|retry|warn|unknown|check you|not found|skip)\b/i.test(text)) return "warn";
-  if (/\b(complete|synced|signature|programmed|open at)\b/i.test(text)) return "ok";
+  if (/\b(press the reset|retry|warn|unknown|check you|not found|skip|unavailable)\b/i.test(text)) return "warn";
+  if (/\b(complete|synced|signature|programmed|open at|compiled|loaded)\b/i.test(text)) return "ok";
   return "info";
 }
 
@@ -186,13 +181,6 @@ const ACTIVITY_COLOR: Record<ActivityLevel, string> = {
   warn: "text-amber-300",
   error: "text-red-400",
   ok: "text-emerald-300",
-};
-
-const MONITOR_COLOR: Record<MonitorLine["kind"], string> = {
-  event: "text-emerald-300",
-  error: "text-red-400",
-  notice: "text-violet-300",
-  raw: "text-slate-300",
 };
 
 const SCROLLBAR_CLASSES =
@@ -237,12 +225,65 @@ function Console({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Sketch Lab persistence helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface MySketch {
+  id: string;
+  name: string;
+  source: string;
+  savedAt: number;
+}
+
+const MY_SKETCHES_KEY = "atx_arduino_sketches_v1";
+
+function loadMySketches(): MySketch[] {
+  try {
+    const raw = localStorage.getItem(MY_SKETCHES_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw) as unknown;
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter((s): s is MySketch => {
+        return (
+          typeof s === "object" &&
+          s !== null &&
+          typeof (s as MySketch).name === "string" &&
+          typeof (s as MySketch).source === "string"
+        );
+      })
+      .slice(0, 20);
+  } catch {
+    return [];
+  }
+}
+
+function persistMySketches(list: MySketch[]): void {
+  try {
+    localStorage.setItem(MY_SKETCHES_KEY, JSON.stringify(list));
+  } catch {
+    /* storage blocked — session-only life */
+  }
+}
+
+/** arduino-cli requires folder name == sketch name and valid C identifiers. */
+function sanitizeSketchName(raw: string): string {
+  const cleaned = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 48);
+  if (!cleaned) return "atx_sketch";
+  return /^[0-9]/.test(cleaned) ? `atx_${cleaned}` : cleaned;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Page
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MONITOR_MAX_LINES = 500;
 const MONITOR_BAUDS = [9600, 57600, 115200] as const;
-type HexSource = "file" | "builtin";
+type HexSource = "file" | "builtin" | "compiled";
 
 interface BoardIdentity {
   chip: string;
@@ -292,9 +333,26 @@ export default function ArduinoPage() {
   const clockOffsetRef = useRef<number | null>(null);
   const logSeqRef = useRef(0);
   const monitorSeqRef = useRef(0);
+  const terminalSeqRef = useRef(1_000_000);
+
+  // ── sketch lab state ─────────────────────────────────────────────────────
+  const [sketchId, setSketchId] = useState<string>(SKETCHES[0]?.id ?? "");
+  const [source, setSource] = useState<string>(() => SKETCHES[0]?.source ?? "");
+  const [sketchName, setSketchName] = useState<string>(() => sanitizeSketchName(SKETCHES[0]?.name ?? "atx_sketch"));
+  const [dirty, setDirty] = useState(false);
+  const [mySketches, setMySketches] = useState<MySketch[]>(() => loadMySketches());
+  const [fqbn, setFqbn] = useState<string>(DEFAULT_FQBN);
+  const [compileMode, setCompileMode] = useState<CompilerMode>("server");
+  const [probes, setProbes] = useState<CompilerProbe[] | null>(null);
+  const [probing, setProbing] = useState(false);
+  const [compiling, setCompiling] = useState(false);
+  const [compileMsg, setCompileMsg] = useState<{ tone: "ok" | "error" | "info"; text: string; log?: string } | null>(null);
+  const [bridgeUrlDraft, setBridgeUrlDraft] = useState<string>(() => loadBridgeUrl());
+
+  // ── plotter state ────────────────────────────────────────────────────────
+  const [plot, setPlot] = useState<PlotState>({ names: [], data: {} });
 
   // ── flasher state ────────────────────────────────────────────────────────
-  const [sketchId, setSketchId] = useState<string>(SKETCHES[0]?.id ?? "");
   const [hexMeta, setHexMeta] = useState<HexLoad | null>(null);
   const [hexError, setHexError] = useState<string | null>(null);
   const [builtinState, setBuiltinState] = useState<"checking" | "available" | "missing">("checking");
@@ -332,6 +390,29 @@ export default function ArduinoPage() {
       next.push({ id: logSeqRef.current++, at: new Date(), text, level: level ?? levelFor(text) });
       return next;
     });
+  }, []);
+
+  // ── compiler probe on mount ──────────────────────────────────────────────
+  const runProbe = useCallback(async (): Promise<void> => {
+    setProbing(true);
+    try {
+      const list = await probeCompilers();
+      setProbes(list);
+      const working = list.find((p) => p.available);
+      if (working) {
+        setCompileMode(working.mode);
+        pushLog(`compiler found: ${working.mode} (arduino-cli ${working.version ?? ""})`, "ok");
+      } else {
+        pushLog("no compiler reachable — compile needs arduino-cli on the server or a local bridge", "warn");
+      }
+    } finally {
+      setProbing(false);
+    }
+  }, [pushLog]);
+
+  useEffect(() => {
+    void runProbe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── auto-detect: browsers fire connect/disconnect after a prior grant ────
@@ -398,7 +479,7 @@ export default function ArduinoPage() {
   }, []);
 
   // ── hex loading ──────────────────────────────────────────────────────────
-  const loadHex = useCallback((text: string, source: HexSource, name: string) => {
+  const loadHex = useCallback((text: string, sourceKind: HexSource, name: string) => {
     const verdict = validateIntelHexForUno(text);
     if (verdict.ok) {
       setHexMeta({
@@ -406,13 +487,13 @@ export default function ArduinoPage() {
         image: verdict.summary.image,
         dataBytes: verdict.summary.dataBytes,
         spanBytes: verdict.summary.maxAddress + 1,
-        source,
+        source: sourceKind,
       });
       setHexError(null);
     } else {
       setHexMeta(null);
       setHexError(verdict.error);
-      if (source === "builtin") setBuiltinState("missing");
+      if (sourceKind === "builtin") setBuiltinState("missing");
     }
   }, []);
 
@@ -440,20 +521,25 @@ export default function ArduinoPage() {
       return next;
     });
 
+    const parsed = parseMonitorLine(line.text);
+
     // ATX1 event lines → ingestion queue (batched, flushed every ~2 s).
-    if (line.kind === "event") {
-      const parsed = parseMonitorLine(line.text);
-      if (parsed.event) {
-        // Device ts is millis() uptime; anchor it to arrival wall-clock so the
-        // server's 6h-back / 5min-forward window always accepts the batch,
-        // while preserving the exact inter-event spacing.
-        const offset = Date.now() - parsed.event.deviceMillis;
-        clockOffsetRef.current = offset;
-        const epoch = new Date(parsed.event.deviceMillis + offset);
-        const queue = ingestQueueRef.current;
-        queue.push({ sensor: parsed.event.sensor, ts: epoch.toISOString() });
-        if (queue.length > MONITOR_MAX_LINES) queue.splice(0, queue.length - MONITOR_MAX_LINES);
-      }
+    if (parsed.event) {
+      // Device ts is millis() uptime; anchor it to arrival wall-clock so the
+      // server's 6h-back / 5min-forward window always accepts the batch,
+      // while preserving the exact inter-event spacing.
+      const offset = Date.now() - parsed.event.deviceMillis;
+      clockOffsetRef.current = offset;
+      const epoch = new Date(parsed.event.deviceMillis + offset);
+      const queue = ingestQueueRef.current;
+      queue.push({ sensor: parsed.event.sensor, ts: epoch.toISOString() });
+      if (queue.length > MONITOR_MAX_LINES) queue.splice(0, queue.length - MONITOR_MAX_LINES);
+    }
+
+    // Any numeric fields → the strip chart.
+    const values = extractPlotValues(line.text, parsed.payload);
+    if (Object.keys(values).length > 0) {
+      setPlot((prev) => mergePlot(prev, values));
     }
   }, []);
 
@@ -521,6 +607,41 @@ export default function ArduinoPage() {
       }
     },
     [handleMonitorLine, pushLog, toast],
+  );
+
+  // ── control terminal send ────────────────────────────────────────────────
+  const handleTerminalSend = useCallback(
+    (line: string): void => {
+      const monitor = monitorRef.current;
+      if (!monitor?.running) {
+        toast({
+          title: "Monitor is not running",
+          description: "Start the monitor in panel 05 — the terminal writes to the same open port.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const echo: MonitorLine = {
+        id: terminalSeqRef.current++,
+        at: new Date(),
+        text: `> ${line}`,
+        kind: "sent",
+      };
+      setMonitorLines((prev) => {
+        const next = prev.length >= MONITOR_MAX_LINES ? prev.slice(prev.length - (MONITOR_MAX_LINES - 1)) : prev.slice();
+        next.push(echo);
+        return next;
+      });
+      void monitor
+        .writeLine(line)
+        .then(() => pushLog(`sent: ${line}`))
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error);
+          pushLog(`send failed: ${message}`, "error");
+          toast({ title: "Send failed", description: message, variant: "destructive" });
+        });
+    },
+    [pushLog, toast],
   );
 
   // ── ingestion flush (batch every ~2 s; final flush on toggle-off) ────────
@@ -602,6 +723,7 @@ export default function ArduinoPage() {
           bootloader: result.bootloaderVersion,
         });
         setHasPort(true);
+        setFqbn(fqbnForChip(result.chipName));
         toast({
           title: `Identified: ${result.chipName ?? "unknown chip"}`,
           description: `${describeUsbDevice(port.getInfo())} — synced at ${result.baud} baud.`,
@@ -704,32 +826,136 @@ export default function ArduinoPage() {
     }
   }, [board, flashing, hexMeta, pushLog, stopMonitor, toast]);
 
-  // ── sketch helpers ───────────────────────────────────────────────────────
+  // ── sketch lab actions ───────────────────────────────────────────────────
+  const loadTemplate = useCallback(
+    (id: string) => {
+      const s = SKETCHES.find((x) => x.id === id);
+      if (!s) return;
+      setSketchId(id);
+      setSource(s.source);
+      setSketchName(sanitizeSketchName(s.name));
+      setDirty(false);
+      toast({
+        title: `Loaded "${s.name}"`,
+        description: dirty ? "Unsaved edits were replaced by the template." : "Edit freely — Ctrl/Cmd+Enter compiles.",
+      });
+    },
+    [dirty, toast],
+  );
+
+  const loadMySketch = useCallback(
+    (name: string) => {
+      const m = mySketches.find((x) => x.name === name);
+      if (!m) return;
+      setSketchId("__my__");
+      setSource(m.source);
+      setSketchName(sanitizeSketchName(m.name));
+      setDirty(false);
+      toast({ title: `Loaded "${m.name}"`, description: "Saved copy restored from this browser." });
+    },
+    [mySketches, toast],
+  );
+
+  const saveMySketch = useCallback(() => {
+    const name = sanitizeSketchName(sketchName);
+    setSketchName(name);
+    const entry: MySketch = {
+      id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}`,
+      name,
+      source,
+      savedAt: Date.now(),
+    };
+    const next = [...mySketches.filter((m) => m.name !== name), entry];
+    setMySketches(next);
+    persistMySketches(next);
+    setDirty(false);
+    toast({
+      title: "Sketch saved",
+      description: `"${name}" is stored in this browser and reloads from My sketches.`,
+    });
+    pushLog(`sketch saved: ${name} (${source.length} chars)`, "ok");
+  }, [mySketches, pushLog, sketchName, source, toast]);
+
+  const deleteMySketch = useCallback(
+    (name: string) => {
+      const next = mySketches.filter((m) => m.name !== name);
+      setMySketches(next);
+      persistMySketches(next);
+      toast({ title: `Deleted "${name}"`, description: "Removed from this browser's sketch store." });
+    },
+    [mySketches, toast],
+  );
+
   const copySketch = useCallback(async () => {
-    if (!selectedSketch) return;
     try {
-      await navigator.clipboard.writeText(selectedSketch.source);
+      await navigator.clipboard.writeText(source);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1600);
     } catch {
       toast({
         title: "Clipboard unavailable",
-        description: "Download the .ino instead — the source viewer text can be selected manually.",
+        description: "Download the .ino instead — the editor text can be selected manually.",
         variant: "destructive",
       });
     }
-  }, [selectedSketch, toast]);
+  }, [source, toast]);
 
   const downloadSketch = useCallback(() => {
-    if (!selectedSketch) return;
-    const blob = new Blob([selectedSketch.source], { type: "text/x-arduino" });
+    const blob = new Blob([source], { type: "text/x-arduino" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = selectedSketch.filename;
+    anchor.download = `${sanitizeSketchName(sketchName)}.ino`;
     anchor.click();
     URL.revokeObjectURL(url);
-  }, [selectedSketch]);
+  }, [sketchName, source]);
+
+  // ── compile ──────────────────────────────────────────────────────────────
+  const runCompile = useCallback(async (): Promise<void> => {
+    if (compiling) return;
+    if (!source.trim()) {
+      toast({ title: "Nothing to compile", description: "The editor is empty — load a template or write a sketch." });
+      return;
+    }
+    setCompiling(true);
+    setCompileMsg(null);
+    pushLog(`compile: "${sketchName}" → ${fqbn} via the ${compileMode} arduino-cli`);
+    try {
+      const result = await compileSketch({ source, name: sketchName, fqbn, mode: compileMode });
+      loadHex(result.hexText, "compiled", `${sketchName}.ino.hex (${result.via})`);
+      const seconds = (result.elapsedMs / 1000).toFixed(1);
+      setCompileMsg({
+        tone: "ok",
+        text: `Compiled in ${seconds}s via the ${result.via} compiler — hex loaded into the flasher, ready to burn.`,
+        log: result.logTail || undefined,
+      });
+      pushLog(`compile ok via ${result.via}: ${sketchName}.ino.hex in ${seconds}s`, "ok");
+    } catch (error) {
+      if (error instanceof CompileUnavailableError) {
+        setCompileMsg({
+          tone: "error",
+          text: `No ${error.probe.mode} compiler reachable: ${error.message}`,
+          log: error.probe.detail,
+        });
+        pushLog(`compile unavailable: ${error.message}`, "warn");
+      } else if (error instanceof CompileFailedError) {
+        setCompileMsg({ tone: "error", text: "Compilation failed — fix the errors below and compile again.", log: error.log || undefined });
+        pushLog("compile failed — compiler errors reported in panel 02", "error");
+      } else {
+        const message = error instanceof Error ? error.message : String(error);
+        setCompileMsg({ tone: "error", text: message });
+        pushLog(`compile failed: ${message}`, "error");
+      }
+    } finally {
+      setCompiling(false);
+    }
+  }, [compileMode, compiling, fqbn, loadHex, pushLog, sketchName, source, toast]);
+
+  const applyBridgeUrl = useCallback(() => {
+    saveBridgeUrl(bridgeUrlDraft);
+    toast({ title: "Bridge URL saved", description: "Re-probing compilers…" });
+    void runProbe();
+  }, [bridgeUrlDraft, runProbe, toast]);
 
   // ── derived UI state ─────────────────────────────────────────────────────
   const ledTone: "idle" | "port" | "busy" | "on" | "flash" = flashing
@@ -759,7 +985,7 @@ export default function ArduinoPage() {
     : !board
       ? "Identify the board first (panel 01) so the flasher knows the sync baud."
       : !hexMeta
-        ? "Load a .hex image below (file, drag-drop or the built-in firmware if present)."
+        ? "Load a .hex image below (compile it in panel 02, drop a file, or use the built-in image)."
         : null;
 
   const monitorDisabledReason = !serialSupported
@@ -770,12 +996,18 @@ export default function ArduinoPage() {
         ? "The flasher owns the USB port while flashing."
         : null;
 
+  const terminalDisabledReason =
+    monitorDisabledReason ??
+    (!monitorRunning ? "Start the monitor above — the terminal writes to the same open port." : null);
+
   const flashPct =
     flashProgress && flashProgress.total > 0
       ? Math.min(100, Math.round((flashProgress.written / flashProgress.total) * 100))
       : 0;
 
   const monitorEventCount = monitorLines.filter((l) => l.kind === "event").length;
+
+  const probeFor = (mode: CompilerMode): CompilerProbe | undefined => probes?.find((p) => p.mode === mode);
 
   return (
     <div className="relative">
@@ -790,9 +1022,9 @@ export default function ArduinoPage() {
         >
           <SectionTitle
             className="gx-title-gradient"
-            sub="WEB SERIAL STK500V1 FLASHER · IR / ULTRASONIC GATE PIPELINE → /API/GATE/SENSOR-EVENTS"
+            sub="WEB SERIAL IDE · STK500V1 FLASHER · CONTROL TERMINAL · SENSOR PIPELINE → /API/GATE/SENSOR-EVENTS"
           >
-            ARDUINO GATE CONTROLLER STUDIO
+            ARDUINO GATE CONTROLLER LAB
           </SectionTitle>
           <div
             className="flex items-center gap-2 rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2"
@@ -818,7 +1050,7 @@ export default function ArduinoPage() {
               <p className="font-semibold">Web Serial is not available here</p>
               <p className="mt-1 text-amber-200/80">
                 Web Serial needs Chrome/Edge on desktop over HTTPS (or localhost) — Safari/Firefox/mobile can't talk to
-                USB. The studio below still shows everything it would do; plug the board into a Chromium desktop browser
+                USB. The lab below still shows everything it would do; plug the board into a Chromium desktop browser
                 to go live.
               </p>
             </div>
@@ -941,7 +1173,7 @@ export default function ArduinoPage() {
           </motion.div>
 
           {/* ────────────────────────────────────────────────────────────
-              PANEL 02 — FIRMWARE FLASHER
+              PANEL 02 — SKETCH LAB (editor + compiler)
           ──────────────────────────────────────────────────────────── */}
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -953,26 +1185,26 @@ export default function ArduinoPage() {
               <PanelHead
                 step="02"
                 icon={Cpu}
-                title="FIRMWARE FLASHER"
-                sub="hand-rolled STK500v1 over Web Serial — no external flashing libs"
+                title="SKETCH LAB"
+                sub="edit → compile (arduino-cli on the server or your machine) → hex lands in panel 03"
                 right={
-                  board ? (
-                    <Badge variant="outline" className="border-slate-700 font-mono text-[10px] text-slate-300">
-                      flash baud {board.baud}
+                  dirty ? (
+                    <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 font-mono text-[10px] text-amber-300">
+                      unsaved edits
                     </Badge>
                   ) : null
                 }
               />
 
-              {/* sketch selector */}
-              <div className="grid gap-3 md:grid-cols-2">
+              {/* toolbar: template / my sketches / name / save / copy / download */}
+              <div className="grid gap-2 md:grid-cols-[1fr_1fr_auto]">
                 <div className="space-y-1.5">
-                  <label className="text-[11px] uppercase tracking-wider text-white/35" htmlFor="sketch-select">
-                    Sketch source
+                  <label className="text-[11px] uppercase tracking-wider text-white/35" htmlFor="template-select">
+                    Templates
                   </label>
-                  <Select value={sketchId} onValueChange={setSketchId}>
-                    <SelectTrigger id="sketch-select" aria-label="Select an Arduino sketch to view or download" className="min-h-11 border-slate-700 bg-slate-950/60">
-                      <SelectValue placeholder="Pick a sketch" />
+                  <Select value={sketchId} onValueChange={loadTemplate}>
+                    <SelectTrigger id="template-select" aria-label="Load a template sketch into the editor" className="min-h-11 border-slate-700 bg-slate-950/60">
+                      <SelectValue placeholder={sketchId === "__my__" ? "My sketch" : "Pick a sketch"} />
                     </SelectTrigger>
                     <SelectContent>
                       {SKETCHES.map((s) => (
@@ -983,34 +1215,275 @@ export default function ArduinoPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex items-end gap-2">
-                  <Hint label="Copy the .ino source to the clipboard">
-                    <Button variant="outline" size="sm" className="min-h-11 border-slate-700" onClick={() => void copySketch()} aria-label="Copy sketch source">
-                      {copied ? <Check className="h-4 w-4 text-emerald-400" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
-                      {copied ? "Copied" : "Copy source"}
-                    </Button>
-                  </Hint>
-                  <Hint label={`Download ${selectedSketch?.filename ?? "sketch.ino"}`}>
-                    <Button variant="outline" size="sm" className="min-h-11 border-slate-700" onClick={downloadSketch} aria-label="Download sketch as .ino file">
-                      <FileDown className="h-4 w-4" aria-hidden="true" />
-                      Download .ino
-                    </Button>
-                  </Hint>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] uppercase tracking-wider text-white/35" htmlFor="mysketch-select">
+                    My sketches ({mySketches.length})
+                  </label>
+                  <div className="flex gap-2">
+                    <Select
+                      value={sketchId === "__my__" ? (sketchName || undefined) : undefined}
+                      onValueChange={loadMySketch}
+                      disabled={mySketches.length === 0}
+                    >
+                      <SelectTrigger id="mysketch-select" aria-label="Load one of your saved sketches" className="min-h-11 w-full border-slate-700 bg-slate-950/60">
+                        <SelectValue placeholder="nothing saved yet" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {mySketches.map((m) => (
+                          <SelectItem key={m.id} value={m.name}>
+                            {m.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {sketchId === "__my__" && sketchName && (
+                      <Hint label={`Delete "${sketchName}" from this browser`}>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="min-h-11 w-11 shrink-0 border-red-500/30 text-red-300 hover:bg-red-500/10"
+                          onClick={() => deleteMySketch(sketchName)}
+                          aria-label={`Delete sketch ${sketchName}`}
+                        >
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
+                        </Button>
+                      </Hint>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] uppercase tracking-wider text-white/35" htmlFor="sketch-name">
+                    Sketch name
+                  </label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="sketch-name"
+                      value={sketchName}
+                      onChange={(e) => {
+                        setSketchName(e.target.value);
+                        setDirty(true);
+                      }}
+                      aria-label="Sketch name used when compiling and saving"
+                      className="min-h-11 border-slate-700 bg-slate-950/60 font-mono text-xs"
+                    />
+                    <Hint label="Save this source under the current name (localStorage, this browser)">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="min-h-11 w-11 shrink-0 border-slate-700"
+                        onClick={saveMySketch}
+                        aria-label="Save sketch"
+                      >
+                        <Save className="h-4 w-4" aria-hidden="true" />
+                      </Button>
+                    </Hint>
+                  </div>
                 </div>
               </div>
 
-              {/* source viewer */}
-              {selectedSketch && (
-                <pre
-                  aria-label={`Source code of ${selectedSketch.name}`}
-                  className={cn(
-                    "max-h-64 overflow-auto rounded-lg border border-slate-800 bg-slate-950/90 p-3 font-mono text-[11px] leading-relaxed text-slate-300",
-                    SCROLLBAR_CLASSES,
-                  )}
-                >
-                  {selectedSketch.source}
-                </pre>
-              )}
+              {/* editor */}
+              <CodeEditor
+                value={source}
+                onChange={(next) => {
+                  setSource(next);
+                  setDirty(true);
+                }}
+                onCompile={() => void runCompile()}
+                ariaLabel={`C++ source of ${sketchName}`}
+                maxHeightClass="max-h-[380px]"
+              />
+              <p className="-mt-2 text-[10px] text-white/30">
+                Tab indents · Ctrl/Cmd + Enter compiles · {source.split("\n").length} lines · {source.length} chars
+              </p>
+
+              {/* compiler bar */}
+              <div className="grid items-end gap-2 md:grid-cols-[1fr_1fr_auto]">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] uppercase tracking-wider text-white/35" htmlFor="fqbn-select">
+                    Board target
+                  </label>
+                  <Select value={fqbn} onValueChange={setFqbn}>
+                    <SelectTrigger id="fqbn-select" aria-label="Board target for the compiler" className="min-h-11 border-slate-700 bg-slate-950/60">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {FQBN_PRESETS.map((p) => (
+                        <SelectItem key={p.fqbn} value={p.fqbn}>
+                          {p.label} <span className="text-white/30">({p.fqbn})</span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] uppercase tracking-wider text-white/35" htmlFor="compiler-mode">
+                    Compiler host
+                  </label>
+                  <Select value={compileMode} onValueChange={(v) => setCompileMode(v as CompilerMode)}>
+                    <SelectTrigger id="compiler-mode" aria-label="Which arduino-cli host compiles the sketch" className="min-h-11 border-slate-700 bg-slate-950/60">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="server">
+                        AttendX server {probeFor("server")?.available ? "· ready" : ""}
+                      </SelectItem>
+                      <SelectItem value="bridge">
+                        Local bridge {probeFor("bridge")?.available ? "· ready" : ""}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Hint label="Compile the editor source into a flashable .hex (Ctrl/Cmd + Enter)">
+                  <Button
+                    size="lg"
+                    className="h-12 min-h-11 w-full bg-amber-500 font-semibold text-slate-950 hover:bg-amber-400 md:w-40"
+                    disabled={compiling}
+                    onClick={() => void runCompile()}
+                    aria-label="Compile the sketch with arduino-cli"
+                  >
+                    {compiling ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> : <Hammer className="h-5 w-5" aria-hidden="true" />}
+                    {compiling ? "Compiling…" : "Compile"}
+                  </Button>
+                </Hint>
+              </div>
+
+              {/* compiler probes + bridge url */}
+              <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] uppercase tracking-wider text-white/35">Compiler hosts</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-[10px] text-white/50 hover:text-white/80"
+                    disabled={probing}
+                    onClick={() => void runProbe()}
+                    aria-label="Re-probe compilers"
+                  >
+                    {probing ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" /> : null}
+                    re-probe
+                  </Button>
+                </div>
+                {[
+                  { mode: "server" as CompilerMode, label: "AttendX server" },
+                  { mode: "bridge" as CompilerMode, label: "Local bridge" },
+                ].map((row) => {
+                  const probe = probeFor(row.mode);
+                  const available = probe?.available === true;
+                  return (
+                    <div key={row.mode} className="mt-1.5 flex items-start justify-between gap-3 text-[11px]">
+                      <span className="flex shrink-0 items-center gap-2 text-white/70">
+                        <LedDot tone={available ? "on" : probing ? "busy" : "idle"} />
+                        {row.label}
+                      </span>
+                      <span className={cn("text-right", available ? "text-emerald-300" : "text-white/35")}>
+                        {probes === null
+                          ? "probing…"
+                          : available
+                            ? `arduino-cli ${probe?.version ?? "ready"}`
+                            : (probe?.detail ?? "not reachable")}
+                      </span>
+                    </div>
+                  );
+                })}
+                <div className="mt-2 flex gap-2">
+                  <Input
+                    value={bridgeUrlDraft}
+                    onChange={(e) => setBridgeUrlDraft(e.target.value)}
+                    aria-label="Local compile bridge URL"
+                    placeholder="http://127.0.0.1:8791"
+                    className="h-8 border-slate-800 bg-slate-950/80 font-mono text-[10px]"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 shrink-0 border-slate-700 text-[10px]"
+                    onClick={applyBridgeUrl}
+                    aria-label="Save bridge URL and re-probe"
+                  >
+                    save bridge url
+                  </Button>
+                </div>
+                <p className="mt-2 text-[10px] leading-relaxed text-white/35">
+                  The browser cannot run avr-gcc. Self-hosted APIs with <span className="font-mono text-emerald-300">arduino-cli</span> in PATH compile via the
+                  server; everyone else runs the one-file bridge on their own machine:{" "}
+                  <span className="font-mono text-emerald-300">node hardware/arduino-bridge.mjs</span> (then flash over
+                  Web Serial as usual).
+                </p>
+              </div>
+
+              {/* compile result */}
+              <div aria-live="polite">
+                {compileMsg && (
+                  <div
+                    className={cn(
+                      "rounded-lg border p-3 text-xs",
+                      compileMsg.tone === "ok" && "border-emerald-500/40 bg-emerald-500/10 text-emerald-200",
+                      compileMsg.tone === "error" && "border-red-500/40 bg-red-500/10 text-red-200",
+                      compileMsg.tone === "info" && "border-slate-700 bg-slate-900/60 text-slate-200",
+                    )}
+                  >
+                    <p className="flex items-start gap-2">
+                      {compileMsg.tone === "ok" ? (
+                        <CircleCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" aria-hidden="true" />
+                      ) : (
+                        <XCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                      )}
+                      {compileMsg.text}
+                    </p>
+                    {compileMsg.log && (
+                      <pre
+                        className={cn(
+                          "mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded border border-white/10 bg-slate-950/90 p-2 font-mono text-[10px]",
+                          SCROLLBAR_CLASSES,
+                        )}
+                      >
+                        {compileMsg.log}
+                      </pre>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Hint label="Copy the editor source to the clipboard">
+                  <Button variant="outline" size="sm" className="min-h-11 border-slate-700" onClick={() => void copySketch()} aria-label="Copy sketch source">
+                    {copied ? <Check className="h-4 w-4 text-emerald-400" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
+                    {copied ? "Copied" : "Copy source"}
+                  </Button>
+                </Hint>
+                <Hint label={`Download ${sanitizeSketchName(sketchName)}.ino`}>
+                  <Button variant="outline" size="sm" className="min-h-11 border-slate-700" onClick={downloadSketch} aria-label="Download sketch as .ino file">
+                    <FileDown className="h-4 w-4" aria-hidden="true" />
+                    Download .ino
+                  </Button>
+                </Hint>
+              </div>
+            </GlowCard>
+          </motion.div>
+
+          {/* ────────────────────────────────────────────────────────────
+              PANEL 03 — FIRMWARE FLASHER
+          ──────────────────────────────────────────────────────────── */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: 0.15 }}
+            className="lg:col-span-7 xl:col-span-8"
+          >
+            <GlowCard hover={false} className="flex h-full flex-col gap-4 bg-slate-950/80 p-5">
+              <PanelHead
+                step="03"
+                icon={Zap}
+                title="FIRMWARE FLASHER"
+                sub="hand-rolled STK500v1 over Web Serial — no external flashing libs"
+                right={
+                  board ? (
+                    <Badge variant="outline" className="border-slate-700 font-mono text-[10px] text-slate-300">
+                      flash baud {board.baud}
+                    </Badge>
+                  ) : null
+                }
+              />
 
               {/* hex input */}
               <div className="grid gap-3 md:grid-cols-2">
@@ -1079,7 +1552,7 @@ export default function ArduinoPage() {
                     <p className="text-[11px] text-white/40">
                       {builtinState === "checking"
                         ? "Checking for the built-in image…"
-                        : "Not deployed in this build (404) — compile the sketch with arduino-cli and flash from a file."}
+                        : "Not deployed in this build (404) — compile the sketch in panel 02 or drop a .hex file."}
                     </p>
                   )}
                 </div>
@@ -1105,17 +1578,6 @@ export default function ArduinoPage() {
                     {hexError}
                   </p>
                 )}
-              </div>
-
-              {/* honest compile note */}
-              <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-3 text-[11px] leading-relaxed text-white/55">
-                <p>
-                  A browser cannot compile AVR C — compile the sketch with Arduino IDE or{" "}
-                  <code className="rounded bg-slate-950 px-1 py-0.5 font-mono text-emerald-300">
-                    arduino-cli compile --fqbn arduino:avr:uno
-                  </code>
-                  , then flash the .hex here over USB. No IDE window needed.
-                </p>
               </div>
 
               {/* flash action + progress */}
@@ -1190,7 +1652,7 @@ export default function ArduinoPage() {
               {/* activity log console */}
               <Console
                 ariaLabel="Studio activity log"
-                emptyHint="waiting for a connect / identify / flash run…"
+                emptyHint="waiting for a connect / compile / flash run…"
                 lines={
                   activity.map((l) => (
                     <div key={l.id} className="whitespace-pre-wrap break-all">
@@ -1204,20 +1666,99 @@ export default function ArduinoPage() {
           </motion.div>
 
           {/* ────────────────────────────────────────────────────────────
-              PANEL 03 — SERIAL MONITOR + INGESTION
+              PANEL 04 — SKETCH LIBRARY
           ──────────────────────────────────────────────────────────── */}
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: 0.15 }}
+            transition={{ duration: 0.35, delay: 0.2 }}
+            className="lg:col-span-5 xl:col-span-4"
+          >
+            <GlowCard hover={false} className="flex h-full flex-col gap-4 bg-slate-950/80 p-5">
+              <PanelHead
+                step="04"
+                icon={FileDown}
+                title="SKETCH LIBRARY"
+                sub="gate-firmware sources · 9600 8N1 · terminal commands documented"
+              />
+              <div className="flex max-h-[520px] flex-col gap-3 overflow-y-auto pr-1 [scrollbar-gutter:stable] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-700/80 [&::-webkit-scrollbar-track]:bg-transparent">
+                {SKETCHES.map((s) => {
+                  const active = s.id === sketchId;
+                  return (
+                    <div
+                      key={s.id}
+                      className={cn(
+                        "rounded-lg border p-4 transition-colors",
+                        active ? "border-emerald-500/40 bg-emerald-500/5" : "border-slate-800 bg-slate-950/60",
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="text-sm font-semibold text-white/85">{s.name}</h3>
+                        {active && (
+                          <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 font-mono text-[10px] text-emerald-300">
+                            in editor
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="mt-1.5 text-xs leading-relaxed text-white/45">{s.description}</p>
+                      {s.commands && s.commands.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {s.commands.slice(0, 6).map((c) => (
+                            <span
+                              key={c.cmd}
+                              title={c.hint}
+                              className="rounded border border-slate-700 bg-slate-950/80 px-1.5 py-0.5 font-mono text-[9.5px] text-cyan-300/90"
+                            >
+                              {c.cmd}
+                            </span>
+                          ))}
+                          {s.commands.length > 6 && (
+                            <span className="font-mono text-[9.5px] text-white/30">+{s.commands.length - 6} more</span>
+                          )}
+                        </div>
+                      )}
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-[10px] text-white/35">{s.filename}</span>
+                        <Button
+                          variant={active ? "secondary" : "outline"}
+                          size="sm"
+                          className="ml-auto min-h-11"
+                          onClick={() => loadTemplate(s.id)}
+                          aria-label={`Load ${s.name} into the sketch lab editor`}
+                        >
+                          <Cpu className="h-4 w-4" aria-hidden="true" />
+                          {active ? "In editor" : "Edit in lab"}
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-auto text-[11px] leading-relaxed text-white/35">
+                Compile inside the lab (panel 02) when an arduino-cli host is reachable, or outside:{" "}
+                <code className="rounded bg-slate-950 px-1 py-0.5 font-mono text-emerald-300">
+                  arduino-cli compile --fqbn {fqbn}
+                </code>{" "}
+                → drop the .hex into panel 03. The flasher burns it verbatim over STK500v1 — it never invents bytes.
+              </p>
+            </GlowCard>
+          </motion.div>
+
+          {/* ────────────────────────────────────────────────────────────
+              PANEL 05 — CONTROL TERMINAL + INGESTION
+          ──────────────────────────────────────────────────────────── */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: 0.25 }}
             className="lg:col-span-7 xl:col-span-7"
           >
             <GlowCard hover={false} className="flex h-full flex-col gap-4 bg-slate-950/80 p-5">
               <PanelHead
-                step="03"
+                step="05"
                 icon={Terminal}
-                title="SERIAL MONITOR & EVENT INGESTION"
-                sub="ATX1 lines → batched POST /api/gate/sensor-events"
+                title="CONTROL TERMINAL & INGESTION"
+                sub="serial REPL (history + macros) · ATX1 lines → batched POST /api/gate/sensor-events"
                 right={
                   <div className="flex items-center gap-2">
                     <LedDot tone={monitorRunning ? "on" : "idle"} />
@@ -1318,98 +1859,59 @@ export default function ArduinoPage() {
                 </div>
               </div>
 
-              {/* monitor console */}
-              <Console
-                ariaLabel="Serial monitor output"
-                maxHeightClass="max-h-96"
-                emptyHint={
-                  hasPort
-                    ? `press Start monitor to open the port at ${monitorBaud} baud…`
-                    : "connect a board in panel 01, then start the monitor to watch ATX1 lines"
-                }
-                lines={
-                  monitorLines.map((l) => (
-                    <div key={l.id} className="whitespace-pre-wrap break-all">
-                      <span className="text-slate-600">{stamp(l.at)}</span>{" "}
-                      <span className={MONITOR_COLOR[l.kind]}>{l.text}</span>
-                      {l.kind === "event" && (
-                        <span className="ml-1 text-emerald-500/60">→ queued for ingest</span>
-                      )}
-                    </div>
-                  )) ?? null
-                }
+              {/* the REPL */}
+              <SerialTerminal
+                lines={monitorLines}
+                canSend={monitorRunning && !flashing}
+                disabledReason={terminalDisabledReason}
+                onSend={handleTerminalSend}
+                onClear={() => setMonitorLines([])}
+                macros={selectedSketch?.commands ?? []}
               />
+
               <p className="flex items-center gap-2 text-[11px] text-white/35">
                 <Activity className="h-3.5 w-3.5 text-emerald-400/60" aria-hidden="true" />
                 {monitorEventCount} sensor event{monitorEventCount === 1 ? "" : "s"} captured this session · events
-                emerald · errors red · heartbeat/relay notices violet · chatter slate
+                emerald · errors red · heartbeats violet · your input cyan · chatter slate
               </p>
             </GlowCard>
           </motion.div>
 
           {/* ────────────────────────────────────────────────────────────
-              PANEL 04 — SKETCH LIBRARY
+              PANEL 06 — SERIAL PLOTTER
           ──────────────────────────────────────────────────────────── */}
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: 0.2 }}
+            transition={{ duration: 0.35, delay: 0.3 }}
             className="lg:col-span-5 xl:col-span-5"
           >
             <GlowCard hover={false} className="flex h-full flex-col gap-4 bg-slate-950/80 p-5">
               <PanelHead
-                step="04"
-                icon={Download}
-                title="SKETCH LIBRARY"
-                sub="compilable Uno sources · 9600 8N1 · wiring tables included"
-              />
-              <div className="flex flex-col gap-3">
-                {SKETCHES.map((s) => {
-                  const active = s.id === sketchId;
-                  return (
-                    <div
-                      key={s.id}
-                      className={cn(
-                        "rounded-lg border p-4 transition-colors",
-                        active ? "border-emerald-500/40 bg-emerald-500/5" : "border-slate-800 bg-slate-950/60",
-                      )}
+                step="06"
+                icon={Activity}
+                title="SERIAL PLOTTER"
+                sub="numeric fields from the stream — STATUS replies, distCm, key:value chatter"
+                right={
+                  <Hint label="Wipe all series and start a fresh window">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="min-h-9 border-slate-700"
+                      onClick={() => setPlot({ names: [], data: {} })}
+                      aria-label="Clear the plotter"
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <h3 className="text-sm font-semibold text-white/85">{s.name}</h3>
-                        {active && (
-                          <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 font-mono text-[10px] text-emerald-300">
-                            in flasher
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="mt-1.5 text-xs leading-relaxed text-white/45">{s.description}</p>
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-[10px] text-white/35">{s.filename}</span>
-                        <Button
-                          variant={active ? "secondary" : "outline"}
-                          size="sm"
-                          className="ml-auto min-h-11"
-                          onClick={() => {
-                            setSketchId(s.id);
-                            toast({ title: `Loaded "${s.name}"`, description: "Scroll to panel 02 to copy, download or compile." });
-                          }}
-                          aria-label={`Load ${s.name} into the firmware flasher`}
-                        >
-                          <Cpu className="h-4 w-4" aria-hidden="true" />
-                          {active ? "Viewing" : "Load into flasher"}
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="mt-auto text-[11px] leading-relaxed text-white/35">
-                Compile outside the browser:{" "}
-                <code className="rounded bg-slate-950 px-1 py-0.5 font-mono text-emerald-300">
-                  arduino-cli compile --fqbn arduino:avr:uno
-                </code>{" "}
-                → <span className="font-mono">build/arduino.avr.uno/*.ino.hex</span> → drop the .hex into panel 02. The
-                studio flashes it verbatim over STK500v1 — it never invents bytes.
+                      <Eraser className="h-3.5 w-3.5" aria-hidden="true" />
+                      Clear
+                    </Button>
+                  </Hint>
+                }
+              />
+              <Plotter plot={plot} heightClass="h-56" />
+              <p className="text-[11px] leading-relaxed text-white/35">
+                Send <span className="font-mono text-cyan-300">STATUS</span> in panel 05 (or let the geofence sketch
+                emit events) and the values chart here live — up to {MAX_PLOT_SERIES} series × {MAX_PLOT_POINTS}
+                points. <span className="text-white/50">ts/uptime fields are excluded</span> so the scale stays useful.
               </p>
             </GlowCard>
           </motion.div>

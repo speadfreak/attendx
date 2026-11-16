@@ -1,9 +1,18 @@
 /**
- * AttendX Gate Controller Studio — three compilable Arduino sketches (Uno,
- * 9600 8N1) for the Phase 7 gate hardware. Each source carries its wiring
- * table and the exact arduino-cli compile line. The browser cannot compile
- * AVR C — the studio flashes the .hex that `arduino-cli` produces.
+ * AttendX Gate Controller Studio — compilable Arduino sketches (Uno, 9600 8N1)
+ * for the Phase 7 gate hardware. Each source carries its wiring table and the
+ * exact arduino-cli compile line. The studio's compiler pipeline (server-side
+ * arduino-cli or a local bridge) produces the .hex; the flasher burns it.
  */
+
+export interface SketchCommand {
+  /** Exact line the Control Terminal sends (newline appended). */
+  cmd: string;
+  /** Button label. */
+  label: string;
+  /** Optional tooltip explaining the command. */
+  hint?: string;
+}
 
 export interface GateSketch {
   id: string;
@@ -12,6 +21,8 @@ export interface GateSketch {
   /** Suggested .ino basename when downloading from the studio. */
   filename: string;
   source: string;
+  /** Serial commands this firmware understands — rendered as terminal macros. */
+  commands?: SketchCommand[];
 }
 
 // String.raw keeps the C++ escape sequences (\", \n) byte-exact inside this
@@ -34,6 +45,17 @@ const GATE_GEOFENCE_SOURCE = String.raw`// =====================================
 //   ATX1,{"gate":"MAIN","sensor":"ultrasonic","count":1,"ts":<millis>}
 //   ATX1,{"gate":"MAIN","sensor":"ir_beam","code":"0xXXXXXXXX","count":1,"ts":<millis>}
 // ts is millis() uptime; the Studio converts it to wall-clock on ingest.
+//
+// Serial command channel (the Studio's Control Terminal sends these, one per
+// line, and every reply is an ATX1,{...} machine line):
+//   PING                 -> {"type":"ack","pong":1}
+//   STATUS               -> {"type":"status","distCm":..,"personCount":..}
+//   DIST                 -> {"type":"ack","distCm":..}   one immediate read
+//   BEEP [ms]            -> {"type":"ack","beepMs":..}   1..2000 ms blip
+//   LED ON|OFF|BLINK     -> {"type":"ack","led":0|1}
+//   THRESH <cm>          -> {"type":"ack","thresholdCm":..}  5..400 cm
+//   COUNT RESET          -> {"type":"ack","personCount":0}
+//   anything else        -> {"type":"error","error":"unknown cmd"}
 //
 // Loop design: fully non-blocking against loop() via millis() scheduling. The
 // only bounded blocking call is pulseIn(..., 25000 us) inside the scheduled
@@ -98,6 +120,88 @@ unsigned long lastIrMs          = 0;
 unsigned long buzzUntilMs       = 0;
 uint32_t      personCount       = 0;
 
+// ---- serial command channel (Control Terminal) -------------------------
+char     cmdBuf[64];
+uint8_t  cmdLen      = 0;
+uint16_t thresholdCm = PERSON_DISTANCE_CM;
+
+void printAck(const __FlashStringHelper* key, unsigned long value) {
+  Serial.print(F("ATX1,{\"type\":\"ack\",\""));
+  Serial.print(key);
+  Serial.print(F("\":"));
+  Serial.print(value);
+  Serial.print(F(",\"ts\":"));
+  Serial.print(millis());
+  Serial.println(F("}"));
+}
+
+void emitStatus() {
+  const unsigned long dur = pulseIn(PIN_ECHO, HIGH, ECHO_TIMEOUT_US);
+  const uint16_t cm = (dur == 0) ? 0xFFFF : (uint16_t)(dur / 58UL);
+  Serial.print(F("ATX1,{\"type\":\"status\",\"distCm\":"));
+  Serial.print(cm);
+  Serial.print(F(",\"personCount\":"));
+  Serial.print(personCount);
+  Serial.print(F(",\"thresholdCm\":"));
+  Serial.print(thresholdCm);
+  Serial.print(F(",\"ts\":"));
+  Serial.print(millis());
+  Serial.println(F("}"));
+}
+
+// strtok() tokenizes cmdBuf in place; all replies are ATX1 machine lines.
+void handleCommand(char* line) {
+  char* tok = strtok(line, " ");
+  if (tok == NULL) return;
+  if (strcasecmp(tok, "PING") == 0) {
+    printAck(F("pong"), 1UL);
+  } else if (strcasecmp(tok, "STATUS") == 0) {
+    emitStatus();
+  } else if (strcasecmp(tok, "DIST") == 0) {
+    const unsigned long dur = pulseIn(PIN_ECHO, HIGH, ECHO_TIMEOUT_US);
+    printAck(F("distCm"), dur == 0 ? 0xFFFFUL : dur / 58UL);
+  } else if (strcasecmp(tok, "BEEP") == 0) {
+    char* arg = strtok(NULL, " ");
+    unsigned long ms = (arg != NULL) ? strtoul(arg, NULL, 10) : 120UL;
+    if (ms == 0) ms = 120;
+    if (ms > 2000) ms = 2000;
+    tone(PIN_BUZZ, 2400);
+    buzzUntilMs = millis() + ms;
+    digitalWrite(LED_BUILTIN, HIGH);
+    printAck(F("beepMs"), ms);
+  } else if (strcasecmp(tok, "LED") == 0) {
+    char* arg = strtok(NULL, " ");
+    if (arg != NULL && strcasecmp(arg, "BLINK") == 0) {
+      for (uint8_t i = 0; i < 3; i++) {
+        digitalWrite(LED_BUILTIN, HIGH);
+        delay(120);
+        digitalWrite(LED_BUILTIN, LOW);
+        delay(120);
+      }
+      printAck(F("led"), 0UL);
+    } else {
+      const bool on = (arg != NULL && strcasecmp(arg, "ON") == 0);
+      digitalWrite(LED_BUILTIN, on ? HIGH : LOW);
+      printAck(F("led"), on ? 1UL : 0UL);
+    }
+  } else if (strcasecmp(tok, "THRESH") == 0) {
+    char* arg = strtok(NULL, " ");
+    if (arg != NULL) {
+      const long v = strtol(arg, NULL, 10);
+      if (v >= 5 && v <= 400) thresholdCm = (uint16_t)v;
+    }
+    printAck(F("thresholdCm"), thresholdCm);
+  } else if (strcasecmp(tok, "COUNT") == 0) {
+    char* arg = strtok(NULL, " ");
+    if (arg != NULL && strcasecmp(arg, "RESET") == 0) personCount = 0;
+    printAck(F("personCount"), personCount);
+  } else {
+    Serial.print(F("ATX1,{\"type\":\"error\",\"error\":\"unknown cmd\",\"ts\":"));
+    Serial.print(millis());
+    Serial.println(F("}"));
+  }
+}
+
 uint16_t readDistanceCm() {
   digitalWrite(PIN_TRIG, LOW);
   delayMicroseconds(4);
@@ -139,6 +243,24 @@ void setup() {
 void loop() {
   const unsigned long now = millis();
 
+  // Serial command channel — char-at-a-time, bounded buffer, zero String.
+  while (Serial.available() > 0) {
+    const char c = (char)Serial.read();
+    if (c == '\n' || c == '\r') {
+      cmdBuf[cmdLen] = '\0';
+      if (cmdLen > 0) {
+        handleCommand(cmdBuf);
+        cmdLen = 0;
+      }
+      continue;
+    }
+    if (cmdLen < sizeof(cmdBuf) - 1) {
+      cmdBuf[cmdLen++] = c;
+    } else {
+      cmdLen = 0;   // overflow — drop the buffer, resync on next newline
+    }
+  }
+
   // Non-blocking buzzer window.
   if (buzzUntilMs != 0 && now >= buzzUntilMs) {
     noTone(PIN_BUZZ);
@@ -150,7 +272,7 @@ void loop() {
   if (now - lastPingMs >= PING_INTERVAL_MS) {
     lastPingMs = now;
     const uint16_t cm = readDistanceCm();
-    const bool present = (cm != 0xFFFF && cm <= PERSON_DISTANCE_CM);
+    const bool present = (cm != 0xFFFF && cm <= thresholdCm);
     if (present && !objPresent && (now - lastUltrasonicMs >= EVENT_DEBOUNCE_MS)) {
       personCount++;
       lastUltrasonicMs = now;
@@ -376,14 +498,128 @@ void loop() {
 }
 `;
 
+const SELF_TEST_SOURCE = String.raw`// ============================================================================
+// AttendX Board Self-Test — flashing + terminal validation in 60 seconds
+// ============================================================================
+// Target  : Arduino Uno / Nano (ATmega328P) @ 16 MHz
+// Compile : arduino-cli compile --fqbn arduino:avr:uno
+//
+// No sensors, no wiring — the point is to prove the whole pipeline:
+//   1. the Studio flashes this hex over STK500v1, and
+//   2. the Control Terminal talks to the running sketch.
+// The LED breathes at 1 Hz and the sketch answers serial commands (9600 8N1):
+//   PING              -> ATX1,{"type":"ack","pong":1,"ts":..}
+//   LED ON|OFF        -> ATX1,{"type":"ack","led":0|1,"ts":..}
+//   ECHO <text>       -> ATX1,{"type":"ack","echo":"<text>","ts":..}
+//   anything else     -> ATX1,{"type":"error","error":"unknown cmd","ts":..}
+// ============================================================================
+
+#include <Arduino.h>
+
+const unsigned long BLINK_INTERVAL_MS = 500;
+const uint8_t CMD_BUF_SIZE = 64;
+
+char          cmdBuf[CMD_BUF_SIZE];
+uint8_t       cmdLen          = 0;
+bool          ledState        = false;
+unsigned long lastBlinkMs     = 0;
+
+void printAck(const __FlashStringHelper* key, const char* value) {
+  Serial.print(F("ATX1,{\"type\":\"ack\",\""));
+  Serial.print(key);
+  Serial.print(F("\":\""));
+  Serial.print(value);
+  Serial.print(F("\",\"ts\":"));
+  Serial.print(millis());
+  Serial.println(F("}"));
+}
+
+void handleCommand(char* line) {
+  char* tok = strtok(line, " ");
+  if (tok == NULL) return;
+  if (strcasecmp(tok, "PING") == 0) {
+    printAck(F("pong"), "1");
+  } else if (strcasecmp(tok, "LED") == 0) {
+    char* arg = strtok(NULL, " ");
+    ledState = (arg != NULL && strcasecmp(arg, "ON") == 0);
+    digitalWrite(LED_BUILTIN, ledState ? HIGH : LOW);
+    lastBlinkMs = millis();   // pause the breathe while overridden
+    printAck(F("led"), ledState ? "1" : "0");
+  } else if (strcasecmp(tok, "ECHO") == 0) {
+    const char* rest = tok + strlen(tok) + 1;
+    printAck(F("echo"), rest[0] == '\0' ? "" : rest);
+  } else {
+    Serial.print(F("ATX1,{\"type\":\"error\",\"error\":\"unknown cmd\",\"ts\":"));
+    Serial.print(millis());
+    Serial.println(F("}"));
+  }
+}
+
+void setup() {
+  pinMode(LED_BUILTIN, OUTPUT);
+  Serial.begin(9600);
+}
+
+void loop() {
+  const unsigned long now = millis();
+
+  while (Serial.available() > 0) {
+    const char c = (char)Serial.read();
+    if (c == '\n' || c == '\r') {
+      cmdBuf[cmdLen] = '\0';
+      if (cmdLen > 0) {
+        handleCommand(cmdBuf);
+        cmdLen = 0;
+      }
+      continue;
+    }
+    if (cmdLen < CMD_BUF_SIZE - 1) {
+      cmdBuf[cmdLen++] = c;
+    } else {
+      cmdLen = 0;
+    }
+  }
+
+  if (now - lastBlinkMs >= BLINK_INTERVAL_MS) {
+    lastBlinkMs = now;
+    ledState = !ledState;
+    digitalWrite(LED_BUILTIN, ledState ? HIGH : LOW);
+  }
+}
+`;
+
 export const SKETCHES: GateSketch[] = [
   {
     id: "gate-geofence",
     name: "AttendX Gate Geofence Controller",
     description:
-      "The full gate controller: HC-SR04 ultrasonic person counting (TRIG D7 / ECHO D8), TSOP31238 IR beam on D2 with interrupt decode and 400 ms debounce, piezo buzzer on D5, non-blocking millis() loop. Emits ATX1 ultrasonic + ir_beam event lines the studio ingests into /api/gate/sensor-events.",
+      "The full gate controller: HC-SR04 ultrasonic person counting (TRIG D7 / ECHO D8), TSOP31238 IR beam on D2 with interrupt decode and 400 ms debounce, piezo buzzer on D5, non-blocking millis() loop. Emits ATX1 ultrasonic + ir_beam event lines the studio ingests into /api/gate/sensor-events, and answers terminal commands (PING / STATUS / DIST / BEEP / LED / THRESH / COUNT RESET).",
     filename: "gate-geofence.ino",
     source: GATE_GEOFENCE_SOURCE,
+    commands: [
+      { cmd: "PING", label: "PING", hint: "Liveness check — the board answers an ATX1 ack" },
+      { cmd: "STATUS", label: "STATUS", hint: "Distance, person count, threshold — also feeds the plotter" },
+      { cmd: "DIST", label: "DIST", hint: "One immediate HC-SR04 reading" },
+      { cmd: "BEEP 120", label: "BEEP", hint: "Buzzer blip (optional ms arg, max 2000)" },
+      { cmd: "LED ON", label: "LED ON", hint: "Light the D13 status LED" },
+      { cmd: "LED OFF", label: "LED OFF", hint: "Extinguish D13" },
+      { cmd: "THRESH 120", label: "THRESH 120", hint: "Set the beam-crossing threshold in cm (5–400)" },
+      { cmd: "COUNT RESET", label: "COUNT RESET", hint: "Zero the person counter" },
+    ],
+  },
+  {
+    id: "self-test",
+    name: "Board Self-Test",
+    description:
+      "Zero wiring: blinks D13 at 1 Hz and answers PING / LED ON|OFF / ECHO over serial. Flash it first to prove the STK500v1 uploader and the Control Terminal end-to-end before touching real gate hardware.",
+    filename: "board-self-test.ino",
+    source: SELF_TEST_SOURCE,
+    commands: [
+      { cmd: "PING", label: "PING", hint: "Liveness check — ack with the board uptime" },
+      { cmd: "LED ON", label: "LED ON", hint: "Force the D13 LED on (pauses the breathe)" },
+      { cmd: "LED OFF", label: "LED OFF", hint: "Force the D13 LED off" },
+      { cmd: "ECHO hello gate", label: "ECHO hello", hint: "Round-trip an arbitrary string back through ATX1 ack" },
+    ],
   },
   {
     id: "ir-node",
@@ -392,14 +628,21 @@ export const SKETCHES: GateSketch[] = [
       "Standalone NEC infrared decoder: TSOP31238 on D2 (INT0), prints ATX1 ir_beam lines with the decoded remote code, confirmation beep on D5. Point any NEC remote at it to fake a beam break.",
     filename: "ir-receiver-node.ino",
     source: IR_NODE_SOURCE,
+    commands: [
+      { cmd: "PING", label: "PING", hint: "Only meaningful if you add the handler — this sketch is receive-only" },
+    ],
   },
   {
     id: "failsafe-relay",
     name: "Gate Failsafe Relay",
     description:
-      "Gate actuator failsafe: relay on D12 driven by serial JSON {\"cmd\":\"open\"|\"close\"} with a SoftwareSerial-safe bounded parser and a 5 s ATX1 heartbeat carrying the relay state. Power-on default is closed.",
+      'Gate actuator failsafe: relay on D12 driven by serial JSON {"cmd":"open"|"close"} with a SoftwareSerial-safe bounded parser and a 5 s ATX1 heartbeat carrying the relay state. Power-on default is closed.',
     filename: "gate-failsafe-relay.ino",
     source: FAILSAFE_RELAY_SOURCE,
+    commands: [
+      { cmd: '{"cmd":"open"}', label: "OPEN GATE", hint: "Energize the relay — the gate opens" },
+      { cmd: '{"cmd":"close"}', label: "CLOSE GATE", hint: "De-energize the relay — the gate closes" },
+    ],
   },
 ];
 

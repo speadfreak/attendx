@@ -24,6 +24,7 @@ import smsToolsRouter from "./sms-tools";
 import webhooksRouter from "./webhooks";
 import fraudRouter from "./fraud";
 import gatesRouter from "./gates";
+import arduinoRouter from "./arduino";
 
 const router: IRouter = Router();
 
@@ -52,5 +53,6 @@ router.use(smsToolsRouter);
 router.use(webhooksRouter);
 router.use(fraudRouter);
 router.use(gatesRouter);
+router.use(arduinoRouter);
 
 export default router;

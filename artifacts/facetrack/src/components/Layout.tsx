@@ -11,7 +11,7 @@ import {
   LayoutDashboard, Users, School,
   FileText, MessageSquare, LogOut, UserCog, Menu, X, ServerCog,
   QrCode, DoorOpen, ScrollText, ShieldAlert, Search, Command, ScanFace,
-  MapPin, Download, PanelLeftClose, PanelLeftOpen,
+  MapPin, Download, PanelLeftClose, PanelLeftOpen, Usb,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -107,6 +107,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admins",        label: "Admins",         icon: UserCog,       roles: ["super_admin", "admin"] },
       { href: "/operations",    label: "Operations",     icon: ServerCog,     roles: ["super_admin", "admin"] },
       { href: "/gates",         label: "Gates & Geofence", icon: MapPin,      roles: ["super_admin", "admin"] },
+      { href: "/arduino",       label: "Arduino Lab",    icon: Usb,           roles: ["super_admin", "admin"] },
     ],
   },
 ];

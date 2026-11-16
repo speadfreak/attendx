@@ -181,7 +181,17 @@ export async function dtrAutoReset(port: SerialPort): Promise<void> {
 // Monitor line model + ATX1 event parsing
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type MonitorLineKind = "event" | "error" | "notice" | "raw";
+export type MonitorLineKind = "event" | "error" | "notice" | "raw" | "sent" | "ack";
+
+/** Shared console color map — the page and the Control Terminal render identically. */
+export const MONITOR_LINE_COLOR: Record<MonitorLineKind, string> = {
+  event: "text-emerald-300",
+  error: "text-red-400",
+  notice: "text-violet-300",
+  raw: "text-slate-300",
+  sent: "text-cyan-300",
+  ack: "text-emerald-300",
+};
 
 export interface MonitorLine {
   id: number;
@@ -189,7 +199,6 @@ export interface MonitorLine {
   text: string;
   kind: MonitorLineKind;
 }
-
 /** Sensor enum accepted by POST /api/gate/sensor-events (routes/gate.ts). */
 export type GateSensor = "ultrasonic" | "ir_beam";
 
@@ -212,8 +221,9 @@ export interface ParsedMonitorLine {
 
 /**
  * Classify one serial line. `ATX1,{...json...}` lines from our sketches are
- * machine events; anything mentioning errors turns red; everything else is raw
- * chatter. Heartbeat-style ATX1 lines (no ingestable sensor) become "notice".
+ * machine events; ack/error payloads (terminal command replies) get their own
+ * kinds; anything mentioning errors turns red; everything else is raw chatter.
+ * Heartbeat-style ATX1 lines (no ingestable sensor) become "notice".
  */
 export function parseMonitorLine(text: string): ParsedMonitorLine {
   const match = ATX1_RE.exec(text.trim());
@@ -230,6 +240,9 @@ export function parseMonitorLine(text: string): ParsedMonitorLine {
       ) {
         return { kind: "event", event: { sensor, deviceMillis: ts }, payload };
       }
+      const replyType = payload["type"];
+      if (replyType === "ack") return { kind: "ack", event: null, payload };
+      if (replyType === "error") return { kind: "error", event: null, payload };
       return { kind: "notice", event: null, payload };
     } catch {
       return { kind: "error", event: null, payload: null };
@@ -254,6 +267,7 @@ export class SerialMonitor {
   private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   private keepReading = false;
   private readonly decoder = new TextDecoder("utf-8");
+  private readonly encoder = new TextEncoder();
   private buffer = "";
   private nextId = 1;
   running = false;
@@ -332,6 +346,29 @@ export class SerialMonitor {
     const clean = text.replace(/\r$/, "");
     const { kind } = parseMonitorLine(clean);
     return { id: this.nextId++, at: new Date(), text: clean, kind };
+  }
+
+  /**
+   * Send one line to the board (Control Terminal REPL). Acquires a fresh
+   * writer per call so the flasher can still grab the writable stream in
+   * between writes; newline defaults on because every sketch parser keys on
+   * \n / \r terminators.
+   */
+  async writeLine(text: string, opts?: { newline?: boolean }): Promise<void> {
+    const port = this.port;
+    if (!port || !this.running) throw new Error("Monitor is not running — start it in panel 05 first");
+    if (!port.writable) throw new Error("The port has no writable stream (already locked or closed)");
+    const writer = port.writable.getWriter();
+    try {
+      const payload = opts?.newline === false ? text : `${text}\n`;
+      await writer.write(this.encoder.encode(payload));
+    } finally {
+      try {
+        writer.releaseLock();
+      } catch {
+        /* stream torn down mid-write */
+      }
+    }
   }
 
   /**
