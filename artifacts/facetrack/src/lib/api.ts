@@ -877,9 +877,10 @@ export const api = {
   pairDevice: (body: { name: string; deviceType?: "pi" | "phone"; gateId?: string; mode?: "face" | "qr" }) =>
     post<DevicePairing>("/devices/pair", body),
   /** Re-pair an existing device — revokes the old session and issues a fresh token. */
-  repairDevice: (id: string, body: { name: string; gateId?: string | null; mode?: "face" | "qr" }) =>
+  repairDevice: (id: string, body: { name: string; deviceType?: "pi" | "phone"; gateId?: string | null; mode?: "face" | "qr" }) =>
     post<DevicePairing>(`/devices/${encodeURIComponent(id)}/pair`, {
       name: body.name,
+      deviceType: body.deviceType,
       // null must never travel in the JSON body — the server reads an absent
       // field as "keep the current gate" and an empty string as "unassign".
       gateId: body.gateId === null ? undefined : body.gateId,

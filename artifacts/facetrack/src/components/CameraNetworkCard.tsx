@@ -5,7 +5,7 @@ import { formatDistanceToNowStrict } from "date-fns";
 import { motion } from "framer-motion";
 import {
   AlertTriangle, ArrowLeftRight, BatteryFull, BatteryLow, BatteryMedium, Camera, Check, CheckCircle2,
-  ChevronDown, Copy, Cpu, Flashlight, QrCode, RefreshCw, ScanFace, Smartphone, Timer, VideoOff, X,
+  ChevronDown, Copy, Cpu, ExternalLink, Flashlight, Link2, QrCode, RefreshCw, ScanFace, Smartphone, Timer, VideoOff, X,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -146,6 +146,7 @@ function PairDialog({
   const [pairing, setPairing] = useState<DevicePairing | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
 
   // Reset the whole flow each time the dialog opens (or the repair target flips).
@@ -154,6 +155,7 @@ function PairDialog({
     setPairing(null);
     setConfirmed(false);
     setCopied(false);
+    setCopiedLink(false);
     setSecondsLeft(null);
     setName(repairTarget ? repairTarget.name : suggestedName);
     setGateId(repairTarget?.assignedGateId ?? "none");
@@ -166,6 +168,7 @@ function PairDialog({
       if (repairTarget) {
         return api.repairDevice(repairTarget.id, {
           name: input.name,
+          deviceType: input.deviceType,
           // "" = the operator picked "No gate" → server unassigns. Never send
           // null here: the server reads absent/null as "keep the current gate".
           gateId: input.gateId ?? "",
@@ -232,6 +235,22 @@ function PairDialog({
       setTimeout(() => setCopied(false), 2000);
     } catch {
       toast({ title: "Copy failed", description: "Select the code text and copy it manually.", variant: "destructive" });
+    }
+  };
+
+  /** Deep link the phone's NATIVE camera app can scan — opens /camera-node already paired. */
+  const pairingHref = pairing
+    ? `${typeof window !== "undefined" ? window.location.origin : ""}/camera-node?pair=${encodeURIComponent(pairing.token)}`
+    : "";
+
+  const copyLink = async () => {
+    if (!pairingHref) return;
+    try {
+      await navigator.clipboard.writeText(pairingHref);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    } catch {
+      toast({ title: "Copy failed", description: "Select the link text and copy it manually.", variant: "destructive" });
     }
   };
 
@@ -369,8 +388,12 @@ function PairDialog({
         ) : (
           <div className="space-y-4">
             <div className="mx-auto w-fit rounded-xl bg-white p-3 shadow-lg" aria-label="Pairing QR code">
-              <QRCodeSVG value={pairing.token} size={176} level="M" marginSize={2} />
+              <QRCodeSVG value={pairingHref || pairing.token} size={200} level="M" marginSize={2} />
             </div>
+            <p className="text-center text-xs text-violet-100/55">
+              Scan with the phone's <span className="font-semibold text-violet-100/80">regular camera app</span> —
+              it opens <span className="font-mono">/camera-node</span> and pairs automatically.
+            </p>
 
             <div className="rounded-lg border border-violet-200/15 bg-[#110d18] p-3">
               <p className={infoLabel}>Pairing code</p>
@@ -387,6 +410,26 @@ function PairDialog({
                   {copied ? <Check size={15} className="text-emerald-300" aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
                 </button>
               </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => void copyLink()}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-violet-200/15 bg-violet-200/[0.06] px-3 text-xs font-medium text-violet-100/85 transition-colors hover:bg-violet-200/[0.12]"
+              >
+                {copiedLink ? <Check size={14} className="text-emerald-300" aria-hidden="true" /> : <Link2 size={14} aria-hidden="true" />}
+                {copiedLink ? "Link copied" : "Copy pairing link"}
+              </button>
+              <a
+                href="/camera-node"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-violet-200/15 bg-violet-200/[0.06] px-3 text-xs font-medium text-violet-100/85 transition-colors hover:bg-violet-200/[0.12]"
+              >
+                <ExternalLink size={14} aria-hidden="true" />
+                Open camera node
+              </a>
             </div>
 
             <div className="flex items-center justify-between gap-2 text-sm">
@@ -412,8 +455,8 @@ function PairDialog({
             )}
 
             <ol className="space-y-1.5 rounded-lg border border-violet-200/10 bg-violet-200/[0.03] p-3 text-xs leading-relaxed text-violet-100/70">
-              <li>1. On the phone: open this site and go to <span className="font-mono text-violet-200">/camera-node</span></li>
-              <li>2. Tap "Scan pairing QR" — or paste the code above</li>
+              <li>1. Easiest: point the phone's camera app at the QR above — the pairing page opens already connected</li>
+              <li>2. Or open <span className="font-mono text-violet-200">/camera-node</span> on the phone, then scan this QR in-app or paste the code</li>
               <li>3. Keep this dialog open until the first heartbeat lands</li>
             </ol>
 
@@ -426,12 +469,17 @@ function PairDialog({
                 type="button"
                 onClick={submit}
                 disabled={pairMutation.isPending}
+                title="Issues a brand-new code — every code shown before it stops working instantly"
                 className={`${btnBase} px-3 text-xs`}
               >
                 <RefreshCw size={13} className={pairMutation.isPending ? "animate-spin" : ""} aria-hidden="true" />
                 Fresh token
               </button>
             </div>
+            <p className="text-center text-[11px] leading-relaxed text-violet-100/45">
+              Heads up: pressing <span className="font-semibold text-violet-100/75">Fresh token</span> (or generating a
+              code again later) instantly retires every older code — the phone must use the latest one.
+            </p>
           </div>
         )}
       </DialogContent>

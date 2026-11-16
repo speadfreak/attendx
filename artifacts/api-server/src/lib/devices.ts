@@ -24,7 +24,8 @@ export function deviceOnline(lastSeenAt: Date | null): boolean {
 
 export interface PairDeviceInput {
   name: string;
-  deviceType: DeviceType;
+  /** Omitted/null on re-pair = keep the device's existing type. */
+  deviceType?: DeviceType | null;
   gateId?: string | null;
   mode?: "face" | "qr";
   /** Re-pair an existing device (regenerate its token, keep its config). */
@@ -53,6 +54,7 @@ export async function pairDevice(
   const tokenHash = hashPiToken(token);
 
   let deviceId = input.deviceId ?? null;
+  let publishedType: DeviceType = "phone";
   // "" never lands in the DB — new pairs treat it the same as "no gate".
   // (Re-pair reads input.gateId directly below; "" there means explicit clear.)
   let gateId = input.gateId === "" ? null : (input.gateId ?? null);
@@ -60,7 +62,11 @@ export async function pairDevice(
   if (deviceId) {
     // Re-pair: keep identity + config, mint a fresh session.
     const [existing] = await db
-      .select({ id: gateDevicesTable.id, assignedGateId: gateDevicesTable.assignedGateId })
+      .select({
+        id: gateDevicesTable.id,
+        assignedGateId: gateDevicesTable.assignedGateId,
+        deviceType: gateDevicesTable.deviceType,
+      })
       .from(gateDevicesTable)
       .where(eq(gateDevicesTable.id, deviceId))
       .limit(1);
@@ -68,11 +74,15 @@ export async function pairDevice(
     // "" is an explicit "unassign" from the ops dialog; null/absent keeps the
     // current gate; a real id reassigns (and rewires terminal_ids below).
     gateId = input.gateId === "" ? null : (input.gateId ?? existing.assignedGateId ?? null);
+    // A bare repair call omits deviceType — preserve whatever the device is
+    // (a Pi must never silently flip into a phone).
+    const resolvedType: DeviceType =
+      input.deviceType === "pi" || input.deviceType === "phone" ? input.deviceType : (existing.deviceType as DeviceType);
     await db
       .update(gateDevicesTable)
       .set({
         name: input.name,
-        deviceType: input.deviceType,
+        deviceType: resolvedType,
         mode: input.mode ?? undefined,
         status: "discovered",
         assignedGateId: gateId,
@@ -93,13 +103,15 @@ export async function pairDevice(
         })
         .where(eq(gatesTable.gateId, existing.assignedGateId));
     }
+    publishedType = resolvedType;
   } else {
     const prefix = input.deviceType === "pi" ? "pi" : "ph";
+    publishedType = input.deviceType === "pi" ? "pi" : "phone";
     deviceId = `${prefix}_${randomBytes(4).toString("hex")}`;
     await db.insert(gateDevicesTable).values({
       id: deviceId,
       name: input.name,
-      deviceType: input.deviceType,
+      deviceType: publishedType,
       mode: input.mode ?? "face",
       status: "discovered",
       assignedGateId: gateId,
@@ -128,7 +140,7 @@ export async function pairDevice(
       .where(eq(gatesTable.gateId, gateId));
   }
 
-  publishEvent("device.updated", { deviceId, action: deviceId && input.deviceId ? "repaired" : "paired", deviceType: input.deviceType });
+  publishEvent("device.updated", { deviceId, action: input.deviceId ? "repaired" : "paired", deviceType: publishedType });
   void actorAdminId; // audit written by the route layer (keeps this lib pure)
   return { deviceId, token, expiresAt, gateId: gateId ?? null };
 }

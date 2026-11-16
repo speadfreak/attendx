@@ -21,7 +21,10 @@ const adminId = (req: Request) => (req as Request & { admin?: { adminId: number 
 
 export const pairingSchema = z.object({
   name: z.string().trim().min(1).max(80),
-  deviceType: z.enum(["pi", "phone"]).default("phone"),
+  // Optional so a re-pair can PRESERVE the existing device type (the ops
+  // dialog always sends it, but a bare repair call must not flip a Pi into a
+  // phone). New-pair route defaults to "phone" when absent.
+  deviceType: z.enum(["pi", "phone"]).optional(),
   // gateId semantics (owned by lib/devices.ts pairDevice):
   //   absent / null → keep the current assignment (re-pair) or no gate (new)
   //   ""            → explicitly UNASSIGN the gate
@@ -104,7 +107,7 @@ router.post("/devices/pair", requireAuth, async (req, res): Promise<void> => {
     const result = await pairDevice(
       {
         name: parsed.data.name,
-        deviceType: parsed.data.deviceType,
+        deviceType: parsed.data.deviceType ?? "phone",
         gateId: parsed.data.gateId ?? null,
         mode: parsed.data.mode,
       },
@@ -131,7 +134,9 @@ router.post("/devices/pair", requireAuth, async (req, res): Promise<void> => {
 /** Re-pair an existing device (Regenerate token — "Connect" from Ops). */
 router.post("/devices/:id/pair", requireAuth, async (req, res): Promise<void> => {
   const id = String(req.params.id);
-  const parsed = pairingSchema.safeParse({ ...req.body, deviceType: (req.body as { deviceType?: string } | undefined)?.deviceType ?? "phone" });
+  // No deviceType default here — pairDevice keeps the existing device's type
+  // when the body omits it (a bare repair call must not flip a Pi to a phone).
+  const parsed = pairingSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;

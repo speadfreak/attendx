@@ -21,7 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { loadModels, onLoadStatusChange, type LoadStatus } from "@/lib/faceApi";
 import { newNonce } from "@/lib/offline-queue";
 import {
-  ApiError, bulkMatch, clearStoredIdentity, getStoredDeviceId, getStoredToken,
+  ApiError, bulkMatch, clearStoredIdentity, extractPairToken, getStoredDeviceId, getStoredToken,
   qrScan, qrScanBatch, sendHeartbeat, setStoredDeviceId, setStoredToken, sseUrl,
   toSpoolEntry, uploadThumbnail,
   type BulkMatchResultRow, type DeviceIdentityPayload, type HeartbeatBody,
@@ -209,6 +209,7 @@ export default function CameraNodePage() {
   const heroTimerRef = useIntervalFlag();
   const pingTimerRef = useIntervalFlag();
   const pairingScannerRef = useRef<Html5Qrcode | null>(null);
+  const pairingBusyRef = useRef(false);
   const autoRetryRef = useRef(false);
   const cameraRunRef = useRef(0);
   const submitQrRef = useRef<(token: string) => void>(() => {});
@@ -553,9 +554,28 @@ export default function CameraNodePage() {
     setPairingError(null);
   }, []);
 
+  /**
+   * Pairing handshake. The busy guard is ref-based (not the state flag) so
+   * stale closures — QR decoder callbacks, deep-link boot, button handlers —
+   * can never double-fire while a heartbeat is in flight.
+   * Accepts a RAW token OR any URL-shaped payload (deep link from the ops QR);
+   * extractPairToken normalizes both and rejects non-token garbage (student
+   * badge QRs etc.) BEFORE we burn a request on a doomed 401.
+   */
   const pairWithToken = useCallback(async (rawToken: string) => {
-    const token = rawToken.trim();
-    if (!token || pairingBusy) return;
+    const token = extractPairToken(rawToken) ?? "";
+    if (pairingBusyRef.current) return;
+    if (!token) {
+      // Non-empty scan/paste that is not a code we can even send — say so
+      // instead of a confusing round-trip 401.
+      if (rawToken.trim()) {
+        setPairingError(
+          "That QR / text is not an AttendX pairing code. Scan the QR from Operations → Camera Network → Pair camera (or paste its code).",
+        );
+      }
+      return;
+    }
+    pairingBusyRef.current = true;
     setPairingBusy(true);
     setPairingError(null);
     try {
@@ -575,7 +595,9 @@ export default function CameraNodePage() {
     } catch (err) {
       clearStoredIdentity();
       if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
-        setPairingError("Token rejected — copy the pairing token again from Operations → Gate devices.");
+        setPairingError(
+          "Token rejected by the server. Almost always this means a NEWER code replaced it — every Connect / Fresh token click instantly retires all older codes. Open Operations → Camera Network, and use the code currently shown in the pairing dialog (or scan its QR).",
+        );
       } else if (err instanceof ApiError && err.isNetworkError) {
         setPairingError("Network unreachable — check Wi-Fi and retry.");
       } else {
@@ -583,9 +605,16 @@ export default function CameraNodePage() {
       }
       setPhase("pairing");
     } finally {
+      pairingBusyRef.current = false;
       setPairingBusy(false);
     }
-  }, [adoptSession, pairingBusy, toast]);
+  }, [adoptSession, toast]);
+
+  // Latest pairWithToken for non-reactive callers (boot deep-link, decoders).
+  const pairWithTokenRef = useRef(pairWithToken);
+  useEffect(() => {
+    pairWithTokenRef.current = pairWithToken;
+  }, [pairWithToken]);
 
   // ── pairing QR scanner (ops QR contains the RAW token string) ──
 
@@ -609,7 +638,21 @@ export default function CameraNodePage() {
     setPairingError(null);
     // let React mount the visible region before the library measures it
     window.setTimeout(() => {
-      const scanner = new Html5Qrcode(PAIR_REGION_ID, { verbose: false, useBarCodeDetectorIfSupported: true });
+      let scanner: Html5Qrcode;
+      try {
+        const region = document.getElementById(PAIR_REGION_ID);
+        if (!region) {
+          setPairingError("Scanner did not mount — tap Scan pairing QR again.");
+          setPairScanning(false);
+          return;
+        }
+        scanner = new Html5Qrcode(PAIR_REGION_ID, { verbose: false, useBarCodeDetectorIfSupported: true });
+      } catch (err) {
+        setPairScanning(false);
+        const name = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+        setPairingError(`Scanner failed to start: ${name}`);
+        return;
+      }
       pairingScannerRef.current = scanner;
       scanner
         .start(
@@ -642,10 +685,22 @@ export default function CameraNodePage() {
     };
   }, []);
 
-  // ── boot: stored token validation + kiosk setup ──
+  // ── boot: deep-link auto-pair (ops QR) → stored token validation → kiosk ──
 
   useEffect(() => {
     void ensureServiceWorker();
+    // The Operations pairing QR carries a deep link (/camera-node?pair=<token>).
+    // If we just landed from that scan, pair IMMEDIATELY with the URL token —
+    // it is the freshest credential that exists — and scrub it from the
+    // address bar so it does not linger in history or screen recordings.
+    const deepLinkToken = extractPairToken(`${window.location.search}${window.location.hash}`);
+    if (deepLinkToken) {
+      window.history.replaceState(null, "", window.location.pathname);
+      setPhase("validating");
+      setPairingMessage("Pairing code received from the QR link — connecting…");
+      void pairWithTokenRef.current?.(deepLinkToken);
+      return;
+    }
     const stored = getStoredToken();
     if (!stored) {
       setPhase("pairing");
@@ -1202,14 +1257,20 @@ export default function CameraNodePage() {
                 </div>
 
                 {!pairScanning ? (
-                  <Button
-                    onClick={() => void startPairScan()}
-                    variant="outline"
-                    className="h-12 w-full border-white/15 bg-transparent text-base text-white hover:bg-white/5"
-                  >
-                    <QrCode className="h-5 w-5 text-emerald-300" />
-                    Scan pairing QR
-                  </Button>
+                  <>
+                    <Button
+                      onClick={() => void startPairScan()}
+                      variant="outline"
+                      className="h-12 w-full border-white/15 bg-transparent text-base text-white hover:bg-white/5"
+                    >
+                      <QrCode className="h-5 w-5 text-emerald-300" />
+                      Scan pairing QR
+                    </Button>
+                    <p className="mt-2 text-center text-[11px] leading-relaxed text-white/35">
+                      Or skip both: scan the QR on the Operations console with your
+                      phone's regular camera app — it opens this page already paired.
+                    </p>
+                  </>
                 ) : (
                   <div className="overflow-hidden rounded-2xl border border-white/10 bg-black">
                     <div id={PAIR_REGION_ID} className="aspect-square w-full [&_video]:h-full [&_video]:w-full [&_video]:object-cover" />

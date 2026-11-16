@@ -59,6 +59,46 @@ export function clearStoredIdentity(): void {
   }
 }
 
+// ── pairing token extraction ─────────────────────────────────────────
+
+const FALLBACK_ORIGIN = "https://camera-node.invalid";
+
+/**
+ * Pull a pairing token out of whatever the QR scan / paste handed us.
+ * Accepts, in order:
+ *  1. deep link from the Operations QR: `<origin>/camera-node?pair=<token>`
+ *     (also ?token=, and the same pair/token key inside a #hash fragment)
+ *  2. the raw base64url token itself (paste or an old-style raw-token QR)
+ * Anything else — student badge QRs, text with whitespace, garbage — returns
+ * null so the caller can say "that is not a pairing code" instead of firing
+ * a doomed heartbeat that surfaces as a confusing "token rejected".
+ */
+export function extractPairToken(raw: string): string | null {
+  const text = raw.trim();
+  if (!text || /\s/.test(text)) return null;
+  const origin = typeof window !== "undefined" && window.location?.origin ? window.location.origin : FALLBACK_ORIGIN;
+  if (/^https?:\/\//i.test(text) || text.includes("?") || text.includes("#")) {
+    try {
+      const url = new URL(text, origin);
+      const fromSearch = url.searchParams.get("pair") ?? url.searchParams.get("token");
+      if (fromSearch && fromSearch.trim()) return fromSearch.trim();
+      const hash = url.hash.replace(/^#/, "");
+      if (hash) {
+        const params = new URLSearchParams(hash.startsWith("pair=") || hash.includes("&") ? hash : `pair=${hash}`);
+        const fromHash = params.get("pair") ?? params.get("token");
+        if (fromHash && fromHash.trim()) return fromHash.trim();
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+  // Raw payload: AttendX tokens (pairing AND badge) are opaque base64url.
+  // Anything outside that alphabet — JSON blobs, prose, punctuation — is not
+  // a code we can even send to the server.
+  return /^[A-Za-z0-9_-]+$/.test(text) ? text : null;
+}
+
 // ── errors ───────────────────────────────────────────────────────────
 
 /** Fetch error that carries the HTTP status + parsed body (server verdicts). */
