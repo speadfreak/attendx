@@ -164,9 +164,95 @@ ALTER TABLE sms_logs ADD COLUMN IF NOT EXISTS retry_of_id INTEGER;
 CREATE INDEX IF NOT EXISTS sms_logs_retry_of_idx ON sms_logs (retry_of_id);
 `;
 
+// ----------------------------------------------------------------------------
+// 0009_gate_devices_and_indexes.sql — Phase 7 phone-as-gate-camera network
+// + the audit-driven index sweep. SQL mirrored verbatim from
+// lib/db/migrations/0009_gate_devices_and_indexes.sql (keeps the bundle
+// self-contained for Vercel serverless).
+// ----------------------------------------------------------------------------
+const GATE_DEVICES_MIGRATION_SQL = `
+ALTER TABLE IF EXISTS pi_devices RENAME TO gate_devices;
+
+CREATE TABLE IF NOT EXISTS gate_devices (
+  id                          TEXT PRIMARY KEY,
+  name                        TEXT NOT NULL,
+  device_type                 TEXT NOT NULL DEFAULT 'pi',
+  mode                        TEXT NOT NULL DEFAULT 'face',
+  status                      TEXT NOT NULL DEFAULT 'offline',
+  assigned_gate_id            TEXT,
+  local_ip                    TEXT,
+  uptime_seconds              INTEGER,
+  cpu_temp_c                  REAL,
+  queue_depth                 INTEGER NOT NULL DEFAULT 0,
+  fan_temp_c                  REAL,
+  fan_state                   TEXT NOT NULL DEFAULT 'unknown',
+  resolution                  TEXT,
+  fps                         REAL,
+  health_status               TEXT NOT NULL DEFAULT 'ok',
+  battery_level               REAL,
+  connection                  TEXT,
+  data_saver                  BOOLEAN NOT NULL DEFAULT FALSE,
+  target_quality              TEXT,
+  thumbnail                   TEXT,
+  thumbnail_at                TIMESTAMP WITH TIME ZONE,
+  pending_command             TEXT,
+  pending_command_at          TIMESTAMP WITH TIME ZONE,
+  current_token_hash          TEXT,
+  previous_token_hash         TEXT,
+  previous_token_valid_until  TIMESTAMP WITH TIME ZONE,
+  token_expires_at            TIMESTAMP WITH TIME ZONE,
+  last_seen_at                TIMESTAMP WITH TIME ZONE,
+  created_at                  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  updated_at                  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+ALTER TABLE gate_devices ADD COLUMN IF NOT EXISTS device_type        TEXT NOT NULL DEFAULT 'pi';
+ALTER TABLE gate_devices ADD COLUMN IF NOT EXISTS mode               TEXT NOT NULL DEFAULT 'face';
+ALTER TABLE gate_devices ADD COLUMN IF NOT EXISTS assigned_gate_id   TEXT;
+ALTER TABLE gate_devices ADD COLUMN IF NOT EXISTS resolution         TEXT;
+ALTER TABLE gate_devices ADD COLUMN IF NOT EXISTS fps                REAL;
+ALTER TABLE gate_devices ADD COLUMN IF NOT EXISTS health_status      TEXT NOT NULL DEFAULT 'ok';
+ALTER TABLE gate_devices ADD COLUMN IF NOT EXISTS battery_level      REAL;
+ALTER TABLE gate_devices ADD COLUMN IF NOT EXISTS connection         TEXT;
+ALTER TABLE gate_devices ADD COLUMN IF NOT EXISTS data_saver         BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE gate_devices ADD COLUMN IF NOT EXISTS target_quality     TEXT;
+ALTER TABLE gate_devices ADD COLUMN IF NOT EXISTS thumbnail          TEXT;
+ALTER TABLE gate_devices ADD COLUMN IF NOT EXISTS thumbnail_at       TIMESTAMP WITH TIME ZONE;
+ALTER TABLE gate_devices ADD COLUMN IF NOT EXISTS pending_command    TEXT;
+ALTER TABLE gate_devices ADD COLUMN IF NOT EXISTS pending_command_at TIMESTAMP WITH TIME ZONE;
+
+CREATE TABLE IF NOT EXISTS device_uptime_days (
+  device_id      TEXT NOT NULL,
+  day            DATE NOT NULL,
+  online_seconds INTEGER NOT NULL DEFAULT 0,
+  heartbeats     INTEGER NOT NULL DEFAULT 0,
+  first_seen_at  TIMESTAMP WITH TIME ZONE,
+  last_seen_at   TIMESTAMP WITH TIME ZONE,
+  PRIMARY KEY (device_id, day)
+);
+
+CREATE INDEX IF NOT EXISTS idx_attendance_marked_at          ON attendance_logs (marked_at);
+CREATE INDEX IF NOT EXISTS idx_attendance_classroom_marked   ON attendance_logs (classroom_id, marked_at);
+CREATE INDEX IF NOT EXISTS idx_attendance_student_marked     ON attendance_logs (student_id, marked_at);
+CREATE INDEX IF NOT EXISTS idx_attendance_status_marked      ON attendance_logs (status, marked_at);
+CREATE INDEX IF NOT EXISTS idx_audit_created                 ON audit_logs (created_at);
+CREATE INDEX IF NOT EXISTS idx_jobs_worker_status_created    ON jobs (worker, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_jobs_type_created             ON jobs (type, created_at);
+CREATE INDEX IF NOT EXISTS idx_sms_student_sent              ON sms_logs (student_id, sent_at);
+CREATE INDEX IF NOT EXISTS idx_qr_issues_token               ON qr_issues (token_hash);
+CREATE INDEX IF NOT EXISTS idx_qr_issues_student             ON qr_issues (student_id);
+CREATE INDEX IF NOT EXISTS idx_match_reviews_status          ON match_reviews (status, created_at);
+CREATE INDEX IF NOT EXISTS idx_match_reviews_purge           ON match_reviews (purge_at);
+CREATE INDEX IF NOT EXISTS idx_gate_devices_token            ON gate_devices (current_token_hash);
+CREATE INDEX IF NOT EXISTS idx_gate_devices_type             ON gate_devices (device_type);
+CREATE INDEX IF NOT EXISTS idx_gate_devices_gate             ON gate_devices (assigned_gate_id);
+CREATE INDEX IF NOT EXISTS idx_gate_devices_seen             ON gate_devices (last_seen_at);
+`;
+
 const MIGRATIONS: Array<{ name: string; sql: string }> = [
   { name: "0007_phase6_sms_geo_fraud", sql: PHASE6_MIGRATION_SQL },
   { name: "0008_sms_retry", sql: SMS_RETRY_MIGRATION_SQL },
+  { name: "0009_gate_devices_and_indexes", sql: GATE_DEVICES_MIGRATION_SQL },
 ];
 
 export interface EnsureSchemaResult {

@@ -114,6 +114,31 @@ Seeded accounts: `admin@attendx.app / admin1234` (super admin) and `teacher@atte
 
 Run the push command only after confirming `DATABASE_URL` points at the intended database, and back up any data that must be kept.
 
+### Runtime schema self-healing (migrations 0007 → 0009)
+
+You do **not** need to hand-run newer migrations. The api-server applies them
+automatically (boot + first request) and records each in the
+`schema_migrations` ledger, idempotently:
+
+| Migration | What it does |
+| --- | --- |
+| `0007_phase6_sms_geo_fraud` | gates + fraud_signals tables, sms_logs delivery lifecycle, qr_scan_logs GPS/nonce/fraud columns |
+| `0008_sms_retry` | `sms_logs.retry_of_id` retry lineage |
+| `0009_gate_devices_and_indexes` | `pi_devices → gate_devices` rename (Pi data preserved) + phone-camera columns + `device_uptime_days` + **14 hot-path indexes** |
+
+Verify with `SELECT name FROM schema_migrations ORDER BY name;`. Escape hatch:
+`DISABLE_SCHEMA_BOOTSTRAP=1` (then apply `lib/db/migrations/*.sql` manually).
+The SQL for every migration is inlined verbatim in
+`artifacts/api-server/src/lib/schema-bootstrap.ts` so it bundles into the
+serverless output.
+
+## Phase 7 — phone gate cameras + Arduino studio (no new env vars required)
+
+- **Pair a phone camera**: Operations → Camera Network → "Pair new camera" → scan the QR (or paste the token) at `/camera-node` on the phone. The phone needs no login; its session token rotates on every heartbeat and is revoked via Disconnect.
+- **Device commands** (`switch_mode`, `request_snapshot`, `flashlight_toggle`, `set_quality`, `set_data_saver`, `disconnect`) reach phones through SSE **and** a heartbeat mailbox — no extra infrastructure. Commands are audited.
+- **`/arduino` studio** (admin) flashes an Uno over Web Serial from Chrome/Edge desktop (HTTPS required by the browser, same as production). Sketch sources ship in `facetrack/src/lib/arduino/sketches.ts`; browsers cannot compile AVR C — compile with `arduino-cli` and flash the `.hex` in the studio. Sensor event ingestion posts to `/api/gate/sensor-events` with the signed-in admin's JWT.
+- The realtime SSE endpoint `/api/events/stream?token=…` now accepts device session tokens in addition to staff JWTs (phone camera command channel).
+
 ## Serverless behavior
 
 - The Express app deploys as a single Vercel Function (Fluid compute) via the `express` framework. `src/index.ts` stays for local/Replit dev (listens on `PORT`, runs the in-process job/retention workers); on Vercel the default-exported `src/app.ts` serves requests with **no interval workers**.

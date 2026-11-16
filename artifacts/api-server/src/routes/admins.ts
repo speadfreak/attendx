@@ -1,4 +1,5 @@
 import { Router, type Request } from "express";
+import { z } from "zod/v4";
 import { db } from "@workspace/db";
 import { adminsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
@@ -27,12 +28,20 @@ router.get("/admins", requireAuth, async (_req, res): Promise<void> => {
 });
 
 router.post("/admins", requireSuperAdmin, async (req, res): Promise<void> => {
-  const { name, email, password, role } = req.body;
-  if (!name || !email || !password) {
-    res.status(400).json({ error: "name, email, and password are required" });
+  // Phase 7 audit fix: Zod validation on every POST body — this endpoint
+  // carries role + password material and had only manual field checks.
+  const bodySchema = z.object({
+    name: z.string().trim().min(1).max(120),
+    email: z.string().trim().email().max(200),
+    password: z.string().min(8).max(200),
+    role: z.enum(["super_admin", "admin", "teacher"]).default("admin"),
+  });
+  const parsed = bodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") });
     return;
   }
-  const validRole = ROLES.includes(role) ? role : "admin";
+  const { name, email, password, role } = parsed.data;
   const existing = await db.select().from(adminsTable).where(eq(adminsTable.email, email));
   if (existing.length > 0) {
     res.status(409).json({ error: "Email already in use" });
@@ -43,7 +52,7 @@ router.post("/admins", requireSuperAdmin, async (req, res): Promise<void> => {
     name,
     email,
     passwordHash,
-    role: validRole,
+    role,
   }).returning({
     id: adminsTable.id,
     name: adminsTable.name,
@@ -56,7 +65,7 @@ router.post("/admins", requireSuperAdmin, async (req, res): Promise<void> => {
     action: "admin.created",
     targetType: "admin",
     targetId: admin.id,
-    payload: { email, role: validRole },
+    payload: { email, role },
   });
   res.status(201).json(toDto(admin));
 });

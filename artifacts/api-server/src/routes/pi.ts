@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { Router, type Request } from "express";
 import { and, eq, gte, inArray } from "drizzle-orm";
-import { db, jobsTable, piDevicesTable } from "@workspace/db";
+import { db, jobsTable, gateDevicesTable } from "@workspace/db";
 import { z } from "zod/v4";
 import { requireAuth } from "../lib/auth";
 import { hashPiToken, requirePiToken, type PiAuthenticatedRequest } from "../lib/pi-auth";
@@ -38,18 +38,18 @@ router.post("/pi/pair", requireAuth, async (req, res): Promise<void> => {
 
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + TOKEN_LIFETIME_MS);
-  const existing = await db.select({ id: piDevicesTable.id }).from(piDevicesTable).where(eq(piDevicesTable.id, DEVICE_ID)).limit(1);
+  const existing = await db.select({ id: gateDevicesTable.id }).from(gateDevicesTable).where(eq(gateDevicesTable.id, DEVICE_ID)).limit(1);
   if (existing[0]) {
-    await db.update(piDevicesTable).set({
+    await db.update(gateDevicesTable).set({
       name: parsed.data.name,
       status: "discovered",
       currentTokenHash: hashPiToken(token),
       previousTokenHash: null,
       previousTokenValidUntil: null,
       tokenExpiresAt: expiresAt,
-    }).where(eq(piDevicesTable.id, DEVICE_ID));
+    }).where(eq(gateDevicesTable.id, DEVICE_ID));
   } else {
-    await db.insert(piDevicesTable).values({
+    await db.insert(gateDevicesTable).values({
       id: DEVICE_ID,
       name: parsed.data.name,
       status: "discovered",
@@ -69,14 +69,14 @@ router.post("/pi/pair", requireAuth, async (req, res): Promise<void> => {
 });
 
 router.get("/pi/status", requireAuth, async (_req, res): Promise<void> => {
-  const [device] = await db.select().from(piDevicesTable).where(eq(piDevicesTable.id, DEVICE_ID)).limit(1);
+  const [device] = await db.select().from(gateDevicesTable).where(eq(gateDevicesTable.id, DEVICE_ID)).limit(1);
   if (!device) {
     res.json({ device: null, online: false, staleAfterSeconds: 30 });
     return;
   }
   const online = Boolean(device.lastSeenAt && Date.now() - device.lastSeenAt.getTime() <= 30_000);
   if (!online && device.status !== "offline") {
-    await db.update(piDevicesTable).set({ status: "offline" }).where(eq(piDevicesTable.id, DEVICE_ID));
+    await db.update(gateDevicesTable).set({ status: "offline" }).where(eq(gateDevicesTable.id, DEVICE_ID));
   }
   res.json({
     device: {
@@ -111,7 +111,7 @@ router.post("/pi/heartbeat", requirePiToken, async (req, res): Promise<void> => 
   const nextToken = randomBytes(32).toString("base64url");
   const now = new Date();
   const expiresAt = new Date(now.getTime() + TOKEN_LIFETIME_MS);
-  await db.update(piDevicesTable).set({
+  await db.update(gateDevicesTable).set({
     status: parsed.data.status,
     localIp: parsed.data.localIp ?? null,
     uptimeSeconds: parsed.data.uptimeSeconds,
@@ -124,7 +124,7 @@ router.post("/pi/heartbeat", requirePiToken, async (req, res): Promise<void> => 
     previousTokenHash: piReq.piPresentedTokenHash,
     previousTokenValidUntil: new Date(now.getTime() + PREVIOUS_TOKEN_GRACE_MS),
     tokenExpiresAt: expiresAt,
-  }).where(eq(piDevicesTable.id, piReq.piDeviceId));
+  }).where(eq(gateDevicesTable.id, piReq.piDeviceId));
   publishEvent("pi.heartbeat", {
     deviceId: piReq.piDeviceId,
     status: parsed.data.status,
@@ -168,13 +168,13 @@ router.post("/pi/actions", requireAuth, async (req, res): Promise<void> => {
 });
 
 router.post("/pi/sessions/kill", requireAuth, async (req, res): Promise<void> => {
-  await db.update(piDevicesTable).set({
+  await db.update(gateDevicesTable).set({
     status: "offline",
     currentTokenHash: null,
     previousTokenHash: null,
     previousTokenValidUntil: null,
     tokenExpiresAt: null,
-  }).where(eq(piDevicesTable.id, DEVICE_ID));
+  }).where(eq(gateDevicesTable.id, DEVICE_ID));
 
   const cancelled = await db.update(jobsTable)
     .set({ status: "cancelled", completedAt: new Date(), error: "Cancelled by administrator" })

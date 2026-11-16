@@ -1,4 +1,4 @@
-import { integer, jsonb, pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { integer, jsonb, pgTable, serial, text, timestamp, index } from "drizzle-orm/pg-core";
 import { adminsTable } from "./admins";
 
 export const auditLogsTable = pgTable("audit_logs", {
@@ -9,6 +9,9 @@ export const auditLogsTable = pgTable("audit_logs", {
   targetId: text("target_id"),
   payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  // Phase 7 audit sweep: the audit feed orders by created_at (20s polling).
+  index("idx_audit_created").on(t.createdAt),
+]);
 
 export type AuditLog = typeof auditLogsTable.$inferSelect;

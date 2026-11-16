@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, matchReviewsTable, piDevicesTable, jobsTable, qrScanLogsTable, studentsTable, gateIntegrityAlertsTable, fraudSignalsTable } from "@workspace/db";
+import { db, matchReviewsTable, gateDevicesTable, jobsTable, qrScanLogsTable, studentsTable, gateIntegrityAlertsTable, fraudSignalsTable } from "@workspace/db";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import { logger } from "../lib/logger";
@@ -50,20 +50,46 @@ router.get("/notifications", requireAuth, async (_req, res): Promise<void> => {
     });
   }
 
-  // 2. Pi devices offline (no heartbeat for > 3 min)
-  const devices = await db.select().from(piDevicesTable);
+  // 2. Gate devices offline / unhealthy — Pi kiosks AND phone cameras (Phase 7).
+  // A phone camera that goes dark mid-session is a blind spot: the alert says
+  // so explicitly and points the operator at the manual/QR fallback.
+  const devices = await db.select().from(gateDevicesTable);
   for (const d of devices) {
+    const isPhone = d.deviceType === "phone";
+    const paired = Boolean(d.currentTokenHash || d.tokenExpiresAt);
     const quiet = !d.lastSeenAt || now - d.lastSeenAt.getTime() > 3 * 60 * 1000;
-    if (quiet && d.status !== "never-seen") {
+    if (quiet && paired && d.status !== "never-seen") {
       items.push({
-        id: `pi-${d.id}`,
+        id: `device-offline-${d.id}`,
         severity: "critical",
         category: "device",
-        title: `Pi "${d.name}" went offline`,
-        detail: d.lastSeenAt
-          ? `Last heartbeat ${Math.round((now - d.lastSeenAt.getTime()) / 60000)} min ago · CPU ${d.cpuTempC?.toFixed(0) ?? "?"}°C`
-          : "Device has never sent a heartbeat",
+        title: isPhone && d.assignedGateId
+          ? `Gate camera down — "${d.name}" (${d.assignedGateId})`
+          : `${isPhone ? "Phone camera" : "Pi"} "${d.name}" went offline`,
+        detail: isPhone && d.assignedGateId
+          ? `No heartbeat for ${d.lastSeenAt ? Math.round((now - d.lastSeenAt.getTime()) / 60000) : "?"} min — switch this gate to manual/QR fallback until the camera is back.`
+          : d.lastSeenAt
+            ? `Last heartbeat ${Math.round((now - d.lastSeenAt.getTime()) / 60000)} min ago · CPU ${d.cpuTempC?.toFixed(0) ?? "?"}°C`
+            : "Device has never sent a heartbeat",
         at: (d.lastSeenAt ?? d.createdAt).toISOString(),
+        link: "/operations",
+      });
+    }
+    if (
+      isPhone &&
+      (d.healthStatus === "obstructed" || d.healthStatus === "frozen") &&
+      d.lastSeenAt &&
+      now - d.lastSeenAt.getTime() < 24 * 3600 * 1000
+    ) {
+      items.push({
+        id: `device-health-${d.id}`,
+        severity: "warning",
+        category: "device",
+        title: `Camera ${d.healthStatus} — "${d.name}"${d.assignedGateId ? ` (${d.assignedGateId})` : ""}`,
+        detail: d.healthStatus === "obstructed"
+          ? "The lens reports a near-black frame — covered, pocketed, or no light at the gate."
+          : "The camera frame is frozen — the app is backgrounded or the sensor stalled.",
+        at: (d.thumbnailAt ?? d.lastSeenAt ?? d.createdAt).toISOString(),
         link: "/operations",
       });
     }

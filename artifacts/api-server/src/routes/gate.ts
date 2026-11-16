@@ -1,4 +1,4 @@
-import { Router, type Request } from "express";
+import { Router, type Request, type RequestHandler } from "express";
 import { db, gateIntegrityAlertsTable, gateSensorEventsTable } from "@workspace/db";
 import { and, desc, eq, gte, lte } from "drizzle-orm";
 import { z } from "zod/v4";
@@ -50,7 +50,19 @@ function parseEventTs(ts: string | number): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-router.post("/gate/sensor-events", requirePiToken, async (req, res): Promise<void> => {
+// Phase 7: the Arduino gate controller (attached to an admin's PC via the
+// Gate Controller Studio serial monitor) ingests sensor events with a staff
+// JWT; the Pi keeps its device-token path. Same payload schema for both.
+const requirePiOrStaff: RequestHandler = (req, res, next) => {
+  const auth = req.header("authorization");
+  if (auth && /^Bearer .+/i.test(auth)) {
+    requireStaff(req, res, next);
+    return;
+  }
+  void requirePiToken(req as PiAuthenticatedRequest, res, next);
+};
+
+router.post("/gate/sensor-events", requirePiOrStaff, async (req, res): Promise<void> => {
   const parsed = ingestionSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });

@@ -685,6 +685,57 @@ export interface GateUpsertInput {
   terminalIds?: string[];
 }
 
+// ── Camera network devices (Phase 7) ─────────────────────────────
+
+/**
+ * One row of GET /devices — mirrors the camera-device serializer.
+ * `online` = heartbeat ≤30s; status: discovered/connected/running_task/degraded/offline;
+ * healthStatus: ok/obstructed/frozen/unknown; thumbnail = JPEG data URL or null.
+ */
+export interface GateDeviceRow {
+  id: string;
+  name: string;
+  deviceType: "pi" | "phone";
+  mode: "face" | "qr";
+  status: string;
+  online: boolean;
+  healthStatus: string;
+  assignedGateId: string | null;
+  gateName: string | null;
+  resolution: string | null;
+  fps: number | null;
+  batteryLevel: number | null;
+  connection: string | null;
+  dataSaver: boolean;
+  targetQuality: string | null;
+  cpuTempC: number | null;
+  queueDepth: number;
+  fanState: string;
+  uptimeSeconds: number | null;
+  thumbnail: string | null;
+  thumbnailAt: string | null;
+  lastSeenAt: string | null;
+  paired: boolean;
+}
+
+/** One row of GET /devices/uptime?days=N — per-day online seconds from heartbeats. */
+export interface DeviceUptimeReport {
+  deviceId: string;
+  deviceName: string;
+  deviceType: string;
+  assignedGateId: string | null;
+  days: Array<{ day: string; onlineSeconds: number; heartbeats: number }>;
+  onlinePct: number;
+}
+
+/** Pairing credential — the raw token is shown ONCE and expires in 15 minutes. */
+export interface DevicePairing {
+  deviceId: string;
+  token: string;
+  expiresAt: string;
+  gateId: string | null;
+}
+
 // ── Endpoint wrappers ───────────────────────────────────────────
 
 /**
@@ -820,4 +871,26 @@ export const api = {
   upsertGate: (gateId: string, body: GateUpsertInput) =>
     put<GateRecord>(`/gates/${encodeURIComponent(gateId)}`, body),
   deleteGate: (gateId: string) => del<{ ok: boolean }>(`/gates/${encodeURIComponent(gateId)}`),
+
+  // ── Camera network devices (Phase 7) ──
+  devices: () => get<GateDeviceRow[]>("/devices"),
+  pairDevice: (body: { name: string; deviceType?: "pi" | "phone"; gateId?: string; mode?: "face" | "qr" }) =>
+    post<DevicePairing>("/devices/pair", body),
+  /** Re-pair an existing device — revokes the old session and issues a fresh token. */
+  repairDevice: (id: string, body: { name: string; gateId?: string | null; mode?: "face" | "qr" }) =>
+    post<DevicePairing>(`/devices/${encodeURIComponent(id)}/pair`, body),
+  /** Live command over SSE + mailbox — delivered on the device's next tick. */
+  deviceCommand: (
+    id: string,
+    command: "switch_mode" | "request_snapshot" | "disconnect" | "flashlight_toggle" | "set_quality" | "set_data_saver",
+    value?: string | number | boolean | null,
+  ) =>
+    post<{ ok: boolean; command: string; value: unknown }>(
+      `/devices/${encodeURIComponent(id)}/command`,
+      { command, value: value ?? null },
+    ),
+  /** Revoke the device session entirely (the device must re-pair to return). */
+  disconnectDevice: (id: string) =>
+    post<{ ok: boolean; revoked: boolean }>(`/devices/${encodeURIComponent(id)}/disconnect`, {}),
+  deviceUptime: (days = 7) => get<DeviceUptimeReport[]>(`/devices/uptime?days=${days}`),
 };

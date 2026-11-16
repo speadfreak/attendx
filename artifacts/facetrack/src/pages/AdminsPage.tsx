@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, ShieldCheck, ShieldAlert, Eye, EyeOff, Loader2, UserCog } from "lucide-react";
+import { Plus, Pencil, Trash2, ShieldCheck, ShieldAlert, Eye, EyeOff, Loader2, UserCog, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 
 const BASE = import.meta.env.BASE_URL ?? "/";
@@ -201,7 +201,7 @@ export default function AdminsPage() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editingAdmin, setEditingAdmin] = useState<Admin | null>(null);
 
-  const { data: admins, isLoading } = useAdmins();
+  const { data: admins, isLoading, isError, error, refetch } = useAdmins();
   const deleteAdmin = useDeleteAdmin();
 
   const getRoleBadge = (role: string) => {
@@ -232,6 +232,19 @@ export default function AdminsPage() {
       <div className="grid gap-4">
         {isLoading ? (
           Array(3).fill(0).map((_, i) => <Skeleton key={i} className="h-20 w-full" />)
+        ) : isError ? (
+          <Card className="gx-panel bg-card border border-destructive/30 bg-destructive/5">
+            <CardContent className="gx-empty-tint flex flex-col items-center justify-center gap-3 rounded-xl px-6 py-10 text-center">
+              <AlertTriangle className="w-8 h-8 text-destructive" />
+              <div>
+                <p className="font-medium text-destructive">Failed to load admins</p>
+                <p className="mt-1 text-sm text-muted-foreground">{error instanceof Error ? error.message : "Unknown error"}</p>
+              </div>
+              <Button variant="outline" size="sm" className="gx-glow-hover" onClick={() => refetch()}>
+                Retry
+              </Button>
+            </CardContent>
+          </Card>
         ) : !admins?.length ? (
           <Card className="gx-panel bg-card border-border">
             <CardContent className="gx-empty-tint h-32 flex items-center justify-center text-muted-foreground rounded-xl">

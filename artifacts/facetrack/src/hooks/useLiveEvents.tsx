@@ -42,6 +42,11 @@ const INVALIDATION_MAP: Record<string, string[][]> = {
   "settings.updated": [["settings"], ["sms-templates"]],
   "gate.alert": [["gate"], ["notifications"]],
   "gate.integrity": [["gate"], ["notifications"]],
+  "device.heartbeat": [["camera-network"]],
+  "device.command": [["camera-network"]],
+  "device.updated": [["camera-network"]],
+  "device.health": [["camera-network"], ["notifications"]],
+  "sms.status": [["sms-logs"]],
 };
 
 export function LiveEventsProvider({ children }: { children: ReactNode }) {

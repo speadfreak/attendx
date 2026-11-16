@@ -42,6 +42,7 @@ import type {
 } from "@/lib/api";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SmsHealthCard } from "@/components/SmsHealthCard";
+import { CameraNetworkCard } from "@/components/CameraNetworkCard";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
@@ -688,6 +689,8 @@ export default function OperationsPage() {
           )}
         </article>
       </section>
+
+      <CameraNetworkCard />
 
       <section className="grid gap-4 xl:grid-cols-[1.3fr_0.9fr]">
         <article className={`${panel} p-5 sm:p-6`}>

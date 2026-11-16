@@ -17,12 +17,31 @@ import {
   ResponsiveContainer, BarChart, Bar, Legend
 } from "recharts";
 import {
-  Users, School, UserCheck, UserX,
+  Users, School, UserCheck, UserX, AlertTriangle,
   MessageSquare, Activity, Zap, Eye, DoorOpen, LogOut, Wifi,
 } from "lucide-react";
 import { format } from "date-fns";
 import gsap from "gsap";
 import { useToast } from "@/hooks/use-toast";
+
+// ── Honest query-failure panel (never look like an empty state) ──
+function QueryErrorBox({ title, message, onRetry }: { title: string; message: string; onRetry: () => void }) {
+  return (
+    <div
+      className="gx-empty-tint flex flex-col items-center justify-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-6 py-10 text-center"
+      role="alert"
+    >
+      <AlertTriangle className="w-7 h-7 text-destructive shrink-0" />
+      <div>
+        <p className="text-sm font-medium text-destructive">{title}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{message}</p>
+      </div>
+      <button type="button" onClick={onRetry} className="st-badge st-badge-slate px-4 py-2">
+        Retry
+      </button>
+    </div>
+  );
+}
 
 // ── Animated stat card (glow design system) ────────────────
 function StatCard({
@@ -106,7 +125,7 @@ function ActivityRow({ log, isNew }: { log: any; isNew?: boolean }) {
 // ── Occupancy card: "who's in the building right now" ──────
 function OccupancyCard() {
   const { toast } = useToast();
-  const { data: occupancy, refetch, isLoading } = useQuery<Occupancy>({
+  const { data: occupancy, refetch, isLoading, isError, error } = useQuery<Occupancy>({
     queryKey: ["occupancy"],
     queryFn: () => api.occupancy(),
     refetchInterval: 15000,
@@ -139,6 +158,12 @@ function OccupancyCard() {
         <div className="space-y-2">
           {Array(3).fill(0).map((_, i) => <GlowSkeleton key={i} className="h-9 !rounded-lg" />)}
         </div>
+      ) : isError ? (
+        <QueryErrorBox
+          title="Failed to load occupancy"
+          message={error instanceof Error ? error.message : "Unknown error"}
+          onRetry={() => void refetch()}
+        />
       ) : !occupancy?.people.length ? (
         <GlowEmpty icon={<DoorOpen size={20} />} title="Nobody inside" hint="Occupancy fills as students check in." />
       ) : (
@@ -227,12 +252,12 @@ export default function DashboardPage() {
   const [seenActivityIds, setSeenActivityIds] = useState<Set<number>>(new Set());
   const [newIds, setNewIds] = useState<Set<number>>(new Set());
 
-  const { data: stats, isLoading: statsLoading } = useGetDashboardStats({ query: { queryKey: getGetDashboardStatsQueryKey(), refetchInterval: 30000 } });
-  const { data: activity, isLoading: activityLoading } = useGetRecentActivity({ query: { queryKey: getGetRecentActivityQueryKey(), refetchInterval: 30000 } });
-  const { data: classroomStats, isLoading: classroomsLoading } = useGetClassroomSummary({ query: { queryKey: getGetClassroomSummaryQueryKey(), refetchInterval: 30000 } });
+  const { data: stats, isLoading: statsLoading, isError: statsError, error: statsErr, refetch: refetchStats } = useGetDashboardStats({ query: { queryKey: getGetDashboardStatsQueryKey(), refetchInterval: 30000 } });
+  const { data: activity, isLoading: activityLoading, isError: activityError, error: activityErr, refetch: refetchActivity } = useGetRecentActivity({ query: { queryKey: getGetRecentActivityQueryKey(), refetchInterval: 30000 } });
+  const { data: classroomStats, isLoading: classroomsLoading, isError: classroomsError, error: classroomsErr, refetch: refetchClassrooms } = useGetClassroomSummary({ query: { queryKey: getGetClassroomSummaryQueryKey(), refetchInterval: 30000 } });
   const trendRangeRef = useRef(trendRange);
   trendRangeRef.current = trendRange;
-  const { data: trend, isLoading: trendLoading } = useQuery({
+  const { data: trend, isLoading: trendLoading, isError: trendError, error: trendErr, refetch: refetchTrend } = useQuery({
     queryKey: ["attendance-trend", trendRange],
     queryFn: () => api.trend(trendRange),
     refetchInterval: 60000,
@@ -286,6 +311,14 @@ export default function DashboardPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {statsLoading ? (
             Array(4).fill(0).map((_, i) => <GlowSkeleton key={i} className="h-28" />)
+          ) : statsError ? (
+            <div className="col-span-2 lg:col-span-4">
+              <QueryErrorBox
+                title="Failed to load dashboard stats"
+                message={statsErr instanceof Error ? statsErr.message : "Unknown error"}
+                onRetry={() => void refetchStats()}
+              />
+            </div>
           ) : (
             <>
               <StatCard title="Attendance Rate" value={rate} sub="Today's completion" icon={Activity} color="155,91,255" delay={0.1} />
@@ -322,7 +355,15 @@ export default function DashboardPage() {
                 ))}
               </div>
             </div>
-            <TrendChart trend={trend} loading={trendLoading} />
+            {trendError ? (
+              <QueryErrorBox
+                title="Failed to load attendance trend"
+                message={trendErr instanceof Error ? trendErr.message : "Unknown error"}
+                onRetry={() => void refetchTrend()}
+              />
+            ) : (
+              <TrendChart trend={trend} loading={trendLoading} />
+            )}
           </GlowCard>
 
           <OccupancyCard />
@@ -341,6 +382,12 @@ export default function DashboardPage() {
             <div className="max-h-72 overflow-y-auto pr-1">
               {activityLoading ? (
                 <FeedSkeletonRow />
+              ) : activityError ? (
+                <QueryErrorBox
+                  title="Failed to load live feed"
+                  message={activityErr instanceof Error ? activityErr.message : "Unknown error"}
+                  onRetry={() => void refetchActivity()}
+                />
               ) : !activity?.length ? (
                 <GlowEmpty icon={<Zap size={22} />} title="No activity today" hint="Check-ins will stream in live." />
               ) : (
@@ -353,6 +400,12 @@ export default function DashboardPage() {
             <h3 className="text-sm font-semibold uppercase tracking-widest gx-gradient-text mb-4">CLASSROOM MONITOR</h3>
             {classroomsLoading ? (
               <ChartSkeleton height="h-52 sm:h-64" />
+            ) : classroomsError ? (
+              <QueryErrorBox
+                title="Failed to load classroom monitor"
+                message={classroomsErr instanceof Error ? classroomsErr.message : "Unknown error"}
+                onRetry={() => void refetchClassrooms()}
+              />
             ) : !classroomStats?.length ? (
               <GlowEmpty icon={<School size={22} />} title="No classroom data available" hint="Create classrooms and enroll students to see the monitor." />
             ) : (

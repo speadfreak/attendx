@@ -9,7 +9,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 import {
   QrCode, Printer, RotateCcw, Ban, Download, School, ShieldCheck,
-  ShieldAlert, Users, Activity, Search, BadgeCheck, Copy,
+  ShieldAlert, Users, Activity, Search, BadgeCheck, Copy, AlertTriangle,
 } from "lucide-react";
 
 /**
@@ -70,6 +70,25 @@ function IdCard({ student, token, serial, expiresAt, classroom }: {
   );
 }
 
+/** Honest query-failure panel (never look like an empty state). */
+function QueryErrorBox({ title, message, onRetry }: { title: string; message: string; onRetry: () => void }) {
+  return (
+    <div
+      className="gx-empty-tint flex flex-col items-center justify-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-6 py-8 text-center"
+      role="alert"
+    >
+      <AlertTriangle className="w-6 h-6 text-destructive shrink-0" />
+      <div>
+        <p className="text-sm font-medium text-destructive">{title}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{message}</p>
+      </div>
+      <button type="button" onClick={onRetry} className="st-badge st-badge-slate px-4 py-2">
+        Retry
+      </button>
+    </div>
+  );
+}
+
 export default function QrManagerPage() {
   const { toast } = useToast();
   const { admin } = useAuth();
@@ -85,17 +104,17 @@ export default function QrManagerPage() {
   const [busy, setBusy] = useState(false);
   const [printClassroomId, setPrintClassroomId] = useState<string>("all");
 
-  const { data: stats, isLoading: statsLoading } = useQuery<QrStats>({
+  const { data: stats, isLoading: statsLoading, isError: statsError, error: statsErr, refetch: refetchStats } = useQuery<QrStats>({
     queryKey: ["qr", "stats"],
     queryFn: () => api.qrStats(),
     refetchInterval: 15000,
   });
-  const { data: issues, isLoading: issuesLoading, refetch: refetchIssues } = useQuery<QrIssueRow[]>({
+  const { data: issues, isLoading: issuesLoading, isError: issuesError, error: issuesErr, refetch: refetchIssues } = useQuery<QrIssueRow[]>({
     queryKey: ["qr", "issues", classroomId],
     queryFn: () => api.qrIssues(classroomId === "all" ? undefined : { classroomId: Number(classroomId) }),
     refetchInterval: 20000,
   });
-  const { data: scanLogs, isLoading: logsLoading } = useQuery<QrScanLogRow[]>({
+  const { data: scanLogs, isLoading: logsLoading, isError: logsError, error: logsErr, refetch: refetchLogs } = useQuery<QrScanLogRow[]>({
     queryKey: ["qr", "scan-logs"],
     queryFn: () => api.qrScanLogs(80),
     refetchInterval: 10000,
@@ -261,6 +280,14 @@ export default function QrManagerPage() {
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           {statsLoading ? (
             Array(5).fill(0).map((_, i) => <GlowSkeleton key={i} className="h-20" />)
+          ) : statsError ? (
+            <div className="col-span-2 lg:col-span-5">
+              <QueryErrorBox
+                title="Failed to load badge stats"
+                message={statsErr instanceof Error ? statsErr.message : "Unknown error"}
+                onRetry={() => void refetchStats()}
+              />
+            </div>
           ) : stats ? (
             [
               { label: "Active badges", value: stats.activeBadges, icon: BadgeCheck, tone: "green" },
@@ -405,6 +432,12 @@ export default function QrManagerPage() {
                 <p className="text-[10px] uppercase tracking-widest text-white/35 mb-3">Badge inventory</p>
                 {issuesLoading ? (
                   <FeedSkeletonRow rows={4} />
+                ) : issuesError ? (
+                  <QueryErrorBox
+                    title="Failed to load badge inventory"
+                    message={issuesErr instanceof Error ? issuesErr.message : "Unknown error"}
+                    onRetry={() => void refetchIssues()}
+                  />
                 ) : !issues?.length ? (
                   <GlowEmpty icon={<QrCode size={20} />} title="No badges yet" hint="Issue the first badge to get started." />
                 ) : (
@@ -516,6 +549,12 @@ export default function QrManagerPage() {
             </div>
             {logsLoading ? (
               <TableSkeleton rows={6} cols={5} />
+            ) : logsError ? (
+              <QueryErrorBox
+                title="Failed to load scan log"
+                message={logsErr instanceof Error ? logsErr.message : "Unknown error"}
+                onRetry={() => void refetchLogs()}
+              />
             ) : !scanLogs?.length ? (
               <GlowEmpty icon={<Activity size={22} />} title="No scans recorded yet" />
             ) : (

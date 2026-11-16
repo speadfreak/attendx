@@ -1,8 +1,57 @@
 # AttendX
 
-**Intelligent attendance command center** — AI face recognition + signed QR door terminals + parent SMS alerts, with a real-time dark-purple command center UI.
+**Intelligent attendance command center** — AI face recognition + signed QR door terminals + phone/Pi gate-camera fleet + parent SMS alerts, with a real-time dark command center UI.
 
-![Phase](https://img.shields.io/badge/phase-6%20·%20delivery%20honesty%20%2B%20offline%20kiosk-blueviolet) ![stack](https://img.shields.io/badge/stack-Vite%20·%20Express%20·%20Drizzle%20·%20Postgres-purple)
+![Phase](https://img.shields.io/badge/phase-7%20·%20phone%2Das%2Dgate%2Dcamera%20network-blueviolet) ![stack](https://img.shields.io/badge/stack-Vite%20·%20Express%20·%20Drizzle%20·%20Postgres-purple)
+
+## What's new in Phase 7
+
+Full pre-build system audit with every finding + disposition: **[docs/PHASE7_AUDIT.md](docs/PHASE7_AUDIT.md)**.
+
+### 📱 Phone-as-Gate-Camera Network (any phone becomes a paired gate camera)
+- **Installable PWA camera node** at **`/camera-node`** (public route, authenticated by the paired device token — no admin login on the phone): rear camera via `facingMode: environment` with a flip toggle, full-screen kiosk HUD (wake lock, fullscreen, install prompt), and two remote-switchable modes:
+  - **Face mode** — the same `@vladmandic/face-api` descriptor pipeline used client-side elsewhere; descriptors (never frames) batch-posted to the existing `POST /api/attendance/bulk-match` (device-token auth, streak + dedupe logic unchanged).
+  - **QR mode** — BarcodeDetector API (html5-qrcode fallback) decoding badge tokens into the existing `POST /api/qr/scan` — which now accepts **staff JWT or paired device token**, with the device's gate geofence applied through `gates.terminal_ids`.
+- **Adaptive performance + data-saver** (this is Ethiopia-critical): `navigator.connection` cellular/saveData → automatic Low profile; operator quality override (Low/Balanced/HD) pushed live from Operations and persisted server-side; data-saver halves detection rate and thumbnail frequency.
+- **On-device health self-checks**: 16×12 frame downsample → near-black lens (`obstructed`) and frozen-frame hash detection (`frozen`) reported in every heartbeat and surfaced as alerts.
+- **Heartbeats every 8s** with battery / FPS / resolution / connection / uptime — same rotating-token pattern as the Pi (SHA-256 hash storage, 60s grace, 15-min lifetime).
+- **One still-frame thumbnail** (≤90 KB JPEG, not video) uploaded periodically so operators can visually confirm each camera is pointed at the gate.
+- Manual device-side steps the web app cannot force: enable **Guided Access** (iOS) or a kiosk-lock app (Android) after installing to the home screen.
+
+### 🗂 Unified device model (one fleet, not two systems)
+- `pi_devices` **renamed to `gate_devices`** (migration `0009`, data preserved) with `device_type` (`pi` | `phone`), `mode` (`face` | `qr`), `assigned_gate_id`, `resolution`, `fps`, `health_status`, `battery_level`, `connection`, `data_saver`, `target_quality`, `thumbnail(+_at)` and a one-slot **command mailbox** (`pending_command` drained on every heartbeat — works even when SSE is unreachable).
+- **Fleet pairing**: `POST /api/devices/pair` (name, type, gate, mode) issues a once-shown token; `POST /api/devices/:id/pair` re-pairs. Assigning a gate appends the device id to `gates.terminal_ids` so geofencing resolves phone scans unchanged. Legacy `/api/pi/*` endpoints keep working for the Pi.
+- **Remote commands**: `POST /api/devices/:id/command` — `switch_mode`, `request_snapshot`, `disconnect`, `flashlight_toggle` (torch constraint where the phone supports it), `set_quality`, `set_data_saver` — delivered near-instantly over SSE (`device.command`) **and** the heartbeat mailbox fallback; every command is audited.
+- **Daily uptime rollup**: `device_uptime_days` powers `GET /api/devices/uptime?days=7` (online-seconds per day, capped heartbeat gaps) — the "this camera keeps dying before 8am" report.
+
+### 🎛 Operations — Camera Command Center
+- New **Camera Network** card on Operations (Device health → Gate integrity → **Camera Network** → Job queue): device grid grouped by gate with live status dots (online/offline/obstructed/frozen), mode one-click toggle, thumbnails, battery/CPU-temp, FPS+resolution, quality/data-saver controls, Connect/Disconnect/Re-pair (QR pairing dialog with expiry countdown + live "first heartbeat received" detection).
+- **Blind-spot auto-failover banner**: a paired gate camera that goes offline/obstructed/frozen raises `Gate {gate} camera down — switch to manual/QR fallback` in Operations **and** the Notification Center.
+- **Reliability report**: per-device 7-day uptime bars + overall online % (emerald/amber/red).
+
+### 🔌 Arduino Gate Controller Studio (`/arduino`, admin)
+- **Web Serial IDE-like workbench**: auto-detects Arduino Uno family by USB VID/PID (0x2341/0x1a86 CH340 clones included), probes 115200/57600/9600, reads the STK500v1 signature (ATmega328P/32U4/2560).
+- **Real one-window flashing**: hand-rolled **Intel HEX parser + STK500v1 uploader** over Web Serial (DTR auto-reset, sync loop with press-RESET retry guidance, 128-byte page programming, live progress + log console). Paste/drag a compiled `.hex` and flash — no Arduino IDE window needed.
+- **Sketch library** (copy/download `.ino`): Gate Geofence Controller (HC-SR04 person count + TSOP IR beam + buzzer), IR Receiver Node (NEC decode), Gate Failsafe Relay (serial-controlled + heartbeat).
+- **Serial monitor with ingestion**: `ATX1,{...}` event lines from the Arduino are parsed and posted to `POST /api/gate/sensor-events` (now staff-JWT or device-token) — IR/ultrasonic events flow straight into the existing gate-integrity fusion engine.
+- Honest constraint (stated in the UI): browsers cannot compile AVR C — compile the sketch with `arduino-cli compile --fqbn arduino:avr:uno`, then flash the `.hex` right here. Requires Chrome/Edge on desktop over HTTPS.
+
+### 🎨 Insane favicon + PWA icons
+- New SVG mark (face-scan brackets + shield check + emerald/violet gradient) as `favicon.svg` first-class, with maskable 192/512 PNGs + apple-touch generated via resvg; manifest + theme-color updated.
+
+### 🧹 Full-system audit fixes shipped in this phase
+- **14 new indexes** on the hottest query paths (attendance dashboards/reports, job-queue polling, QR door-token lookups, audit feed, per-student SMS history, review queue) — previously full table scans.
+- **Zod validation** added to `POST /admins`, `PUT /admins/:id`, QR rotate/issue-all (role/password/badge fields no longer pass raw).
+- **8 pages fixed for the silent-failure bug class** (Dashboard, Attendance, QrManager, Reports, SmsTemplates, Audit, Admins, ReviewQueue) — errors now render explicit panels with retry; an error never looks like an empty state.
+- `sms.status` SSE event finally invalidates the SMS Logs page cache.
+
+### 🗃 Schema migration (Phase 7)
+- `lib/db/migrations/0009_gate_devices_and_indexes.sql` (idempotent) — `pi_devices → gate_devices` rename + phone columns + `device_uptime_days` + the index sweep:
+
+  ```sh
+  psql $DATABASE_URL -f lib/db/migrations/0009_gate_devices_and_indexes.sql
+  # the api-server ALSO self-applies 0007→0009 at boot (schema_migrations ledger)
+  ```
 
 ## What's new in Phase 6
 

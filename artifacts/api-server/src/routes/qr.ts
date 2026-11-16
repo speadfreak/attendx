@@ -1,8 +1,9 @@
-import { Router, type Request } from "express";
+import { Router, type Request, type RequestHandler } from "express";
 import { db, studentsTable, classroomsTable, qrIssuesTable, qrScanLogsTable, attendanceLogsTable, faceEncodingsTable } from "@workspace/db";
 import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { requireAuth, requireStaff, requireAdminLevel } from "../lib/auth";
+import { requirePiToken, type PiAuthenticatedRequest } from "../lib/pi-auth";
 import { verifyQrToken, hashQrToken } from "../lib/qr";
 import { issueForStudents } from "../lib/qr-issue";
 import { writeAudit } from "../lib/audit";
@@ -10,6 +11,22 @@ import { publishEvent } from "../lib/events";
 import { getArrivalRules, resolveArrivalStatus, localDayBounds } from "../lib/attendance-rules";
 import { evaluateGeofence, gateForTerminal } from "../lib/gates";
 import { analyzeScanForFraud, recordGeofenceViolation } from "../lib/fraud";
+import { logger } from "../lib/logger";
+
+/**
+ * Phase 7 — the phone camera node runs in QR mode WITHOUT an admin login:
+ * it authenticates with its paired device token (X-Pi-Token). Staff JWT
+ * sessions (QR Door Terminal, web) are still accepted first, so this is a
+ * strict WIDENING of the auth surface, not a replacement.
+ */
+const requireStaffOrDevice: RequestHandler = (req, res, next) => {
+  const auth = req.header("authorization");
+  if (auth && /^Bearer .+/i.test(auth)) {
+    requireStaff(req, res, next);
+    return;
+  }
+  void requirePiToken(req as PiAuthenticatedRequest, res, next);
+};
 
 /**
  * QR attendance system.
@@ -124,11 +141,22 @@ router.post("/qr/issues/:id/revoke", requireStaff, async (req, res): Promise<voi
 // ── Re-issue for one student (reprint / replace) ────────────────
 router.post("/qr/students/:studentId/rotate", requireStaff, async (req, res): Promise<void> => {
   const studentId = Number(req.params.studentId);
+  // Phase 7 audit fix: body was unvalidated before (expiresInDays/label went
+  // straight into the DB row).
+  const bodySchema = z.object({
+    expiresInDays: z.number().int().min(1).max(3650).nullable().optional(),
+    label: z.string().trim().min(1).max(60).optional(),
+  });
+  const parsedBody = bodySchema.safeParse(req.body ?? {});
+  if (!parsedBody.success) {
+    res.status(400).json({ error: parsedBody.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") });
+    return;
+  }
   const actor = adminId(req);
   const result = await issueForStudents({
     studentIds: [studentId],
-    expiresInDays: req.body?.expiresInDays ?? null,
-    label: req.body?.label ?? "replacement",
+    expiresInDays: parsedBody.data.expiresInDays ?? null,
+    label: parsedBody.data.label ?? "replacement",
     note: "rotated",
     actorAdminId: actor?.adminId ?? null,
   });
@@ -139,6 +167,15 @@ router.post("/qr/students/:studentId/rotate", requireStaff, async (req, res): Pr
 // ── Bulk issue for a whole classroom (homeroom flow) ────────────
 router.post("/qr/classrooms/:classroomId/issue-all", requireStaff, async (req, res): Promise<void> => {
   const classroomId = Number(req.params.classroomId);
+  // Phase 7 audit fix: validated body (was raw expiresInDays into the DB).
+  const issueAllSchema = z.object({
+    expiresInDays: z.number().int().min(1).max(3650).nullable().optional(),
+  });
+  const parsedBody = issueAllSchema.safeParse(req.body ?? {});
+  if (!parsedBody.success) {
+    res.status(400).json({ error: parsedBody.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") });
+    return;
+  }
   const students = await db
     .select({ id: studentsTable.id })
     .from(studentsTable)
@@ -147,7 +184,7 @@ router.post("/qr/classrooms/:classroomId/issue-all", requireStaff, async (req, r
   const actor = adminId(req);
   const result = await issueForStudents({
     studentIds: students.map((s) => s.id),
-    expiresInDays: req.body?.expiresInDays ?? null,
+    expiresInDays: parsedBody.data.expiresInDays ?? null,
     label: "id-card",
     note: "classroom-batch",
     actorAdminId: actor?.adminId ?? null,
@@ -526,7 +563,7 @@ async function processScanCore(input: ScanCoreInput): Promise<ScanCoreOutput> {
   };
 }
 
-router.post("/qr/scan", requireStaff, async (req, res): Promise<void> => {
+router.post("/qr/scan", requireStaffOrDevice, async (req, res): Promise<void> => {
   const parsed = scanInput.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -559,7 +596,7 @@ const batchInput = z.object({
  * 48h). Per-scan failures never abort the batch — the kiosk marks each
  * entry resolved/failed from the per-item result.
  */
-router.post("/qr/scan/batch", requireStaff, async (req, res): Promise<void> => {
+router.post("/qr/scan/batch", requireStaffOrDevice, async (req, res): Promise<void> => {
   const parsed = batchInput.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });

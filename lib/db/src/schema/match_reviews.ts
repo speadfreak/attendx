@@ -1,4 +1,4 @@
-import { integer, jsonb, pgTable, real, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { integer, jsonb, pgTable, real, serial, text, timestamp, index } from "drizzle-orm/pg-core";
 import { adminsTable } from "./admins";
 import { classroomsTable } from "./classrooms";
 import { studentsTable } from "./students";
@@ -16,6 +16,10 @@ export const matchReviewsTable = pgTable("match_reviews", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
   purgeAt: timestamp("purge_at", { withTimezone: true }).notNull(),
-});
+}, (t) => [
+  // Phase 7 audit sweep: pending-queue dashboards + hourly retention purge.
+  index("idx_match_reviews_status").on(t.status, t.createdAt),
+  index("idx_match_reviews_purge").on(t.purgeAt),
+]);
 
 export type MatchReview = typeof matchReviewsTable.$inferSelect;

@@ -1,26 +1,36 @@
 import { Router, type Request, type Response } from "express";
 import { verifyToken } from "../lib/auth";
+import { deviceForToken } from "../lib/pi-auth";
 import { subscribeEvents, recentEvents, type LiveEvent } from "../lib/events";
 
 /**
  * Server-Sent Events live stream — the push channel behind the dashboard,
- * notification center and live feeds. JWT is passed as ?token= because
- * EventSource cannot set Authorization headers. A heartbeat comment every
- * 25s keeps proxies warm; the client auto-reconnects (EventSource default)
- * and falls back to smart polling while disconnected.
+ * notification center, live feeds AND the phone camera nodes (Phase 7).
+ * The ?token= credential (EventSource cannot set headers) is accepted as
+ * EITHER an admin/staff JWT or a paired gate-device session token — phone
+ * cameras subscribe to receive device.command pushes without an admin login.
+ * A heartbeat comment every 25s keeps proxies warm; the client
+ * auto-reconnects (EventSource default) and falls back to smart polling
+ * while disconnected.
  */
 const router = Router();
 
-router.get("/events/stream", (req: Request, res: Response): void => {
+router.get("/events/stream", async (req: Request, res: Response): Promise<void> => {
   const token = String(req.query.token ?? "");
   let admin: { adminId: number; email: string; role: string } | null = null;
   try {
     admin = verifyToken(token);
   } catch {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
+    admin = null;
   }
-  void admin;
+  if (!admin) {
+    // Not a staff JWT — is it a paired gate-device token?
+    const device = await deviceForToken(token).catch(() => null);
+    if (!device) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+  }
 
   res.writeHead(200, {
     "Content-Type": "text/event-stream",

@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLiveEvents } from "@/hooks/useLiveEvents";
 import { format } from "date-fns";
 import {
-  ShieldAlert, Check, X, Repeat, ScanFace, MapPin, Fingerprint, Gavel,
+  ShieldAlert, Check, X, Repeat, ScanFace, MapPin, Fingerprint, Gavel, AlertTriangle,
 } from "lucide-react";
 
 /**
@@ -50,7 +50,7 @@ export default function ReviewQueuePage() {
   const [candidates, setCandidates] = useState<Record<number, ReviewCandidates | null>>({});
   const [busyId, setBusyId] = useState<number | null>(null);
 
-  const { data: reviews, isLoading, refetch } = useQuery<ReviewRow[]>({
+  const { data: reviews, isLoading, isError, error, refetch } = useQuery<ReviewRow[]>({
     queryKey: ["reviews"],
     queryFn: () => api.reviews(),
     refetchInterval: 15000,
@@ -115,6 +115,24 @@ export default function ReviewQueuePage() {
 
         {isLoading ? (
           <div className="space-y-3"><FeedSkeletonRow rows={4} /></div>
+        ) : isError ? (
+          <GlowCard variant="gradient" className="gx-empty-tint p-6">
+            <div
+              className="flex flex-col items-center justify-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-6 py-8 text-center"
+              role="alert"
+            >
+              <AlertTriangle size={26} className="text-destructive shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-destructive">Failed to load review queue</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {error instanceof Error ? error.message : "Unknown error"} — pending matches are NOT lost, retry to reload them.
+                </p>
+              </div>
+              <button type="button" onClick={() => void refetch()} className="st-badge st-badge-slate px-4 py-2">
+                Retry
+              </button>
+            </div>
+          </GlowCard>
         ) : !reviews?.length ? (
           <GlowCard variant="gradient" className="gx-empty-tint p-6">
             <GlowEmpty

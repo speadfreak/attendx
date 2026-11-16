@@ -4,7 +4,7 @@ import { api, type AuditRow } from "@/lib/api";
 import { GlowCard, SectionTitle, StatusBadge, MeshBackground, GlowEmpty, StatusDot } from "@/components/gx/Primitives";
 import { GlowSkeleton } from "@/components/gx/Skeletons";
 import { format } from "date-fns";
-import { ScrollText, Search, ShieldCheck, ShieldAlert, Terminal, KeyRound, UserCog, Download } from "lucide-react";
+import { ScrollText, Search, ShieldCheck, ShieldAlert, Terminal, KeyRound, UserCog, Download, AlertTriangle } from "lucide-react";
 
 /**
  * ADMIN AUDIT TRAIL — searchable, filterable table of every sensitive action:
@@ -39,7 +39,7 @@ export default function AuditPage() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
 
-  const { data: logs, isLoading } = useQuery<AuditRow[]>({
+  const { data: logs, isLoading, isError, error, refetch } = useQuery<AuditRow[]>({
     queryKey: ["audit-logs"],
     queryFn: () => api.auditLogs(200),
     refetchInterval: 20000,
@@ -128,6 +128,20 @@ export default function AuditPage() {
           {isLoading ? (
             <div className="p-3 space-y-2">
               {Array(10).fill(0).map((_, i) => <GlowSkeleton key={i} className="h-10 !rounded-lg" />)}
+            </div>
+          ) : isError ? (
+            <div
+              className="gx-empty-tint m-2 flex flex-col items-center justify-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-6 py-10 text-center"
+              role="alert"
+            >
+              <AlertTriangle className="w-7 h-7 text-destructive shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-destructive">Failed to load audit trail</p>
+                <p className="mt-1 text-xs text-muted-foreground">{error instanceof Error ? error.message : "Unknown error"}</p>
+              </div>
+              <button type="button" onClick={() => void refetch()} className="st-badge st-badge-slate px-4 py-2">
+                Retry
+              </button>
             </div>
           ) : !filtered.length ? (
             <GlowEmpty icon={<ScrollText size={24} />} title="No audit entries match" hint="Sensitive actions will appear here as they happen." />

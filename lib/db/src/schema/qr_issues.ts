@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, boolean, index } from "drizzle-orm/pg-core";
 import { studentsTable } from "./students";
 import { classroomsTable } from "./classrooms";
 import { adminsTable } from "./admins";
@@ -29,6 +29,11 @@ export const qrIssuesTable = pgTable("qr_issues", {
   scans: integer("scans").notNull().default(0),
   lastScanAt: timestamp("last_scan_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  // Phase 7 audit sweep: the physical door hot path looks a badge up by
+  // token_hash on every tap; manager views filter by student.
+  index("idx_qr_issues_token").on(t.tokenHash),
+  index("idx_qr_issues_student").on(t.studentId),
+]);
 
 export type QrIssue = typeof qrIssuesTable.$inferSelect;

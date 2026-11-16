@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import { and, asc, count, desc, eq } from "drizzle-orm";
-import { db, jobsTable, piDevicesTable } from "@workspace/db";
+import { db, jobsTable, gateDevicesTable } from "@workspace/db";
 import { z } from "zod/v4";
 import { requireAuth } from "../lib/auth";
 import { requirePiToken, type PiAuthenticatedRequest } from "../lib/pi-auth";
@@ -91,7 +91,7 @@ router.post("/jobs/:id/complete", requirePiToken, async (req, res): Promise<void
     const temp = typeof result.tempC === "number" && Number.isFinite(result.tempC) ? result.tempC : null;
     const fanState = ["on", "off", "auto", "unknown"].includes(String(result.fanState)) ? String(result.fanState) : "unknown";
     if (piReq.piDeviceId) {
-      await db.update(piDevicesTable).set({ fanTempC: temp, fanState }).where(eq(piDevicesTable.id, piReq.piDeviceId));
+      await db.update(gateDevicesTable).set({ fanTempC: temp, fanState }).where(eq(gateDevicesTable.id, piReq.piDeviceId));
     }
   }
   if (existing.type === "pi_action") {

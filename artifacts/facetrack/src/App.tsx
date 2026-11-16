@@ -25,6 +25,8 @@ import QrTerminalPage from "@/pages/QrTerminalPage";
 import QrManagerPage from "@/pages/QrManagerPage";
 import SmsTemplatesPage from "@/pages/SmsTemplatesPage";
 import AuditPage from "@/pages/AuditPage";
+import CameraNodePage from "@/pages/CameraNodePage";
+import ArduinoPage from "@/pages/ArduinoPage";
 
 const queryClient = new QueryClient();
 
@@ -98,6 +100,13 @@ function Router() {
       <Route path="/admins">{() => <ProtectedRoute component={AdminsPage} roles={["super_admin", "admin"]} />}</Route>
       <Route path="/operations">{() => <ProtectedRoute component={OperationsPage} roles={["super_admin", "admin"]} />}</Route>
       <Route path="/gates">{() => <ProtectedRoute component={GatesPage} roles={["super_admin", "admin"]} />}</Route>
+      {/* Phase 7 — phone gate camera node: PUBLIC route, authenticated by its
+          paired device token (the phone has no admin login). Renders outside
+          the admin Layout shell, full-screen kiosk style. */}
+      <Route path="/camera-node" component={CameraNodePage} />
+      {/* Phase 7 — Arduino Gate Controller Studio (Web Serial flasher + IR
+          sensor monitor) for the geofence hardware side of the gates. */}
+      <Route path="/arduino">{() => <ProtectedRoute component={ArduinoPage} roles={["super_admin", "admin"]} />}</Route>
       <Route component={NotFound} />
     </Switch>
   );

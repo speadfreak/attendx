@@ -6,7 +6,7 @@ import { ChartSkeleton, GlowSkeleton } from "@/components/gx/Skeletons";
 import { MiniStatusStrip } from "@/components/gx/CalendarHeatmap";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
-import { Download, Filter, FileText, Flame, Printer, Loader2, TrendingUp } from "lucide-react";
+import { Download, Filter, FileText, Flame, Printer, Loader2, TrendingUp, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -177,6 +177,25 @@ async function exportPdf(summary: ReportSummary, classroomName: string) {
   doc.save(`attendx-report-${summary.from}_to_${summary.to}.pdf`);
 }
 
+/** Honest query-failure panel (never look like an empty state). */
+function QueryErrorBox({ title, message, onRetry }: { title: string; message: string; onRetry: () => void }) {
+  return (
+    <div
+      className="gx-empty-tint flex flex-col items-center justify-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-6 py-8 text-center"
+      role="alert"
+    >
+      <AlertTriangle className="w-6 h-6 text-destructive shrink-0" />
+      <div>
+        <p className="text-sm font-medium text-destructive">{title}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{message}</p>
+      </div>
+      <button type="button" onClick={onRetry} className="st-badge st-badge-slate px-4 py-2">
+        Retry
+      </button>
+    </div>
+  );
+}
+
 export default function ReportsPage() {
   const { toast } = useToast();
   const [tab, setTab] = useState<Tab>("records");
@@ -190,13 +209,13 @@ export default function ReportsPage() {
     queryFn: () => authGet<Array<{ id: number; name: string }>>("/classrooms"),
   });
 
-  const { data: records, isLoading: recordsLoading } = useQuery<AttendanceRecord[]>({
+  const { data: records, isLoading: recordsLoading, isError: recordsError, error: recordsErr, refetch: refetchRecords } = useQuery<AttendanceRecord[]>({
     queryKey: ["attendance", date, classroomId, status],
     queryFn: () => authGet(`/attendance?date=${date}&${classroomId !== "all" ? `classroomId=${classroomId}&` : ""}${status !== "all" ? `status=${status}` : ""}`),
     enabled: tab === "records",
   });
 
-  const { data: heatmap, isLoading: heatmapLoading } = useQuery<HeatmapReport>({
+  const { data: heatmap, isLoading: heatmapLoading, isError: heatmapError, error: heatmapErr, refetch: refetchHeatmap } = useQuery<HeatmapReport>({
     queryKey: ["heatmap-report", classroomId, heatmapDays],
     queryFn: () => api.heatmapReport(classroomId === "all" ? null : Number(classroomId), heatmapDays),
     enabled: tab === "heatmap",
@@ -204,7 +223,7 @@ export default function ReportsPage() {
 
   const weekAgo = useMemo(() => new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10), []);
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const { data: summary, isLoading: summaryLoading } = useQuery<ReportSummary>({
+  const { data: summary, isLoading: summaryLoading, isError: summaryError, error: summaryErr, refetch: refetchSummary } = useQuery<ReportSummary>({
     queryKey: ["report-summary", weekAgo, today],
     queryFn: () => api.reportSummary(weekAgo, today),
   });
@@ -367,6 +386,14 @@ export default function ReportsPage() {
                 <div className="p-4 space-y-2">
                   {Array(8).fill(0).map((_, i) => <GlowSkeleton key={i} className="h-9 !rounded-md" />)}
                 </div>
+              ) : recordsError ? (
+                <div className="p-4">
+                  <QueryErrorBox
+                    title="Failed to load attendance records"
+                    message={recordsErr instanceof Error ? recordsErr.message : "Unknown error"}
+                    onRetry={() => void refetchRecords()}
+                  />
+                </div>
               ) : !records?.length ? (
                 <GlowEmpty icon={<FileText size={24} />} title="No attendance records for these filters" />
               ) : (
@@ -408,6 +435,12 @@ export default function ReportsPage() {
             </div>
             {heatmapLoading ? (
               <ChartSkeleton height="h-72" />
+            ) : heatmapError ? (
+              <QueryErrorBox
+                title="Failed to load confidence heatmap"
+                message={heatmapErr instanceof Error ? heatmapErr.message : "Unknown error"}
+                onRetry={() => void refetchHeatmap()}
+              />
             ) : !heatmap?.rows.length ? (
               <GlowEmpty icon={<Flame size={24} />} title="No heatmap data" hint="Attendance records feed this heatmap." />
             ) : (
@@ -453,6 +486,15 @@ export default function ReportsPage() {
 
         {/* ── INSIGHTS TAB ── */}
         {tab === "insights" && (
+          summaryError ? (
+            <GlowCard variant="gradient" className="p-5">
+              <QueryErrorBox
+                title="Failed to load report insights"
+                message={summaryErr instanceof Error ? summaryErr.message : "Unknown error"}
+                onRetry={() => void refetchSummary()}
+              />
+            </GlowCard>
+          ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <GlowCard variant="gradient" className="p-5 lg:col-span-2">
               <h3 className="text-sm font-semibold uppercase tracking-widest gx-gradient-text mb-4">7-DAY TREND</h3>
@@ -550,6 +592,7 @@ export default function ReportsPage() {
               )}
             </GlowCard>
           </div>
+          )
         )}
       </div>
     </div>

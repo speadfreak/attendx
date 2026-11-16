@@ -15,7 +15,7 @@ import { useLiveEvents } from "@/hooks/useLiveEvents";
 import { motion, AnimatePresence } from "framer-motion";
 import { Html5Qrcode } from "html5-qrcode";
 import {
-  Camera, ScanFace, QrCode, Keyboard, Loader2, CheckCircle2, XCircle,
+  Camera, ScanFace, QrCode, Keyboard, Loader2, CheckCircle2, XCircle, AlertTriangle,
   Clock, Brain, Activity, Gauge, Layers, RefreshCw, Zap, Video, MapPin, SwitchCamera,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -244,8 +244,8 @@ export default function AttendancePage() {
   const fpsTracker = useRef<Record<string, { times: number[] }>>({});
   const qrScannerRef = useRef<Html5Qrcode | null>(null);
 
-  const { data: classrooms } = useListClassrooms();
-  const { data: todayAttendance, isLoading: attendanceLoading, refetch: refetchAttendance } = useGetTodayAttendance(
+  const { data: classrooms, isError: classroomsError, error: classroomsErr, refetch: refetchClassrooms } = useListClassrooms();
+  const { data: todayAttendance, isLoading: attendanceLoading, isError: attendanceError, error: attendanceErr, refetch: refetchAttendance } = useGetTodayAttendance(
     { classroomId: selectedClassroomId === "all" ? undefined : Number(selectedClassroomId) },
     { query: { queryKey: getGetTodayAttendanceQueryKey({ classroomId: selectedClassroomId === "all" ? undefined : Number(selectedClassroomId) }), refetchInterval: 5000 } }
   );
@@ -457,6 +457,17 @@ export default function AttendancePage() {
               <option value="all">All Classrooms</option>
               {classrooms?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
+            {classroomsError && (
+              <p className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-destructive" role="alert">
+                <span className="inline-flex min-w-0 items-center gap-1">
+                  <AlertTriangle size={11} className="shrink-0" />
+                  <span className="truncate">Failed to load classrooms — {classroomsErr instanceof Error ? classroomsErr.message : "Unknown error"}</span>
+                </span>
+                <button type="button" className="shrink-0 font-semibold underline underline-offset-2" onClick={() => void refetchClassrooms()}>
+                  Retry
+                </button>
+              </p>
+            )}
           </div>
         </div>
 
@@ -728,6 +739,20 @@ export default function AttendancePage() {
               <div className="flex-1 overflow-hidden">
                 {attendanceLoading ? (
                   <FeedSkeletonRow rows={6} />
+                ) : attendanceError ? (
+                  <div
+                    className="gx-empty-tint flex flex-col items-center justify-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-5 py-8 text-center"
+                    role="alert"
+                  >
+                    <AlertTriangle className="w-7 h-7 text-destructive shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-destructive">Failed to load today's records</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{attendanceErr instanceof Error ? attendanceErr.message : "Unknown error"}</p>
+                    </div>
+                    <button type="button" onClick={() => void refetchAttendance()} className="st-badge st-badge-slate px-4 py-2">
+                      Retry
+                    </button>
+                  </div>
                 ) : !todayAttendance?.length ? (
                   <GlowEmpty icon={<Clock size={22} />} title="No records yet" hint="Start scanning to populate the feed." />
                 ) : (

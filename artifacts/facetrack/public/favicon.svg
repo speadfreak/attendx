@@ -1,21 +1,66 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">
-  <rect width="180" height="180" rx="38" fill="#111B2B"/>
-  <circle cx="90" cy="90" r="66" fill="#19283A" stroke="#30435A" stroke-width="2"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="AttendX — verified face-scan attendance">
+  <!--
+    AttendX Phase 7 icon — "verified face scan".
+    Design brief baked into the geometry:
+      - dark slate-950 (#020617) rounded square, full-bleed so `purpose: maskable`
+        launchers can crop it to any shape;
+      - emerald-500 (#10b981) to violet-500 (#8b5cf6) gradient motif carried by
+        the scan slice + corner glows + pulse dot;
+      - white camera-focus bracket frame around a minimal shield silhouette with
+        an emerald check (verified identity at the gate);
+      - a small violet pulse dot (live sensor heartbeat) tucked in the top-right
+        of the frame with a short trailing arc.
+    All critical marks sit inside the W3C maskable safe zone (inner 80%, r=205
+    around the center). The bracket/shield strokes are >=24px so the mark still
+    reads at a 16 px favicon size.
+  -->
+  <defs>
+    <linearGradient id="gx-scan" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#10b981"/>
+      <stop offset="1" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <radialGradient id="gx-depth" cx="0.5" cy="0.42" r="0.78">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#020617"/>
+    </radialGradient>
+    <radialGradient id="gx-glow-emerald" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#10b981" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#10b981" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="gx-glow-violet" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#8b5cf6" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#8b5cf6" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
 
-  <!-- Four registration marks form a compact gate around the face. -->
-  <path d="M54 42H43a7 7 0 0 0-7 7v11M126 42h11a7 7 0 0 1 7 7v11M36 120v11a7 7 0 0 0 7 7h11M144 120v11a7 7 0 0 1-7 7h-11"
-        fill="none" stroke="#FF7048" stroke-width="5" stroke-linecap="round"/>
+  <!-- Full-bleed tile (the generator script squares this off for maskable PNGs) -->
+  <rect id="gx-bg" width="512" height="512" rx="112" fill="url(#gx-depth)"/>
 
-  <!-- Identity silhouette, simplified to stay legible at tab size. -->
-  <path d="M90 49c-18 0-30 13-30 31v12c0 8 3 15 8 21l5 6v9c-12 3-20 9-25 18h84c-5-9-13-15-25-18v-9l5-6c5-6 8-13 8-21V80c0-18-12-31-30-31Z"
-        fill="#F4F0E6"/>
-  <path d="M74 82h5M101 82h5" stroke="#17263A" stroke-width="5" stroke-linecap="round"/>
-  <path d="M82 106c5 4 11 4 16 0" fill="none" stroke="#17263A" stroke-width="4" stroke-linecap="round"/>
+  <g id="gx-art" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- gradient motif: soft corner glows -->
+    <circle cx="170" cy="178" r="152" fill="url(#gx-glow-emerald)" stroke="none"/>
+    <circle cx="362" cy="352" r="152" fill="url(#gx-glow-violet)" stroke="none"/>
 
-  <!-- Live scan beam and verified, deduplicated mark. -->
-  <path d="M47 91h86" stroke="#49E1CF" stroke-width="5" stroke-linecap="round"/>
-  <circle cx="47" cy="91" r="4" fill="#49E1CF"/>
-  <circle cx="133" cy="91" r="4" fill="#49E1CF"/>
-  <circle cx="126" cy="126" r="18" fill="#FF7048" stroke="#19283A" stroke-width="4"/>
-  <path d="m118 126 5 5 11-12" fill="none" stroke="#111B2B" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- face-scan bracket frame (camera focus box) -->
+    <g stroke="#f8fafc" stroke-width="32">
+      <path d="M122 198 V142 a20 20 0 0 1 20-20 H198"/>
+      <path d="M314 122 H370 a20 20 0 0 1 20 20 V198"/>
+      <path d="M390 314 V370 a20 20 0 0 1-20 20 H314"/>
+      <path d="M198 390 H142 a20 20 0 0 1-20-20 V314"/>
+    </g>
+
+    <!-- minimal shield silhouette (identity, verified at the gate) -->
+    <path d="M256 158 L338 190 V266 C338 320 306 352 256 372 C206 352 174 320 174 266 V190 Z"
+          fill="#020617" stroke="#f8fafc" stroke-width="26"/>
+
+    <!-- emerald check -->
+    <path d="M228 266 L252 292 L298 232" stroke="#10b981" stroke-width="30"/>
+
+    <!-- emerald-to-violet scan slice across the shield -->
+    <rect x="186" y="312" width="140" height="10" rx="5" fill="url(#gx-scan)" stroke="none" opacity="0.95"/>
+
+    <!-- violet pulse dot + trailing arc (live sensor heartbeat) -->
+    <circle cx="322" cy="165" r="17" fill="#8b5cf6" stroke="none"/>
+    <path d="M330 140 A26 26 0 0 1 347 160" stroke="#8b5cf6" stroke-width="6" opacity="0.55"/>
+  </g>
 </svg>

@@ -4,7 +4,7 @@ import { GlowCard, SectionTitle, MeshBackground, GlowEmpty } from "@/components/
 import { GlowSkeleton } from "@/components/gx/Skeletons";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { MessageSquare, Save, Loader2, Variable, Eye } from "lucide-react";
+import { MessageSquare, Save, Loader2, Variable, Eye, AlertTriangle } from "lucide-react";
 
 /**
  * SMS TEMPLATE MANAGER — the present/late/absent messages were hardcoded.
@@ -33,10 +33,15 @@ export default function SmsTemplatesPage() {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [previewKey, setPreviewKey] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
-    api.smsTemplates().then(setTemplates).catch(() => {});
-  }, []);
+    setLoadError(null);
+    api.smsTemplates()
+      .then(setTemplates)
+      .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : "Unknown error"));
+  }, [reloadTick]);
 
   const update = (key: keyof Templates, value: string) => {
     setTemplates((prev) => (prev ? { ...prev, [key]: value } : prev));
@@ -97,7 +102,23 @@ export default function SmsTemplatesPage() {
           </div>
         </GlowCard>
 
-        {!templates ? (
+        {loadError && !templates ? (
+          <GlowCard variant="gradient" className="p-5">
+            <div
+              className="gx-empty-tint flex flex-col items-center justify-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-6 py-10 text-center"
+              role="alert"
+            >
+              <AlertTriangle size={26} className="text-destructive shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-destructive">Failed to load SMS templates</p>
+                <p className="mt-1 text-xs text-muted-foreground">{loadError}</p>
+              </div>
+              <button type="button" className="st-badge st-badge-slate px-4 py-2" onClick={() => setReloadTick((t) => t + 1)}>
+                Retry
+              </button>
+            </div>
+          </GlowCard>
+        ) : !templates ? (
           <div className="space-y-3">
             {Array(3).fill(0).map((_, i) => <GlowSkeleton key={i} className="h-32" />)}
           </div>
