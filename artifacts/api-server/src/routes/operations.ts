@@ -21,6 +21,7 @@ import { arrivalRulesFromSettings, resolveArrivalStatus, isPastAbsenceCutoff, lo
 import { findClosestFaceMatchAll } from "../lib/face-matching";
 import { publishEvent } from "../lib/events";
 import { getSmsTemplates } from "../lib/sms-templates";
+import { runAbsentSweep } from "../lib/absent-sweep";
 
 const router = Router();
 const adminId = (req: Request) => (req as Request & { admin?: { adminId: number } }).admin?.adminId;
@@ -453,13 +454,13 @@ router.get("/dashboard/confidence-heatmap", requireAdminLevel, async (_req, res)
 });
 
 // ── End-of-day absent sweep: wire the absent SMS template in ────
+// The engine now lives in lib/absent-sweep.ts and ALSO runs automatically
+// (cron + job worker + dashboard trigger) — this manual route keeps its
+// original API shape and force semantics.
 router.post("/attendance/absent-sweep", requireAdminLevel, async (req, res): Promise<void> => {
   const rules = arrivalRulesFromSettings(await getSystemSettings());
   const now = new Date();
 
-  // Phase 4: the sweep only fires once local time passes absenceCutoffTime —
-  // "no record yet" before that point is NOT an absence. force bypasses the
-  // guard for end-of-day manual runs.
   const force = req.body?.force === true;
   if (!force && !isPastAbsenceCutoff(now, rules)) {
     res.status(409).json({
@@ -470,39 +471,8 @@ router.post("/attendance/absent-sweep", requireAdminLevel, async (req, res): Pro
     return;
   }
 
-  const { startUtc: todayStart, endUtc: todayEnd } = localDayBounds(now, rules.timezone);
-
-  const allStudents = await db.select({ id: studentsTable.id, name: studentsTable.name, classroomId: studentsTable.classroomId }).from(studentsTable);
-  const presentToday = await db
-    .select({ studentId: attendanceLogsTable.studentId })
-    .from(attendanceLogsTable)
-    .where(and(gte(attendanceLogsTable.markedAt, todayStart), lte(attendanceLogsTable.markedAt, todayEnd)));
-  const presentSet = new Set(presentToday.map((p) => p.studentId));
-  const missing = allStudents.filter((s) => !presentSet.has(s.id));
-
-  let smsQueued = 0;
-  for (const student of missing) {
-    const [log] = await db.insert(attendanceLogsTable).values({
-      studentId: student.id,
-      classroomId: student.classroomId,
-      status: "absent",
-      method: "manual",
-      source: "manual",
-      notes: "absent sweep",
-    }).returning();
-    await enqueueAttendanceSms(student.id, "absent", log.markedAt);
-    smsQueued++;
-    publishEvent("attendance.created", { studentId: student.id, studentName: student.name, status: "absent", method: "manual" });
-    await writeAudit({
-      actorAdminId: adminId(req),
-      action: "attendance.absent_sweep.marked",
-      targetType: "attendance",
-      targetId: log.id,
-      payload: { studentId: student.id },
-    });
-  }
-
-  res.json({ markedAbsent: missing.length, smsQueued, students: missing.map((m) => ({ id: m.id, name: m.name })) });
+  const result = await runAbsentSweep({ force, actorAdminId: adminId(req) });
+  res.json({ markedAbsent: result.markedAbsent, smsQueued: result.smsQueued, students: result.students });
 });
 
 // ── SMS template management ─────────────────────────────────────

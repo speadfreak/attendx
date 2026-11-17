@@ -13,6 +13,7 @@ export interface LiveEvent {
     | "attendance.created"
     | "attendance.updated"
     | "attendance.checkout"
+    | "attendance.absent_sweep"
     | "pi.heartbeat"
     | "device.heartbeat"
     | "device.command"

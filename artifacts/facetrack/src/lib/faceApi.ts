@@ -2,6 +2,15 @@ import * as faceapi from "@vladmandic/face-api";
 
 const MODEL_URL = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.14/model";
 
+/**
+ * Accuracy tuning (raised from inputSize 224 / threshold 0.4): 320 gives the
+ * tiny detector substantially better small-face recall at gate distance while
+ * staying real-time on phone CPUs; 0.3 keeps distant/profiled faces in play —
+ * the server-side matcher still gates identity on descriptor distance.
+ */
+export const DETECTOR_INPUT_SIZE = 320;
+export const DETECTOR_SCORE_THRESHOLD = 0.3;
+
 let modelsLoaded = false;
 let loading = false;
 let loadError: string | null = null;
@@ -56,19 +65,58 @@ export async function loadModels(): Promise<void> {
   }
 }
 
+export interface FaceDetectionDetail {
+  descriptor: Float32Array;
+  /** Face rect in SOURCE pixel coordinates of the input element. */
+  box: { x: number; y: number; width: number; height: number };
+  /** Detector confidence 0..1. */
+  score: number;
+}
+
+export function detectorOptions(): faceapi.TinyFaceDetectorOptions {
+  return new faceapi.TinyFaceDetectorOptions({
+    inputSize: DETECTOR_INPUT_SIZE,
+    scoreThreshold: DETECTOR_SCORE_THRESHOLD,
+  });
+}
+
+/**
+ * Detect ALL faces with boxes + descriptors — feeds both the server matcher
+ * (best/largest descriptor) and the HUD overlay (real boxes per face).
+ */
+export async function detectFacesDetailed(
+  source: HTMLVideoElement | HTMLCanvasElement | HTMLImageElement,
+): Promise<FaceDetectionDetail[]> {
+  if (!modelsLoaded) await loadModels();
+
+  const detections = await faceapi
+    .detectAllFaces(source, detectorOptions())
+    .withFaceLandmarks(true)
+    .withFaceDescriptors();
+
+  return detections.map((d) => ({
+    descriptor: d.descriptor,
+    box: {
+      x: d.detection.box.x,
+      y: d.detection.box.y,
+      width: d.detection.box.width,
+      height: d.detection.box.height,
+    },
+    score: d.detection.score,
+  }));
+}
+
+/** Largest face in frame (closest to the camera) — the canonical match input. */
+export function pickPrimaryFace(faces: FaceDetectionDetail[]): FaceDetectionDetail | null {
+  if (faces.length === 0) return null;
+  return faces.reduce((best, f) => (f.box.width * f.box.height > best.box.width * best.box.height ? f : best), faces[0]);
+}
+
 export async function extractDescriptor(
   source: HTMLVideoElement | HTMLCanvasElement | HTMLImageElement
 ): Promise<Float32Array | null> {
-  if (!modelsLoaded) await loadModels();
-
-  const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 });
-
-  const detection = await faceapi
-    .detectSingleFace(source, options)
-    .withFaceLandmarks(true)
-    .withFaceDescriptor();
-
-  return detection?.descriptor ?? null;
+  const faces = await detectFacesDetailed(source);
+  return faces.length > 0 ? faces[0].descriptor : null;
 }
 
 export function getLoadStatus(): LoadStatus {

@@ -685,8 +685,46 @@ export interface GateUpsertInput {
   terminalIds?: string[];
 }
 
-// ── Camera network devices (Phase 7) ─────────────────────────────
+// ── Campus command center (dashboard) ────────────────────────────
 
+/** One GET /dashboard/command-center snapshot — the whole command wall. */
+export interface CommandCenterSnapshot {
+  stats: {
+    totalStudents: number;
+    totalClassrooms: number;
+    presentToday: number;
+    absentToday: number;
+    lateToday: number;
+    attendanceRate: number;
+    smsSentToday: number;
+  };
+  occupancy: { inside: number; checkedOut: number };
+  arrivals: Array<{ hour: string; present: number; late: number }>;
+  devices: {
+    total: number;
+    online: number;
+    phones: number;
+    phonesOnline: number;
+    pi: number;
+    degraded: number;
+  };
+  reviewsPending: number;
+  sms: { sentToday: number; failedToday: number; queued: number };
+  classrooms: Array<{
+    classroomId: number;
+    classroomName: string;
+    totalStudents: number;
+    presentCount: number;
+    absentCount: number;
+    lateCount: number;
+    attendanceRate: number;
+  }>;
+  lastAbsentMark: string | null;
+  timezone: string;
+  serverTime: string;
+}
+
+// ── Camera network devices (Phase 7) ─────────────────────────────
 /**
  * One row of GET /devices — mirrors the camera-device serializer.
  * `online` = heartbeat ≤30s; status: discovered/connected/running_task/degraded/offline;
@@ -756,6 +794,7 @@ export const api = {
   occupancy: () => get<Occupancy>("/dashboard/occupancy"),
   trend: (range: "today" | "week" | "month") =>
     get<Array<{ date: string; present: number; absent: number; late: number }>>(`/dashboard/attendance-trend?range=${range}`),
+  commandCenter: () => get<CommandCenterSnapshot>("/dashboard/command-center"),
 
   seats: (classroomId: number) => get<SeatRow[]>(`/classrooms/${classroomId}/seats`),
   saveSeats: (classroomId: number, seats: Array<{ seatLabel: string; rowIdx: number; colIdx: number; studentId: number | null }>) =>

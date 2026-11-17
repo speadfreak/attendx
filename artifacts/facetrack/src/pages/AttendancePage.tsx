@@ -5,6 +5,7 @@ import {
   useCreateAttendance,
   getGetTodayAttendanceQueryKey,
 } from "@workspace/api-client-react";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { GlowCard, SectionTitle, StatusBadge, StatusDot, MeshBackground, GlowEmpty } from "@/components/gx/Primitives";
 import { FeedSkeletonRow, GlowSkeleton } from "@/components/gx/Skeletons";
@@ -17,42 +18,21 @@ import { Html5Qrcode } from "html5-qrcode";
 import {
   Camera, ScanFace, QrCode, Keyboard, Loader2, CheckCircle2, XCircle, AlertTriangle,
   Clock, Brain, Activity, Gauge, Layers, RefreshCw, Zap, Video, MapPin, SwitchCamera,
+  Radio, Smartphone, Wifi, WifiOff, BatteryMedium, MessageSquare,
 } from "lucide-react";
 import { format } from "date-fns";
-import { loadModels, extractDescriptor, onLoadStatusChange, type LoadStatus } from "@/lib/faceApi";
-
-// ── Audio ───────────────────────────────────────────────
-function playSuccessSound() {
-  try {
-    const ctx = new AudioContext();
-    const o = ctx.createOscillator(); const g = ctx.createGain();
-    o.connect(g); g.connect(ctx.destination);
-    o.type = "sine";
-    o.frequency.setValueAtTime(880, ctx.currentTime);
-    o.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.15);
-    g.gain.setValueAtTime(0.25, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
-    o.start(); o.stop(ctx.currentTime + 0.45);
-    setTimeout(() => ctx.close(), 700);
-  } catch (_) {}
-}
-
-function playErrorSound() {
-  try {
-    const ctx = new AudioContext();
-    const o = ctx.createOscillator(); const g = ctx.createGain();
-    o.connect(g); g.connect(ctx.destination);
-    o.type = "sawtooth";
-    o.frequency.setValueAtTime(300, ctx.currentTime);
-    o.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.35);
-    g.gain.setValueAtTime(0.2, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-    o.start(); o.stop(ctx.currentTime + 0.4);
-    setTimeout(() => ctx.close(), 600);
-  } catch (_) {}
-}
+import {
+  loadModels, onLoadStatusChange, pickPrimaryFace,
+  detectFacesDetailed, type FaceDetectionDetail, type LoadStatus,
+} from "@/lib/faceApi";
+import { drawFaceHud, type HudFace, type HudLabel } from "@/lib/face/hud";
+import { playMarked, playDuplicate, playUnknown, playPing, primeAudio, isMuted, setMuted } from "@/lib/audio/feedback";
 
 const BASE = import.meta.env.BASE_URL ?? "/";
+/** Detection cadence — sub-second for responsive lock-on without melting the CPU. */
+const DETECT_INTERVAL_MS = 800;
+/** A server verdict stays painted on the HUD for this long. */
+const RESULT_TTL_MS = 5000;
 
 interface FaceMatchResponse {
   studentId?: number;
@@ -68,21 +48,40 @@ interface FaceMatchResponse {
   candidates?: Array<{ studentId: number; name: string; confidence: number }>;
 }
 
-/** One camera tile: video + overlay canvas + FPS telemetry. */
+interface NodeRowLite {
+  id: string;
+  name: string;
+  deviceType: string;
+  mode: string;
+  online: boolean;
+  status: string;
+  healthStatus: string;
+  assignedGateId: string | null;
+  fps: number | null;
+  batteryLevel: number | null;
+}
+
+/** One camera tile: video + HUD overlay canvas + live face state. */
 function CameraTile({
-  deviceLabel, deviceId, scanning, onCapture, frameStat, facing = "user",
+  deviceLabel, deviceId, scanning, onDetect, frameStat, facing = "user",
 }: {
   deviceLabel: string;
   deviceId: string;
   scanning: boolean;
-  onCapture: (video: HTMLVideoElement, canvas: HTMLCanvasElement) => void;
+  /** Parent runs the server match; returns the verdict for HUD painting. */
+  onDetect: (video: HTMLVideoElement, faces: FaceDetectionDetail[], key: string) => Promise<FaceMatchResponse | null>;
   frameStat: { fps: number; frames: number; last: FaceMatchResponse | null };
   facing?: "user" | "environment";
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const hudRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const facesRef = useRef<FaceDetectionDetail[]>([]);
+  const resultRef = useRef<{ res: FaceMatchResponse | null; at: number; boxIndex: number } | null>(null);
+  const detectLoopRef = useRef(false);
   const [ready, setReady] = useState(false);
+  const [liveState, setLiveState] = useState<"no-face" | "scanning" | "matched">("no-face");
+  const [facesInView, setFacesInView] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,65 +106,96 @@ function CameraTile({
     };
   }, [deviceId, facing]);
 
-  // Detection loop
+  // ── detection loop: real face boxes + server match ──
+  useEffect(() => {
+    if (!scanning || !ready) {
+      facesRef.current = [];
+      resultRef.current = null;
+      setLiveState("no-face");
+      setFacesInView(0);
+      return;
+    }
+    let stopped = false;
+    detectLoopRef.current = true;
+    const tick = async () => {
+      if (stopped) return;
+      const video = videoRef.current;
+      if (video && video.readyState >= 2 && !document.hidden) {
+        try {
+          const faces = await detectFacesDetailed(video);
+          facesRef.current = faces;
+          setFacesInView(faces.length);
+          if (faces.length > 0) {
+            const key = deviceId === "default" ? "default" : deviceId;
+            const res = await onDetect(video, faces, key);
+            // null can mean "no verdict yet (probe in flight)" — never wipe a
+            // still-fresh verdict in that case, or the HUD label would flicker.
+            const stale = !resultRef.current || Date.now() - resultRef.current.at > RESULT_TTL_MS;
+            if (res || stale) {
+              resultRef.current = { res, at: Date.now(), boxIndex: 0 };
+            }
+          }
+        } catch {
+          /* detector hiccup — skip frame */
+        }
+      } else if (video && video.readyState < 2) {
+        facesRef.current = [];
+      }
+      if (!stopped) window.setTimeout(() => void tick(), DETECT_INTERVAL_MS);
+    };
+    void tick();
+    return () => {
+      stopped = true;
+      detectLoopRef.current = false;
+    };
+  }, [scanning, ready, onDetect, deviceId]);
+
+  // ── HUD render loop (smooth animations at display refresh) ──
   useEffect(() => {
     if (!scanning || !ready) return;
-    let stopped = false;
-    const loop = () => {
-      if (stopped) return;
-      if (videoRef.current && canvasRef.current && videoRef.current.readyState >= 2) {
-        onCapture(videoRef.current, canvasRef.current);
+    let raf = 0;
+    const render = () => {
+      const canvas = hudRef.current;
+      const video = videoRef.current;
+      if (canvas && video) {
+        const now = Date.now();
+        const faces = facesRef.current;
+        const fresh = resultRef.current && now - resultRef.current.at < RESULT_TTL_MS ? resultRef.current : null;
+        const hudFaces: HudFace[] = faces.map((f) => ({ box: f.box, score: f.score }));
+        const labels: HudLabel[] = [];
+        if (fresh?.res) {
+          const r = fresh.res;
+          const primary = faces[fresh.boxIndex] ?? faces[0];
+          if (r.studentId && primary) {
+            const tone = r.sentToReview || r.alreadyMarked ? "amber" : (r.confidence ?? 0) >= 0.72 ? "green" : "amber";
+            labels.push({
+              box: primary.box,
+              title: r.studentName ?? "MATCH",
+              sub: `${((r.confidence ?? 0) * 100).toFixed(0)}%${r.expectedSeat ? ` · seat ${r.expectedSeat}` : ""}${r.alreadyMarked ? " · ALREADY IN" : r.sentToReview ? " · REVIEW" : ""}`,
+              tone,
+            });
+          } else if (primary) {
+            labels.push({ box: primary.box, title: "UNRECOGNIZED", sub: "no DB match", tone: "red" });
+          }
+        }
+        const state: "no-face" | "scanning" | "matched" = faces.length === 0 ? "no-face" : labels.length > 0 ? "matched" : "scanning";
+        drawFaceHud(canvas, {
+          videoW: video.videoWidth,
+          videoH: video.videoHeight,
+          faces: hudFaces,
+          labels,
+          noFace: faces.length === 0,
+          scanning: faces.length > 0 && labels.length === 0,
+          now,
+        });
+        // throttle React state churn — HUD itself is canvas-driven
+        setLiveState((s) => (s === state ? s : state));
       }
-      setTimeout(loop, 1500);
+      raf = requestAnimationFrame(render);
     };
-    loop();
-    return () => { stopped = true; };
-  }, [scanning, ready, onCapture]);
-
-  const drawResult = (r: FaceMatchResponse | null) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    // clear overlay
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (!r || !r.studentName) return;
-    const good = (r.confidence ?? 0) >= 0.72;
-    const tone = good ? "34,197,94" : (r.confidence ?? 0) >= 0.3 ? "245,158,11" : "239,68,68";
-    // rounded box, centered (we don't run local detection when server matched;
-    // show HUD card instead of a box since the descriptor came from the frame center)
-    const w = Math.min(canvas.width * 0.42, 260);
-    const h = w * 1.15;
-    const x = (canvas.width - w) / 2;
-    const y = (canvas.height - h) / 2 - canvas.height * 0.06;
-    ctx.strokeStyle = `rgba(${tone},0.9)`;
-    ctx.lineWidth = 3;
-    ctx.shadowColor = `rgba(${tone},0.8)`;
-    ctx.shadowBlur = 12;
-    ctx.beginPath();
-    // corner brackets
-    const c = 22;
-    ctx.moveTo(x, y + c); ctx.lineTo(x, y); ctx.lineTo(x + c, y);
-    ctx.moveTo(x + w - c, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + c);
-    ctx.moveTo(x + w, y + h - c); ctx.lineTo(x + w, y + h); ctx.lineTo(x + w - c, y + h);
-    ctx.moveTo(x + c, y + h); ctx.lineTo(x, y + h); ctx.lineTo(x, y + h - c);
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-    // name + confidence plate
-    const plate = `${r.studentName} ${(r.confidence! * 100).toFixed(0)}%${r.expectedSeat ? ` · seat ${r.expectedSeat}` : ""}`;
-    ctx.font = "600 13px 'Inter', sans-serif";
-    const textW = ctx.measureText(plate).width + 16;
-    const plateH = 24;
-    const plateY = y + h + 8;
-    ctx.fillStyle = `rgba(${tone},0.85)`;
-    ctx.beginPath();
-    ctx.roundRect(x + w / 2 - textW / 2, plateY, textW, plateH, 6);
-    ctx.fill();
-    ctx.fillStyle = "#050208";
-    ctx.fillText(plate, x + w / 2 - textW / 2 + 8, plateY + 16);
-  };
-
-  useEffect(() => { drawResult(frameStat.last); }, [frameStat.last]);
+    raf = requestAnimationFrame(render);
+    return () => cancelAnimationFrame(raf);
+  }, [scanning, ready]);
 
   return (
     <div className="gx-card overflow-hidden">
@@ -176,7 +206,7 @@ function CameraTile({
           className="w-full h-full object-cover"
           onCanPlay={() => setReady(true)}
         />
-        <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
+        <canvas ref={hudRef} className="absolute inset-0 w-full h-full pointer-events-none" />
         {!ready && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/90">
             <Loader2 className="w-6 h-6 animate-spin text-purple-400" />
@@ -194,6 +224,26 @@ function CameraTile({
               <span className="text-[9px] font-mono text-emerald-300">{frameStat.fps.toFixed(1)} fps</span>
               <span className="text-[9px] font-mono text-white/35">· {frameStat.frames} frames</span>
             </div>
+            {scanning && (
+              <div
+                className={`rounded-full px-2 py-0.5 flex items-center gap-1.5 border ${
+                  liveState === "matched"
+                    ? "border-emerald-400/40 bg-emerald-500/20"
+                    : liveState === "scanning"
+                      ? "border-violet-400/40 bg-violet-500/20"
+                      : "border-white/20 bg-black/70"
+                }`}
+                aria-live="polite"
+              >
+                {liveState === "matched" ? (
+                  <><ScanFace size={10} className="text-emerald-300" /><span className="text-[9px] font-mono text-emerald-200">FACE LOCKED · {facesInView} in view</span></>
+                ) : liveState === "scanning" ? (
+                  <><Activity size={10} className="text-violet-300 animate-pulse" /><span className="text-[9px] font-mono text-violet-200">SCANNING · {facesInView} in view</span></>
+                ) : (
+                  <><XCircle size={10} className="text-white/50" /><span className="text-[9px] font-mono text-white/60">NO FACE DETECTED</span></>
+                )}
+              </div>
+            )}
           </div>
         )}
         {frameStat.last && (
@@ -221,6 +271,110 @@ function CameraTile({
   );
 }
 
+/** Live strip of paired gate camera nodes — proves the Active Scan console and
+ *  the phone camera-node fleet are one live system. */
+function GateNodesStrip() {
+  const { status: liveStatus } = useLiveEvents();
+  const { data: devices } = useQuery({
+    queryKey: ["camera-network"],
+    queryFn: api.devices,
+    refetchInterval: 15000,
+  });
+  const nodes: NodeRowLite[] = (devices ?? [])
+    .filter((d) => d.deviceType === "phone" || d.deviceType === "pi")
+    .slice(0, 6);
+  const onlineCount = nodes.filter((n) => n.online).length;
+
+  if (nodes.length === 0) return null;
+
+  return (
+    <GlowCard variant="gradient" className="p-3">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <StatusDot tone={onlineCount > 0 ? "green" : "red"} pulse={onlineCount > 0} />
+          <span className="text-[10px] uppercase tracking-widest text-foreground/40">
+            gate camera nodes · <span className="text-emerald-400">{onlineCount}/{nodes.length} live</span>
+          </span>
+        </div>
+        <span
+          className={`st-badge ${liveStatus === "live" ? "st-badge-green" : "st-badge-amber"}`}
+          title={liveStatus === "live" ? "SSE push connected — scans stream in instantly" : "Fallback polling mode"}
+        >
+          <Radio size={9} /> {liveStatus === "live" ? "REALTIME PUSH" : liveStatus === "polling" ? "POLL SYNC" : "CONNECTING"}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        {nodes.map((n) => (
+          <div
+            key={n.id}
+            className={`rounded-lg border px-2.5 py-2 flex flex-col gap-1 transition-colors ${
+              n.online ? "border-emerald-400/25 bg-emerald-500/5" : "border-foreground/10 bg-foreground/5"
+            }`}
+          >
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Smartphone size={11} className={n.online ? "text-emerald-400 shrink-0" : "text-foreground/30 shrink-0"} />
+              <span className="text-[11px] font-medium text-foreground/75 truncate">{n.name}</span>
+              <span
+                className={`ml-auto w-1.5 h-1.5 rounded-full shrink-0 ${n.online ? "bg-emerald-400 animate-pulse" : "bg-red-400"}`}
+                aria-label={n.online ? "online" : "offline"}
+              />
+            </div>
+            <div className="flex items-center gap-1.5 text-[9px] font-mono text-foreground/40 flex-wrap">
+              <span className={n.mode === "face" ? "text-violet-300" : "text-emerald-300"}>{n.mode.toUpperCase()}</span>
+              {n.assignedGateId && <span>· gate {n.assignedGateId}</span>}
+              {n.online && n.fps != null && <span>· {n.fps.toFixed(1)}fps</span>}
+              {n.batteryLevel != null && (
+                <span className="flex items-center gap-0.5"><BatteryMedium size={9} />{n.batteryLevel}%</span>
+              )}
+              {n.online ? (
+                n.healthStatus === "ok" ? <Wifi size={9} className="text-emerald-400" /> : <AlertTriangle size={9} className="text-amber-400" />
+              ) : (
+                <WifiOff size={9} className="text-red-400" />
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </GlowCard>
+  );
+}
+
+/** Live event ticker — every scan/SMS/command event, pushed via SSE. */
+function LiveEventTicker() {
+  const { events } = useLiveEvents();
+  const recent = events.slice(0, 6);
+  if (recent.length === 0) return null;
+  return (
+    <div className="space-y-1">
+      <AnimatePresence initial={false}>
+        {recent.map((ev, i) => {
+          const icon =
+            ev.type === "attendance.created" ? <CheckCircle2 size={10} className="text-emerald-400" /> :
+            ev.type === "sms.sent" ? <MessageSquare size={10} className="text-amber-400" /> :
+            ev.type === "device.heartbeat" ? <Radio size={10} className="text-violet-400" /> :
+            ev.type === "qr.scan" ? <Camera size={10} className="text-cyan-400" /> :
+            <Zap size={10} className="text-foreground/40" />;
+          const name = typeof ev.payload?.studentName === "string" ? ev.payload.studentName : "";
+          const status = typeof ev.payload?.status === "string" ? ev.payload.status : "";
+          return (
+            <motion.div
+              key={`${ev.at}-${ev.type}-${i}`}
+              initial={{ opacity: 0, x: -6 }}
+              animate={{ opacity: i === 0 ? 1 : 0.55, x: 0 }}
+              exit={{ opacity: 0 }}
+              className="flex items-center gap-2 px-2 py-1 rounded-md bg-foreground/5 border border-foreground/10 text-[10px]"
+            >
+              {icon}
+              <span className="font-mono text-foreground/40">{format(new Date(ev.at), "HH:mm:ss")}</span>
+              <span className="text-foreground/60 truncate">{ev.type}{name ? ` · ${name}` : ""}{status ? ` (${status})` : ""}</span>
+            </motion.div>
+          );
+        })}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export default function AttendancePage() {
   const { toast } = useToast();
   const { lastEvent } = useLiveEvents();
@@ -239,6 +393,7 @@ export default function AttendancePage() {
   const [qrScanning, setQrScanning] = useState(false);
   const [manualStudentId, setManualStudentId] = useState("");
   const [manualStatus, setManualStatus] = useState("present");
+  const [muted, setMutedState] = useState(isMuted());
 
   const processingRef = useRef<Record<string, boolean>>({});
   const fpsTracker = useRef<Record<string, { times: number[] }>>({});
@@ -285,38 +440,35 @@ export default function AttendancePage() {
     });
   };
 
-  // ── Core face capture (per camera tile) ──
-  const doCapture = useCallback(async (video: HTMLVideoElement, canvas: HTMLCanvasElement) => {
-    const key = video.srcObject && (video.srcObject as MediaStream).id ? (video.srcObject as MediaStream).id : String(video.videoWidth);
-    if (processingRef.current[key]) return;
-    if (modelStatus !== "ready") return;
-    processingRef.current[key] = true;
+  // ── Core detection handler: real boxes in, server match out, loud cue out ──
+  const handleDetection = useCallback(async (
+    video: HTMLVideoElement,
+    faces: FaceDetectionDetail[],
+    key: string,
+  ): Promise<FaceMatchResponse | null> => {
+    // Detection itself ran in the tile before this call; estimate its budget
+    // (~detector ms + server round-trip allowance) for the fps readout.
+    const dt = 220;
+    fpsTracker.current[key] = fpsTracker.current[key] ?? { times: [] };
+    const times = fpsTracker.current[key].times;
+    times.push(dt);
+    if (times.length > 12) times.shift();
+    const avgMs = times.reduce((a, b) => a + b, 0) / times.length;
+    const fps = 1000 / Math.max(avgMs + 700, 1);
 
-    // size canvas to video
-    if (canvas.width !== video.videoWidth && video.videoWidth) {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+    if (faces.length === 0) {
+      setGridStat((prev) => ({ ...prev, [key]: { fps, frames: (prev[key]?.frames ?? 0) + 1, last: prev[key]?.last ?? null } }));
+      return null;
     }
-    const t0 = performance.now();
+    if (processingRef.current[key]) return null;
+    processingRef.current[key] = true;
+    setFramesTotal((n) => n + 1);
 
     try {
-      const descriptor = await extractDescriptor(video);
-      const dt = performance.now() - t0;
-      fpsTracker.current[key] = fpsTracker.current[key] ?? { times: [] };
-      const times = fpsTracker.current[key].times;
-      times.push(dt);
-      if (times.length > 12) times.shift();
-      const avgMs = times.reduce((a, b) => a + b, 0) / times.length;
-      const fps = 1000 / Math.max(avgMs + 800, 1);
-      setFramesTotal((n) => n + 1);
-
-      if (!descriptor) {
-        setGridStat((prev) => ({ ...prev, [key]: { fps, frames: (prev[key]?.frames ?? 0) + 1, last: prev[key]?.last ?? null } }));
-        return;
-      }
-
+      const primary = pickPrimaryFace(faces);
+      if (!primary) return null;
       const classId = selectedClassroomId === "all" ? undefined : Number(selectedClassroomId);
-      const body: Record<string, unknown> = { faceDescriptor: Array.from(descriptor) };
+      const body: Record<string, unknown> = { faceDescriptor: Array.from(primary.descriptor) };
       if (classId) body.classroomId = classId;
 
       const res = await fetch(`${BASE}api/face/recognize`, {
@@ -336,28 +488,31 @@ export default function AttendancePage() {
       }));
 
       if (!res.ok) {
-        playErrorSound();
-        return;
+        playUnknown();
+        return result;
       }
 
       setScanResult(result);
 
       if (data.sentToReview) {
-        playErrorSound();
+        playDuplicate();
         toast({ title: "Sent to review queue", description: data.message, variant: "destructive" });
       } else if (data.alreadyMarked) {
-        playErrorSound();
-      } else {
-        playSuccessSound();
+        playDuplicate();
+      } else if (data.studentId) {
+        playMarked();
         void refetchAttendance();
         void enumerateCameras();
+      } else {
+        playUnknown();
       }
+      return result;
     } catch {
-      /* frame skipped */
+      return null;
     } finally {
       processingRef.current[key] = false;
     }
-  }, [modelStatus, selectedClassroomId, refetchAttendance, toast, enumerateCameras]);
+  }, [selectedClassroomId, refetchAttendance, toast, enumerateCameras]);
 
   // Auto reset scan result banner
   useEffect(() => {
@@ -369,6 +524,7 @@ export default function AttendancePage() {
   // ── QR scanner ──
   const startQr = useCallback(async () => {
     setQrScanning(true);
+    primeAudio();
     try {
       const scanner = new Html5Qrcode("qr-live-region", { verbose: false });
       qrScannerRef.current = scanner;
@@ -384,18 +540,18 @@ export default function AttendancePage() {
           try {
             const data = await api.qrScan(decoded, "web");
             if (data.result === "valid" && !data.alreadyMarked) {
-              playSuccessSound();
+              playMarked();
               toast({ title: "QR check-in", description: data.message });
             } else if (data.alreadyMarked) {
-              playErrorSound();
+              playDuplicate();
               toast({ title: "Already checked in", description: data.message });
             } else {
-              playErrorSound();
+              playUnknown();
               toast({ title: "Badge rejected", description: data.message, variant: "destructive" });
             }
             void refetchAttendance();
           } catch (e: any) {
-            playErrorSound();
+            playUnknown();
             toast({ title: "Badge rejected", description: e.message, variant: "destructive" });
           }
         },
@@ -424,8 +580,8 @@ export default function AttendancePage() {
     createAttendance.mutate(
       { data: { studentId: Number(manualStudentId), classroomId: selectedClassroomId === "all" ? undefined : Number(selectedClassroomId), status: manualStatus, method: "manual" } },
       {
-        onSuccess: () => { refetchAttendance(); toast({ title: "Attendance marked" }); setManualStudentId(""); },
-        onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+        onSuccess: () => { refetchAttendance(); playMarked(); toast({ title: "Attendance marked" }); setManualStudentId(""); },
+        onError: (e: any) => { playUnknown(); toast({ title: "Failed", description: e.message, variant: "destructive" }); },
       }
     );
   };
@@ -445,31 +601,40 @@ export default function AttendancePage() {
       <MeshBackground />
       <div className="relative z-10 space-y-4">
         <div className="gx-page-header flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <SectionTitle className="gx-title-gradient" sub="REALTIME AI FACE + QR ATTENDANCE">
+          <SectionTitle className="gx-title-gradient" sub="REALTIME AI FACE + QR ATTENDANCE · LIVE NODE SYNC">
             ACTIVE SCAN
           </SectionTitle>
-          <div className="w-full sm:w-56">
+          <div className="flex items-center gap-2 w-full sm:w-56">
             <select
               value={selectedClassroomId}
               onChange={(e) => setSelectedClassroomId(e.target.value)}
-              className="w-full bg-muted border border-purple-500/15 rounded-lg px-3 py-2 text-sm text-foreground/70 focus:outline-none focus:border-purple-500/45"
+              className="flex-1 bg-muted border border-purple-500/15 rounded-lg px-3 py-2 text-sm text-foreground/70 focus:outline-none focus:border-purple-500/45"
             >
               <option value="all">All Classrooms</option>
               {classrooms?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-            {classroomsError && (
-              <p className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-destructive" role="alert">
-                <span className="inline-flex min-w-0 items-center gap-1">
-                  <AlertTriangle size={11} className="shrink-0" />
-                  <span className="truncate">Failed to load classrooms — {classroomsErr instanceof Error ? classroomsErr.message : "Unknown error"}</span>
-                </span>
-                <button type="button" className="shrink-0 font-semibold underline underline-offset-2" onClick={() => void refetchClassrooms()}>
-                  Retry
-                </button>
-              </p>
-            )}
+            <button
+              onClick={() => { const next = !muted; setMuted(next); setMutedState(next); if (!next) playPing(); }}
+              className={`st-badge shrink-0 ${muted ? "st-badge-red" : "st-badge-green"}`}
+              title={muted ? "Unmute scan feedback" : "Mute scan feedback"}
+            >
+              {muted ? "MUTED" : "SOUND ON"}
+            </button>
           </div>
+          {classroomsError && (
+            <p className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-destructive" role="alert">
+              <span className="inline-flex min-w-0 items-center gap-1">
+                <AlertTriangle size={11} className="shrink-0" />
+                <span className="truncate">Failed to load classrooms — {classroomsErr instanceof Error ? classroomsErr.message : "Unknown error"}</span>
+              </span>
+              <button type="button" className="shrink-0 font-semibold underline underline-offset-2" onClick={() => void refetchClassrooms()}>
+                Retry
+              </button>
+            </p>
+          )}
         </div>
+
+        <GateNodesStrip />
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* LEFT: tabs + camera grid */}
@@ -505,7 +670,7 @@ export default function AttendancePage() {
                   <Layers size={13} className="text-purple-400" />
                   <span className="text-[10px] uppercase tracking-widest text-foreground/35">cameras</span>
                   <button
-                    onClick={() => toggleCam("default")}
+                    onClick={() => { primeAudio(); toggleCam("default"); }}
                     className={`st-badge ${activeCams.includes("default") ? "st-badge-purple" : "st-badge-slate"}`}
                   >
                     primary
@@ -522,7 +687,7 @@ export default function AttendancePage() {
                   {cameras.filter((c) => c.deviceId && c.deviceId !== "default").slice(0, 3).map((c) => (
                     <button
                       key={c.deviceId}
-                      onClick={() => toggleCam(c.deviceId)}
+                      onClick={() => { primeAudio(); toggleCam(c.deviceId); }}
                       className={`st-badge ${activeCams.includes(c.deviceId) ? "st-badge-purple" : "st-badge-slate"}`}
                       title={c.label}
                     >
@@ -534,7 +699,7 @@ export default function AttendancePage() {
                   </button>
                   <div className="ml-auto flex items-center gap-2">
                     <button
-                      onClick={() => setAutoMode(true)}
+                      onClick={() => { primeAudio(); setAutoMode(true); }}
                       className={`st-badge ${autoMode ? "st-badge-green" : "st-badge-slate"}`}
                     >
                       <Zap size={10} /> AUTO
@@ -559,7 +724,7 @@ export default function AttendancePage() {
                         deviceId={deviceId}
                         deviceLabel={cam?.label ?? "Primary camera"}
                         scanning={autoMode || modelStatus === "ready"}
-                        onCapture={autoMode ? doCapture : () => {}}
+                        onDetect={handleDetection}
                         frameStat={stat}
                         facing={primaryFacing}
                       />
@@ -571,14 +736,10 @@ export default function AttendancePage() {
                 {!autoMode && (
                   <button
                     className="gx-btn-accent gx-gradient-pan py-3 rounded-xl text-sm font-semibold text-white transition-all"
-                    onClick={() => {
-                      const first = document.querySelector<HTMLVideoElement>("video");
-                      const cv = document.querySelector<HTMLCanvasElement>("canvas");
-                      if (first && cv) void doCapture(first, cv);
-                    }}
+                    onClick={() => { primeAudio(); setAutoMode(true); }}
                     disabled={modelStatus !== "ready"}
                   >
-                    <ScanFace size={14} className="inline mr-2" /> Scan now
+                    <ScanFace size={14} className="inline mr-2" /> Enable live auto-scan
                   </button>
                 )}
 
@@ -658,8 +819,9 @@ export default function AttendancePage() {
                         if (!qrCode.trim()) return;
                         try {
                           const data = await api.qrScan(qrCode.trim(), "web");
-                          if (data.result === "valid" && !data.alreadyMarked) playSuccessSound();
-                          else playErrorSound();
+                          if (data.result === "valid" && !data.alreadyMarked) playMarked();
+                          else if (data.alreadyMarked) playDuplicate();
+                          else playUnknown();
                           toast({
                             title: data.alreadyMarked ? "Already checked in" : data.result === "valid" ? "QR check-in" : "Badge rejected",
                             description: data.message,
@@ -668,7 +830,7 @@ export default function AttendancePage() {
                           setQrCode("");
                           void refetchAttendance();
                         } catch (e: any) {
-                          playErrorSound();
+                          playUnknown();
                           toast({ title: "Scan failed", description: e.message, variant: "destructive" });
                         }
                       }}
@@ -736,7 +898,8 @@ export default function AttendancePage() {
                   {todayAttendance?.length ?? 0} REC
                 </Badge>
               </div>
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 overflow-hidden flex flex-col gap-2">
+                <LiveEventTicker />
                 {attendanceLoading ? (
                   <FeedSkeletonRow rows={6} />
                 ) : attendanceError ? (
@@ -787,7 +950,7 @@ export default function AttendancePage() {
               </div>
               {lastEvent?.type === "attendance.created" && (
                 <p className="text-[9px] text-emerald-400/70 mt-2 flex items-center gap-1">
-                  <StatusDot tone="green" pulse /> streaming live…
+                  <StatusDot tone="green" pulse /> streaming live from gate nodes + web
                 </p>
               )}
             </GlowCard>

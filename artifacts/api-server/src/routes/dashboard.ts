@@ -1,12 +1,31 @@
 import { Router } from "express";
-import { db, studentsTable, classroomsTable, attendanceLogsTable, smsLogsTable } from "@workspace/db";
-import { eq, count, sql, gte, lte, and } from "drizzle-orm";
+import { db, studentsTable, classroomsTable, attendanceLogsTable, smsLogsTable, jobsTable, gateDevicesTable, matchReviewsTable } from "@workspace/db";
+import { eq, count, sql, gte, lte, and, desc } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import { absenceRiskSummary } from "../lib/risk";
+import { getArrivalRules, minutesSinceMidnight } from "../lib/attendance-rules";
+import { runAbsentSweep } from "../lib/absent-sweep";
+import { logger } from "../lib/logger";
+
+/**
+ * Opportunistic absent-sweep trigger — dashboard loads are the natural
+ * "is anyone watching" signal, so a throttled fire-and-forget sweep runs
+ * here too. All real guards (cutoff clock, once-per-day) live in the lib.
+ */
+let lastOpportunisticSweep = 0;
+function maybeOpportunisticSweep(): void {
+  const now = Date.now();
+  if (now - lastOpportunisticSweep < 5 * 60_000) return;
+  lastOpportunisticSweep = now;
+  void runAbsentSweep({ respectOncePerDay: true }).catch((err) =>
+    logger.warn({ err }, "opportunistic absent sweep failed"),
+  );
+}
 
 const router = Router();
 
 router.get("/dashboard/stats", requireAuth, async (_req, res): Promise<void> => {
+  maybeOpportunisticSweep();
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const todayEnd = new Date();
@@ -35,6 +54,142 @@ router.get("/dashboard/stats", requireAuth, async (_req, res): Promise<void> => 
     lateToday: Number(lateToday),
     attendanceRate,
     smsSentToday: Number(smsSentToday),
+  });
+});
+
+/**
+ * CAMPUS COMMAND CENTER — one snapshot powering the whole dashboard:
+ * school-tz daily stats, hourly arrival pulse, live occupancy, gate camera
+ * node fleet health, pending reviews, SMS pipeline state.
+ */
+router.get("/dashboard/command-center", requireAuth, async (_req, res): Promise<void> => {
+  maybeOpportunisticSweep();
+  let rules = null;
+  try {
+    rules = await getArrivalRules();
+  } catch {
+    rules = null;
+  }
+  const timezone = rules?.timezone ?? "Africa/Addis_Ababa";
+  const now = new Date();
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
+
+  const [{ total: totalStudents }] = await db.select({ total: count() }).from(studentsTable);
+  const [{ total: totalClassrooms }] = await db.select({ total: count() }).from(classroomsTable);
+  const [{ total: presentToday }] = await db.select({ total: count() }).from(attendanceLogsTable)
+    .where(and(eq(attendanceLogsTable.status, "present"), gte(attendanceLogsTable.markedAt, todayStart), lte(attendanceLogsTable.markedAt, todayEnd)));
+  const [{ total: absentToday }] = await db.select({ total: count() }).from(attendanceLogsTable)
+    .where(and(eq(attendanceLogsTable.status, "absent"), gte(attendanceLogsTable.markedAt, todayStart), lte(attendanceLogsTable.markedAt, todayEnd)));
+  const [{ total: lateToday }] = await db.select({ total: count() }).from(attendanceLogsTable)
+    .where(and(eq(attendanceLogsTable.status, "late"), gte(attendanceLogsTable.markedAt, todayStart), lte(attendanceLogsTable.markedAt, todayEnd)));
+  const [{ total: smsSentToday }] = await db.select({ total: count() }).from(smsLogsTable)
+    .where(and(gte(smsLogsTable.sentAt, todayStart), lte(smsLogsTable.sentAt, todayEnd)));
+  const [{ total: smsFailedToday }] = await db.select({ total: count() }).from(smsLogsTable)
+    .where(and(eq(smsLogsTable.status, "failed"), gte(smsLogsTable.sentAt, todayStart), lte(smsLogsTable.sentAt, todayEnd)));
+  const [{ total: smsQueued }] = await db.select({ total: count() }).from(jobsTable)
+    .where(and(eq(jobsTable.type, "send_sms"), eq(jobsTable.status, "pending")));
+  const [{ total: reviewsPending }] = await db.select({ total: count() }).from(matchReviewsTable)
+    .where(eq(matchReviewsTable.status, "pending"));
+
+  // hourly arrival pulse (present + late, school-tz buckets)
+  const arrivalRows = await db
+    .select({ status: attendanceLogsTable.status, markedAt: attendanceLogsTable.markedAt })
+    .from(attendanceLogsTable)
+    .where(and(gte(attendanceLogsTable.markedAt, todayStart), lte(attendanceLogsTable.markedAt, todayEnd),
+      sql`${attendanceLogsTable.status} IN ('present', 'late')`));
+  const arrivals = Array.from({ length: 24 }, (_, h) => ({
+    hour: `${String(h).padStart(2, "0")}:00`,
+    present: 0,
+    late: 0,
+  }));
+  for (const row of arrivalRows) {
+    const minutes = minutesSinceMidnight(row.markedAt, timezone);
+    const hour = Math.min(23, Math.max(0, Math.floor(minutes / 60)));
+    if (row.status === "late") arrivals[hour].late += 1;
+    else arrivals[hour].present += 1;
+  }
+
+  // gate camera node fleet
+  const devices = await db.select().from(gateDevicesTable);
+  const onlineCutoff = now.getTime() - 3 * 60_000;
+  const devicesSummary = {
+    total: devices.length,
+    online: devices.filter((d) => d.lastSeenAt && d.lastSeenAt.getTime() >= onlineCutoff).length,
+    phones: devices.filter((d) => d.deviceType === "phone").length,
+    phonesOnline: devices.filter((d) => d.deviceType === "phone" && d.lastSeenAt && d.lastSeenAt.getTime() >= onlineCutoff).length,
+    pi: devices.filter((d) => d.deviceType === "pi").length,
+    degraded: devices.filter((d) => d.healthStatus === "obstructed" || d.healthStatus === "frozen").length,
+  };
+
+  // inside-the-building occupancy
+  const occupancyRows = await db
+    .select({ status: attendanceLogsTable.status, checkedOutAt: attendanceLogsTable.checkedOutAt })
+    .from(attendanceLogsTable)
+    .where(and(gte(attendanceLogsTable.markedAt, todayStart), lte(attendanceLogsTable.markedAt, todayEnd)));
+  const inside = occupancyRows.filter((r) => (r.status === "present" || r.status === "late") && !r.checkedOutAt).length;
+  const checkedOut = occupancyRows.filter((r) => r.checkedOutAt).length;
+
+  // per-classroom rates for the command grid
+  const classrooms = await db
+    .select({ id: classroomsTable.id, name: classroomsTable.name, studentCount: count(studentsTable.id) })
+    .from(classroomsTable)
+    .leftJoin(studentsTable, eq(classroomsTable.id, studentsTable.classroomId))
+    .groupBy(classroomsTable.id)
+    .orderBy(classroomsTable.name);
+  const classroomSummary = await Promise.all(classrooms.map(async (c) => {
+    const [{ present }] = await db.select({ present: count() }).from(attendanceLogsTable)
+      .where(and(eq(attendanceLogsTable.classroomId, c.id), eq(attendanceLogsTable.status, "present"), gte(attendanceLogsTable.markedAt, todayStart), lte(attendanceLogsTable.markedAt, todayEnd)));
+    const [{ absent }] = await db.select({ absent: count() }).from(attendanceLogsTable)
+      .where(and(eq(attendanceLogsTable.classroomId, c.id), eq(attendanceLogsTable.status, "absent"), gte(attendanceLogsTable.markedAt, todayStart), lte(attendanceLogsTable.markedAt, todayEnd)));
+    const [{ late }] = await db.select({ late: count() }).from(attendanceLogsTable)
+      .where(and(eq(attendanceLogsTable.classroomId, c.id), eq(attendanceLogsTable.status, "late"), gte(attendanceLogsTable.markedAt, todayStart), lte(attendanceLogsTable.markedAt, todayEnd)));
+    const totalStudentsIn = Number(c.studentCount);
+    const presentCount = Number(present);
+    return {
+      classroomId: c.id,
+      classroomName: c.name,
+      totalStudents: totalStudentsIn,
+      presentCount,
+      absentCount: Number(absent),
+      lateCount: Number(late),
+      attendanceRate: totalStudentsIn > 0 ? Math.round((presentCount / totalStudentsIn) * 100) : 0,
+    };
+  }));
+
+  // latest absent sweep audit (for the "parents alerted" chip)
+  const lastSweepRows = await db
+    .select({ markedAt: attendanceLogsTable.markedAt, studentId: attendanceLogsTable.studentId })
+    .from(attendanceLogsTable)
+    .where(and(eq(attendanceLogsTable.status, "absent"), gte(attendanceLogsTable.markedAt, todayStart), lte(attendanceLogsTable.markedAt, todayEnd)))
+    .orderBy(desc(attendanceLogsTable.markedAt))
+    .limit(1);
+
+  const totalStudentsNum = Number(totalStudents);
+  const presentNum = Number(presentToday);
+  const attendanceRate = totalStudentsNum > 0 ? Math.round((presentNum / totalStudentsNum) * 100) : 0;
+
+  res.json({
+    stats: {
+      totalStudents: totalStudentsNum,
+      totalClassrooms: Number(totalClassrooms),
+      presentToday: presentNum,
+      absentToday: Number(absentToday),
+      lateToday: Number(lateToday),
+      attendanceRate,
+      smsSentToday: Number(smsSentToday),
+    },
+    occupancy: { inside, checkedOut },
+    arrivals,
+    devices: devicesSummary,
+    reviewsPending: Number(reviewsPending),
+    sms: { sentToday: Number(smsSentToday), failedToday: Number(smsFailedToday), queued: Number(smsQueued) },
+    classrooms: classroomSummary,
+    lastAbsentMark: lastSweepRows[0]?.markedAt?.toISOString() ?? null,
+    timezone,
+    serverTime: now.toISOString(),
   });
 });
 

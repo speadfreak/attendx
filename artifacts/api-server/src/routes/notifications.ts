@@ -1,8 +1,9 @@
 import { Router } from "express";
-import { db, matchReviewsTable, gateDevicesTable, jobsTable, qrScanLogsTable, studentsTable, gateIntegrityAlertsTable, fraudSignalsTable } from "@workspace/db";
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { db, matchReviewsTable, gateDevicesTable, jobsTable, qrScanLogsTable, studentsTable, gateIntegrityAlertsTable, fraudSignalsTable, attendanceLogsTable } from "@workspace/db";
+import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import { logger } from "../lib/logger";
+import { localDayBounds } from "../lib/attendance-rules";
 
 /**
  * Central notification feed. Aggregates the events that used to be buried in
@@ -24,6 +25,56 @@ export interface NotificationItem {
 router.get("/notifications", requireAuth, async (_req, res): Promise<void> => {
   const now = Date.now();
   const items: NotificationItem[] = [];
+
+  // 0. PARENT ALERTS — absent + late students today. This is the admin-side
+  // mirror of the parent SMS pipeline: if a student is absent/late and no
+  // SMS went out, the admin sees it HERE instead of a parent silently
+  // never hearing anything.
+  try {
+    let rulesTz = "Africa/Addis_Ababa";
+    try {
+      const { getArrivalRules } = await import("../lib/attendance-rules");
+      rulesTz = (await getArrivalRules()).timezone;
+    } catch {
+      /* keep default tz */
+    }
+    const { startUtc: dayStart, endUtc: dayEnd } = localDayBounds(new Date(), rulesTz);
+    const flagged = await db
+      .select({
+        id: attendanceLogsTable.id,
+        studentId: attendanceLogsTable.studentId,
+        studentName: studentsTable.name,
+        status: attendanceLogsTable.status,
+        method: attendanceLogsTable.method,
+        markedAt: attendanceLogsTable.markedAt,
+      })
+      .from(attendanceLogsTable)
+      .leftJoin(studentsTable, eq(attendanceLogsTable.studentId, studentsTable.id))
+      .where(and(
+        gte(attendanceLogsTable.markedAt, dayStart),
+        lte(attendanceLogsTable.markedAt, dayEnd),
+        sql`${attendanceLogsTable.status} IN ('absent', 'late')`,
+      ))
+      .orderBy(desc(attendanceLogsTable.markedAt))
+      .limit(12);
+    for (const f of flagged) {
+      items.push({
+        id: `parent-alert-${f.id}`,
+        severity: f.status === "absent" ? "critical" : "warning",
+        category: "system",
+        title: f.status === "absent"
+          ? `ABSENT — parent alert: ${f.studentName ?? "Unknown"}`
+          : `LATE — parent alert: ${f.studentName ?? "Unknown"}`,
+        detail: f.status === "absent"
+          ? `Marked absent at ${f.markedAt.toISOString().slice(11, 16)} UTC${f.method === "manual" ? " (sweep)" : ""} — absent SMS queued for the parent.`
+          : `Arrived late at ${f.markedAt.toISOString().slice(11, 16)} UTC — late SMS queued for the parent.`,
+        at: f.markedAt.toISOString(),
+        link: "/attendance",
+      });
+    }
+  } catch (err) {
+    logger.warn({ err }, "notifications: parent-alert section failed — skipping");
+  }
 
   // 1. Pending low-confidence matches
   const pendingReviews = await db

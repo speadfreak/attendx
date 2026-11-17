@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import { processOneServerJob } from "../lib/jobs";
+import { runAbsentSweep } from "../lib/absent-sweep";
 import { purgeExpiredRejectedReviews } from "../lib/retention";
 import { runGateValidation } from "../lib/gate-integrity";
 import { reconcilePendingSms, type ReconcileSummary } from "../lib/sms-reconcile";
@@ -36,6 +37,17 @@ router.get("/internal/cron", async (req: Request, res: Response): Promise<void> 
     processedJobs += 1;
   }
 
+  // AUTOMATIC absent sweep — respects the configured absenceCutoffTime and
+  // runs at most once per school day. This is what actually puts the
+  // "your child has not arrived" SMS into parents' hands without anyone
+  // having to remember to press the manual button.
+  let absentSweep: Awaited<ReturnType<typeof runAbsentSweep>> | null = null;
+  try {
+    absentSweep = await runAbsentSweep({ respectOncePerDay: true });
+  } catch (err) {
+    logger.warn({ err }, "automatic absent sweep failed during cron run");
+  }
+
   const purgedReviews = await purgeExpiredRejectedReviews();
 
   // Phase 4: recovery pass for gate-integrity windows that may have been
@@ -52,7 +64,7 @@ router.get("/internal/cron", async (req: Request, res: Response): Promise<void> 
     logger.warn({ err }, "sms reconciliation failed during cron run");
   }
 
-  res.json({ ok: true, processedJobs, purgedReviews, gateValidation, smsReconcile });
+  res.json({ ok: true, processedJobs, purgedReviews, gateValidation, smsReconcile, absentSweep });
 });
 
 export default router;

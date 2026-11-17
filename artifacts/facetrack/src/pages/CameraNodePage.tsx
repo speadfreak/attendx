@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import * as faceapi from "@vladmandic/face-api";
 import { Html5Qrcode } from "html5-qrcode";
 import {
   Activity, AlertTriangle, BatteryLow, BatteryMedium, BatteryCharging, CameraOff,
   CheckCircle2, Download, EyeOff, Flashlight, FlashlightOff, Gauge, HeartPulse, Leaf,
   Loader2, LogOut, MapPin, Maximize, Minimize, Monitor, QrCode, RefreshCw, ScanFace,
-  ShieldCheck, ShieldOff, Signal, Snowflake, SwitchCamera, Video, VideoOff, Wifi, WifiOff, XCircle,
+  ShieldCheck, ShieldOff, Signal, Snowflake, SwitchCamera, Video, VideoOff, Volume2, VolumeX,
+  Wifi, WifiOff, XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +19,13 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { loadModels, onLoadStatusChange, type LoadStatus } from "@/lib/faceApi";
+import {
+  loadModels, detectFacesDetailed, onLoadStatusChange, type FaceDetectionDetail, type LoadStatus,
+} from "@/lib/faceApi";
+import { drawFaceHud, type HudLabel } from "@/lib/face/hud";
+import {
+  announceQrGate, isAnnounceEnabled, primeAudio, primeVoices, setAnnounceEnabled,
+} from "@/lib/audio/feedback";
 import { newNonce } from "@/lib/offline-queue";
 import {
   ApiError, bulkMatch, clearStoredIdentity, extractPairToken, getStoredDeviceId, getStoredToken,
@@ -63,12 +69,9 @@ const PAIR_REGION_ID = "atx-pair-region";
 const QR_REGION_ID = "atx-qr-region";
 
 /**
- * Detector options MIRRORED exactly from src/lib/faceApi.ts /
- * AttendancePage: TinyFaceDetector, inputSize 224, scoreThreshold 0.4,
- * tiny landmark68 net, recognition net — same jsdelivr model weights.
+ * Detector options live in src/lib/faceApi.ts (detectFacesDetailed) and are
+ * shared with the Active Scan console — identical accuracy on both ends.
  */
-const DETECTOR_INPUT_SIZE = 224;
-const DETECTOR_SCORE_THRESHOLD = 0.4;
 
 // ── local types ──────────────────────────────────────────────────────
 
@@ -217,6 +220,14 @@ export default function CameraNodePage() {
   const trackEndedRef = useRef<() => void>(() => {});
   const activeVideoRef = useRef<() => HTMLVideoElement | null>(() => null);
 
+  // ── HUD overlay state (face boxes / no-face / QR frame) ──
+  const hudCanvasRef = useRef<HTMLCanvasElement>(null);
+  const facesRef = useRef<FaceDetectionDetail[]>([]);
+  const primaryBoxRef = useRef<{ box: FaceDetectionDetail["box"]; at: number } | null>(null);
+  const hudMatchRef = useRef<{ name: string; confidence: number; committed: boolean; at: number; box: FaceDetectionDetail["box"] } | null>(null);
+  const announceTimerRef = useRef<number | null>(null);
+  const [announceOn, setAnnounceOn] = useState(isAnnounceEnabled());
+
   /**
    * Single always-fresh snapshot of render-state for interval/async
    * callbacks (heartbeat builder, commands, camera teardowns).
@@ -262,7 +273,52 @@ export default function CameraNodePage() {
     if (heroTimerRef.current !== null) window.clearTimeout(heroTimerRef.current);
     setHero(h);
     heroTimerRef.current = window.setTimeout(() => setHero(null), HERO_VISIBLE_MS);
+    if (h && h.kind === "face") {
+      // paint the matched name straight onto the HUD box of the primary face
+      hudMatchRef.current = {
+        name: h.name,
+        confidence: h.confidence,
+        committed: h.committed,
+        at: h.at,
+        box: primaryBoxRef.current?.box ?? { x: 0, y: 0, width: 0, height: 0 },
+      };
+    }
   }, [heroTimerRef]);
+
+  // ── bilingual QR gate announcement (EN + አማርኛ) ──
+
+  const stopQrAnnouncementLoop = useCallback(() => {
+    if (announceTimerRef.current !== null) {
+      window.clearInterval(announceTimerRef.current);
+      announceTimerRef.current = null;
+    }
+  }, []);
+
+  const startQrAnnouncementLoop = useCallback(() => {
+    stopQrAnnouncementLoop();
+    announceTimerRef.current = window.setInterval(() => {
+      const live = liveRef.current;
+      if (live.mode === "qr" && live.phase === "ready" && live.cameraState === "on") {
+        announceQrGate();
+      }
+    }, 45_000);
+  }, [stopQrAnnouncementLoop]);
+
+  /**
+   * Single source of truth for mode changes — the local segmented control and
+   * the operator's switch_mode command both land here, so the QR gate ALWAYS
+   * plays the bilingual "scan your QR ID" announcement on entry.
+   */
+  const applyMode = useCallback((m: NodeMode) => {
+    setMode(m);
+    facesRef.current = [];
+    if (m === "qr") {
+      announceQrGate();
+      startQrAnnouncementLoop();
+    } else {
+      stopQrAnnouncementLoop();
+    }
+  }, [startQrAnnouncementLoop, stopQrAnnouncementLoop]);
 
   // ── torch ──
 
@@ -475,6 +531,8 @@ export default function CameraNodePage() {
    * bridge one heartbeat, short enough to allow real operator repeats.
    */
   const executeCommand = useCallback((command: string, value: unknown) => {
+    void command;
+    void value;
     const seen = executedCommandsRef.current;
     const key = `${command}|${JSON.stringify(value ?? null)}`;
     const now = Date.now();
@@ -495,8 +553,8 @@ export default function CameraNodePage() {
     switch (command) {
       case "switch_mode":
         if (value === "face" || value === "qr") {
-          setMode(value);
-          label = `Mode switched → ${value.toUpperCase()}`;
+          applyMode(value);
+          label = `Mode switched → ${value.toUpperCase()}${value === "qr" ? " · announcement playing" : ""}`;
         }
         break;
       case "request_snapshot":
@@ -532,7 +590,7 @@ export default function CameraNodePage() {
     if (pingTimerRef.current !== null) window.clearTimeout(pingTimerRef.current);
     pingTimerRef.current = window.setTimeout(() => setCommandPing(null), COMMAND_PING_MS);
     toast({ title: "Remote command", description: label });
-  }, [captureAndUpload, pingTimerRef, toast, toggleTorch, unpairLocal]);
+  }, [applyMode, captureAndUpload, pingTimerRef, toast, toggleTorch, unpairLocal]);
 
   // ── pairing ──
 
@@ -897,7 +955,12 @@ export default function CameraNodePage() {
 
   const startCamera = useCallback(() => {
     autoRetryRef.current = false;
+    // The Start tap is a real user gesture — unlock WebAudio + speech now so
+    // every later cue (and the QR announcement loop) is guaranteed audible.
+    primeAudio();
+    primeVoices();
     setCameraOn(true);
+    if (liveRef.current.mode === "qr") announceQrGate();
   }, []);
 
   const stopCamera = useCallback(() => {
@@ -958,15 +1021,15 @@ export default function CameraNodePage() {
         tickTimesRef.current.push(Date.now());
         try {
           setHealthStatus(healthRef.current.sample(video));
-          const detections = await faceapi
-            .detectAllFaces(
-              video,
-              new faceapi.TinyFaceDetectorOptions({ inputSize: DETECTOR_INPUT_SIZE, scoreThreshold: DETECTOR_SCORE_THRESHOLD }),
-            )
-            .withFaceLandmarks(true)
-            .withFaceDescriptors();
+          const detections = await detectFacesDetailed(video);
+          facesRef.current = detections;
           setFacesInView(detections.length);
           if (detections.length > 0) {
+            const primary = detections.reduce(
+              (best, f) => (f.box.width * f.box.height > best.box.width * best.box.height ? f : best),
+              detections[0],
+            );
+            primaryBoxRef.current = { box: primary.box, at: Date.now() };
             framesRef.current.push(
               detections.slice(0, 20).map((d) => Array.from(d.descriptor)),
             );
@@ -974,6 +1037,8 @@ export default function CameraNodePage() {
             if (Date.now() - lastFlushAtRef.current >= FACE_FLUSH_INTERVAL_MS) {
               void flushFaces();
             }
+          } else {
+            facesRef.current = [];
           }
         } catch {
           /* detector hiccup — skip this frame */
@@ -989,6 +1054,56 @@ export default function CameraNodePage() {
       if (timer !== null) window.clearTimeout(timer);
     };
   }, [cameraOn, cameraState, mode, engineKind, modelStatus, effectiveQuality, flushFaces]);
+
+  // ── HUD overlay render loop (futuristic face boxes / no-face / QR frame) ──
+
+  useEffect(() => {
+    const fallbackActive = mode === "qr" && engineKind === "html5qrcode";
+    const hudActive = cameraOn && cameraState === "on" && !fallbackActive;
+    if (!hudActive) return;
+    let raf = 0;
+    const render = () => {
+      const canvas = hudCanvasRef.current;
+      const video = videoRef.current;
+      if (canvas && video && video.readyState >= 2) {
+        const now = Date.now();
+        const faces = facesRef.current;
+        const match = hudMatchRef.current && now - hudMatchRef.current.at < 4500 ? hudMatchRef.current : null;
+        const labels: HudLabel[] = match
+          ? [{
+              box: match.box,
+              title: match.name,
+              sub: `${(match.confidence * 100).toFixed(0)}%${match.committed ? " · MARKED" : " · ALREADY IN"}`,
+              tone: match.committed ? "green" : "amber",
+            }]
+          : [];
+        drawFaceHud(canvas, {
+          videoW: video.videoWidth,
+          videoH: video.videoHeight,
+          faces: faces.map((f) => ({ box: f.box, score: f.score })),
+          labels,
+          noFace: mode === "face" && faces.length === 0 && modelStatus === "ready",
+          scanning: mode === "face" && faces.length > 0 && !match,
+          qrMode: mode === "qr",
+          now,
+        });
+      }
+      raf = requestAnimationFrame(render);
+    };
+    raf = requestAnimationFrame(render);
+    return () => cancelAnimationFrame(raf);
+  }, [cameraOn, cameraState, mode, engineKind, modelStatus]);
+
+  // stop announcement loop + clear HUD state on unpair/unmount
+  useEffect(() => {
+    if (phase !== "ready") stopQrAnnouncementLoop();
+  }, [phase, stopQrAnnouncementLoop]);
+  useEffect(() => {
+    return () => {
+      stopQrAnnouncementLoop();
+      facesRef.current = [];
+    };
+  }, [stopQrAnnouncementLoop]);
 
   // ── QR decode loop (native BarcodeDetector over our own stream) ──
 
@@ -1326,6 +1441,12 @@ export default function CameraNodePage() {
         id={QR_REGION_ID}
         className={`absolute inset-0 [&_video]:h-full [&_video]:w-full [&_video]:object-cover ${cameraOn && fallbackEngineActive ? "block" : "pointer-events-none hidden"}`}
       />
+      {/* futuristic HUD: face brackets, NO FACE DETECTED state, QR scan frame */}
+      <canvas
+        ref={hudCanvasRef}
+        aria-hidden
+        className={`pointer-events-none absolute inset-0 z-[5] h-full w-full ${cameraRunning && !fallbackEngineActive ? "block" : "hidden"}`}
+      />
 
       {/* readability vignette */}
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-slate-950/85 via-transparent to-slate-950/90" />
@@ -1651,13 +1772,43 @@ export default function CameraNodePage() {
             </Button>
           )}
 
+          {/* QR gate announcement controls */}
+          {mode === "qr" && (
+            <>
+              <Button
+                onClick={() => announceQrGate()}
+                variant="outline"
+                aria-label="Replay the bilingual QR announcement"
+                className="h-12 border-emerald-400/30 bg-emerald-400/10 px-4 text-emerald-200 hover:bg-emerald-400/20"
+                title="Replay EN + አማርኛ announcement"
+              >
+                <Volume2 className="h-5 w-5" />
+                <span className="hidden sm:inline">Announce</span>
+              </Button>
+              <Button
+                onClick={() => {
+                  const next = !announceOn;
+                  setAnnounceOn(next);
+                  setAnnounceEnabled(next);
+                  if (next) announceQrGate();
+                }}
+                variant="outline"
+                aria-label={announceOn ? "Disable automatic announcement" : "Enable automatic announcement"}
+                className={`h-12 border-foreground/15 px-4 hover:bg-foreground/5 ${announceOn ? "bg-emerald-400/15 text-emerald-200" : "bg-transparent text-foreground/50"}`}
+                title="Automatic EN + አማርኛ announcement every 45s"
+              >
+                {announceOn ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
+              </Button>
+            </>
+          )}
+
           {/* mode segmented control */}
           <div className="flex h-12 items-center rounded-2xl border border-foreground/15 bg-background/60 p-1" role="group" aria-label="Detection mode">
             {(["face", "qr"] as NodeMode[]).map((m) => (
               <button
                 key={m}
                 type="button"
-                onClick={() => setMode(m)}
+                onClick={() => applyMode(m)}
                 aria-pressed={mode === m}
                 className={`flex h-10 items-center gap-1.5 rounded-xl px-4 text-sm font-semibold transition-colors ${
                   mode === m

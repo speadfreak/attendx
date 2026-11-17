@@ -231,8 +231,20 @@ export async function processOneServerJob(): Promise<boolean> {
 }
 
 export function startServerJobWorker(): void {
+  // Self-hosted deployments: jobs every 1.5s AND the automatic absent sweep
+  // checked once per minute (it self-guards on cutoff time + once-per-day).
+  let lastSweepCheck = 0;
+  const maybeSweep = () => {
+    const now = Date.now();
+    if (now - lastSweepCheck < 60_000) return;
+    lastSweepCheck = now;
+    void import("./absent-sweep")
+      .then(({ runAbsentSweep }) => runAbsentSweep({ respectOncePerDay: true }))
+      .catch((err) => logger.warn({ err }, "background absent sweep failed"));
+  };
   const timer = setInterval(() => {
     void processOneServerJob();
+    maybeSweep();
   }, 1500);
   timer.unref?.();
   void processOneServerJob();

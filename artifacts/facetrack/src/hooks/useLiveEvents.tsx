@@ -30,22 +30,23 @@ const LiveEventsContext = createContext<LiveEventsContextValue>({
 
 // Which react-query keys each event type should refresh
 const INVALIDATION_MAP: Record<string, string[][]> = {
-  "attendance.created": [["attendance"], ["dashboard"], ["occupancy"], ["today-attendance"]],
-  "attendance.updated": [["attendance"], ["dashboard"], ["occupancy"]],
-  "attendance.checkout": [["occupancy"], ["dashboard"]],
-  "pi.heartbeat": [["pi"], ["operations"]],
+  "attendance.created": [["attendance"], ["dashboard"], ["occupancy"], ["today-attendance"], ["command-center"]],
+  "attendance.updated": [["attendance"], ["dashboard"], ["occupancy"], ["command-center"]],
+  "attendance.checkout": [["occupancy"], ["dashboard"], ["command-center"]],
+  "attendance.absent_sweep": [["attendance"], ["dashboard"], ["command-center"], ["notifications"], ["today-attendance"]],
+  "pi.heartbeat": [["pi"], ["operations"], ["command-center"]],
   "job.updated": [["jobs"], ["notifications"]],
   "review.created": [["reviews"], ["notifications"]],
   "review.decided": [["reviews"], ["notifications"]],
-  "qr.scan": [["qr"], ["notifications"], ["dashboard"]],
-  "sms.sent": [["sms-logs"], ["notifications"]],
+  "qr.scan": [["qr"], ["notifications"], ["dashboard"], ["command-center"]],
+  "sms.sent": [["sms-logs"], ["notifications"], ["command-center"]],
   "settings.updated": [["settings"], ["sms-templates"]],
   "gate.alert": [["gate"], ["notifications"]],
   "gate.integrity": [["gate"], ["notifications"]],
-  "device.heartbeat": [["camera-network"]],
+  "device.heartbeat": [["camera-network"], ["command-center"]],
   "device.command": [["camera-network"]],
-  "device.updated": [["camera-network"]],
-  "device.health": [["camera-network"], ["notifications"]],
+  "device.updated": [["camera-network"], ["command-center"]],
+  "device.health": [["camera-network"], ["notifications"], ["command-center"]],
   "sms.status": [["sms-logs"]],
 };
 

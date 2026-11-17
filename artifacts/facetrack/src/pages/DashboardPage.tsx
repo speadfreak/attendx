@@ -1,14 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  useGetDashboardStats,
   useGetRecentActivity,
-  useGetClassroomSummary,
-  getGetDashboardStatsQueryKey,
   getGetRecentActivityQueryKey,
-  getGetClassroomSummaryQueryKey,
 } from "@workspace/api-client-react";
-import { api, type Occupancy } from "@/lib/api";
+import { api, type CommandCenterSnapshot } from "@/lib/api";
+import { Badge } from "@/components/ui/badge";
 import { GlowCard, SectionTitle, StatusBadge, StatusDot, MeshBackground, GlowEmpty } from "@/components/gx/Primitives";
 import { RiskRadarCard } from "@/components/RiskRadarCard";
 import { ChartSkeleton, FeedSkeletonRow, GlowSkeleton } from "@/components/gx/Skeletons";
@@ -19,10 +16,12 @@ import {
 import {
   Users, School, UserCheck, UserX, AlertTriangle,
   MessageSquare, Activity, Zap, Eye, DoorOpen, LogOut, Wifi,
+  Radio, Smartphone, ShieldAlert, Timer, TrendingUp, Clock,
 } from "lucide-react";
 import { format } from "date-fns";
 import gsap from "gsap";
 import { useToast } from "@/hooks/use-toast";
+import { useLiveEvents } from "@/hooks/useLiveEvents";
 
 // ── Honest query-failure panel (never look like an empty state) ──
 function QueryErrorBox({ title, message, onRetry }: { title: string; message: string; onRetry: () => void }) {
@@ -45,10 +44,10 @@ function QueryErrorBox({ title, message, onRetry }: { title: string; message: st
 
 // ── Animated stat card (glow design system) ────────────────
 function StatCard({
-  title, value, sub, icon: Icon, color, delay = 0,
+  title, value, sub, icon: Icon, color, delay = 0, alert = false,
 }: {
   title: string; value: string; sub?: React.ReactNode;
-  icon: React.ElementType; color: string; delay?: number;
+  icon: React.ElementType; color: string; delay?: number; alert?: boolean;
 }) {
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -67,7 +66,7 @@ function StatCard({
       ref={cardRef}
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
-      className="gx-stat gx-card gx-card-accent rounded-2xl p-5 relative overflow-hidden cursor-default"
+      className={`gx-stat gx-card gx-card-accent rounded-2xl p-5 relative overflow-hidden cursor-default ${alert ? "ring-1 ring-red-500/30" : ""}`}
     >
       <div
         className="absolute -bottom-6 -right-6 w-28 h-28 rounded-full blur-2xl opacity-20"
@@ -90,6 +89,235 @@ function StatCard({
           <Icon size={18} style={{ color: `rgb(${color})` }} />
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Live ops ticker — every SSE event, newest first ─────────
+function LiveOpsTicker() {
+  const { events, status } = useLiveEvents();
+  const recent = events.slice(0, 9);
+  return (
+    <GlowCard variant="gradient" className="p-5 h-full flex flex-col">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Radio size={13} className="text-cyan-400" />
+          <h3 className="text-sm font-semibold uppercase tracking-widest gx-gradient-text">LIVE OPS FEED</h3>
+        </div>
+        <span className={`st-badge ${status === "live" ? "st-badge-green" : status === "polling" ? "st-badge-amber" : "st-badge-slate"}`}>
+          <StatusDot tone={status === "live" ? "green" : "amber"} pulse={status === "live"} />
+          {status === "live" ? "PUSH LIVE" : status === "polling" ? "POLLING" : "CONNECTING"}
+        </span>
+      </div>
+      {recent.length === 0 ? (
+        <GlowEmpty icon={<Radio size={20} />} title="Awaiting live events" hint="Scans, SMS and device heartbeats stream here in realtime." />
+      ) : (
+        <div className="flex-1 overflow-y-auto max-h-64 pr-1 space-y-1.5">
+          {recent.map((ev, i) => {
+            const tone =
+              ev.type === "attendance.created" ? "text-emerald-400" :
+              ev.type === "sms.sent" ? "text-amber-400" :
+              ev.type === "device.heartbeat" ? "text-violet-400" :
+              ev.type === "qr.scan" ? "text-cyan-400" :
+              ev.type.startsWith("attendance.absent") ? "text-red-400" :
+              "text-foreground/40";
+            const name = typeof ev.payload?.studentName === "string" ? ev.payload.studentName : "";
+            const extra = typeof ev.payload?.status === "string" ? ` · ${ev.payload.status}` : "";
+            const device = typeof ev.payload?.name === "string" ? ev.payload.name : "";
+            return (
+              <div
+                key={`${ev.at}-${ev.type}-${i}`}
+                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-foreground/10 bg-foreground/5 text-[11px] ${i === 0 ? "gx-slide-in" : ""}`}
+              >
+                <span className={`font-mono text-[9px] text-foreground/30 shrink-0`}>{format(new Date(ev.at), "HH:mm:ss")}</span>
+                <Zap size={10} className={`${tone} shrink-0`} />
+                <span className="text-foreground/70 font-medium shrink-0">{ev.type}</span>
+                <span className="text-foreground/45 truncate">{name || device}{extra}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </GlowCard>
+  );
+}
+
+// ── Arrival pulse — today's check-ins hour by hour ──────────
+function ArrivalPulse({ arrivals, loading, error, onRetry }: {
+  arrivals?: CommandCenterSnapshot["arrivals"];
+  loading: boolean;
+  error: Error | null;
+  onRetry: () => void;
+}) {
+  const data = useMemo(() => {
+    if (!arrivals) return [];
+    // trim to the school day window (05:00–20:00) for a dense, readable chart
+    return arrivals.filter((_, h) => h >= 5 && h <= 19);
+  }, [arrivals]);
+  const peak = useMemo(() => {
+    let best = 0;
+    for (const a of data) best = Math.max(best, a.present + a.late);
+    return best;
+  }, [data]);
+  const peakHour = useMemo(() => data.find((a) => a.present + a.late === peak)?.hour ?? "—", [data, peak]);
+
+  return (
+    <GlowCard variant="gradient" className="lg:col-span-2 p-5">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <TrendingUp size={13} className="text-purple-400" />
+          <h3 className="text-sm font-semibold uppercase tracking-widest gx-gradient-text">ARRIVAL PULSE · TODAY</h3>
+        </div>
+        {peak > 0 && (
+          <span className="st-badge st-badge-cyan"><Activity size={9} /> peak {peak} @ {peakHour}</span>
+        )}
+      </div>
+      {error ? (
+        <QueryErrorBox title="Failed to load arrival pulse" message={error.message} onRetry={onRetry} />
+      ) : loading ? (
+        <ChartSkeleton />
+      ) : (
+        <div className="h-56 sm:h-64 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data} margin={{ top: 8, right: 10, left: -22, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+              <XAxis dataKey="hour" stroke="hsl(var(--border))" tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }} interval={1} />
+              <YAxis stroke="hsl(var(--border))" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
+              <Tooltip
+                contentStyle={{ backgroundColor: "hsl(var(--popover))", borderColor: "hsl(var(--popover-border))", borderRadius: 10 }}
+                itemStyle={{ color: "hsl(var(--popover-foreground))", fontSize: 11 }}
+                cursor={{ fill: "rgba(155,91,255,0.06)" }}
+              />
+              <Legend wrapperStyle={{ fontSize: 11, color: "hsl(var(--muted-foreground))" }} />
+              <Bar dataKey="present" name="Present" stackId="p" fill="#10b981" radius={[0, 0, 0, 0]} />
+              <Bar dataKey="late" name="Late" stackId="p" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </GlowCard>
+  );
+}
+
+// ── Classroom command grid — every room, one glance ─────────
+function ClassroomCommandGrid({ snapshot, loading, error, onRetry }: {
+  snapshot?: CommandCenterSnapshot;
+  loading: boolean;
+  error: Error | null;
+  onRetry: () => void;
+}) {
+  if (error) {
+    return (
+      <GlowCard variant="gradient" className="p-5">
+        <h3 className="text-sm font-semibold uppercase tracking-widest gx-gradient-text mb-4">CLASSROOM COMMAND GRID</h3>
+        <QueryErrorBox title="Failed to load classroom grid" message={error.message} onRetry={onRetry} />
+      </GlowCard>
+    );
+  }
+  const rooms = snapshot?.classrooms ?? [];
+  return (
+    <GlowCard variant="gradient" className="p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <School size={13} className="text-cyan-400" />
+          <h3 className="text-sm font-semibold uppercase tracking-widest gx-gradient-text">CLASSROOM COMMAND GRID</h3>
+        </div>
+        <Badge variant="outline" className="font-mono text-[10px] text-foreground/40 border-foreground/10">
+          {rooms.length} rooms
+        </Badge>
+      </div>
+      {loading ? (
+        <ChartSkeleton height="h-48" />
+      ) : rooms.length === 0 ? (
+        <GlowEmpty icon={<School size={22} />} title="No classrooms yet" hint="Create classrooms and enroll students to light up the grid." />
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 max-h-96 overflow-y-auto pr-1">
+          {rooms.map((r) => {
+            const tone = r.attendanceRate >= 80 ? "green" : r.attendanceRate >= 55 ? "amber" : "red";
+            const barColor = tone === "green" ? "#10b981" : tone === "amber" ? "#f59e0b" : "#ef4444";
+            return (
+              <div key={r.classroomId} className="rounded-xl border border-foreground/10 bg-foreground/5 p-3.5 hover:border-purple-500/30 transition-colors">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <p className="text-xs font-semibold text-foreground/80 truncate">{r.classroomName}</p>
+                  <span className="text-sm font-bold gx-gradient-text">{r.attendanceRate}%</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-foreground/10 overflow-hidden mb-2.5">
+                  <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(100, r.attendanceRate)}%`, background: barColor, boxShadow: `0 0 8px ${barColor}66` }} />
+                </div>
+                <div className="flex items-center gap-2 text-[10px] font-mono flex-wrap">
+                  <span className="text-emerald-400">{r.presentCount} in</span>
+                  {r.lateCount > 0 && <span className="text-amber-400">{r.lateCount} late</span>}
+                  {r.absentCount > 0 && <span className="text-red-400">{r.absentCount} absent</span>}
+                  <span className="text-foreground/30 ml-auto">{r.presentCount + r.absentCount}/{r.totalStudents}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </GlowCard>
+  );
+}
+
+// ── Fleet + pipeline strip: nodes, SMS, reviews ──────────────
+function CommandFleetStrip({ snapshot, loading }: { snapshot?: CommandCenterSnapshot; loading: boolean }) {
+  if (loading || !snapshot) return null;
+  const d = snapshot.devices;
+  const sms = snapshot.sms;
+  const cell = (
+    icon: React.ElementType, label: string, value: string, color: string, badge?: React.ReactNode,
+  ) => {
+    const Icon = icon;
+    return (
+      <GlowCard variant="gradient" className="p-4 flex items-center gap-3">
+        <div
+          className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+          style={{ background: `rgba(${color},0.1)`, border: `1px solid rgba(${color},0.2)` }}
+        >
+          <Icon size={16} style={{ color: `rgb(${color})` }} />
+        </div>
+        <div className="min-w-0">
+          <p className="text-[10px] uppercase tracking-widest text-foreground/30">{label}</p>
+          <p className="text-xs font-semibold text-foreground/75 mt-0.5 truncate">{value}</p>
+        </div>
+        <div className="ml-auto shrink-0">{badge ?? <StatusDot tone="green" pulse />}</div>
+      </GlowCard>
+    );
+  };
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      {cell(
+        Smartphone,
+        "Gate camera nodes",
+        `${d.online}/${d.total} online · ${d.phonesOnline}/${d.phones} phones`,
+        "155,91,255",
+        <StatusDot tone={d.online > 0 ? "green" : "red"} pulse={d.online > 0} />,
+      )}
+      {cell(
+        MessageSquare,
+        "SMS pipeline",
+        `${sms.sentToday} sent · ${sms.queued} queued`,
+        "34,197,94",
+        sms.failedToday > 0
+          ? <StatusBadge value="failed" label={`${sms.failedToday} failed`} tone="red" />
+          : <StatusDot tone="green" pulse />,
+      )}
+      {cell(
+        ShieldAlert,
+        "Review queue",
+        `${snapshot.reviewsPending} pending matches`,
+        "245,158,11",
+        <StatusDot tone={snapshot.reviewsPending > 0 ? "amber" : "green"} pulse={snapshot.reviewsPending > 0} />,
+      )}
+      {cell(
+        Timer,
+        "Parent alerts",
+        snapshot.lastAbsentMark
+          ? `Last absence marked ${format(new Date(snapshot.lastAbsentMark), "HH:mm")}`
+          : "No absence marked today",
+        "34,211,238",
+        <StatusDot tone={snapshot.lastAbsentMark ? "red" : "green"} pulse />,
+      )}
     </div>
   );
 }
@@ -125,7 +353,7 @@ function ActivityRow({ log, isNew }: { log: any; isNew?: boolean }) {
 // ── Occupancy card: "who's in the building right now" ──────
 function OccupancyCard() {
   const { toast } = useToast();
-  const { data: occupancy, refetch, isLoading, isError, error } = useQuery<Occupancy>({
+  const { data: occupancy, refetch, isLoading, isError, error } = useQuery<OccupancyType>({
     queryKey: ["occupancy"],
     queryFn: () => api.occupancy(),
     refetchInterval: 15000,
@@ -195,7 +423,9 @@ function OccupancyCard() {
   );
 }
 
-// ── Classroom Monitor with range toggle ────────────────────
+type OccupancyType = Awaited<ReturnType<typeof api.occupancy>>;
+
+// ── Weekly trend ────────────────────────────────────────────
 function TrendChart({
   trend, loading,
 }: {
@@ -245,23 +475,42 @@ function TrendChart({
   );
 }
 
-// ── Main Dashboard ─────────────────────────────────────────
+// ── Main: CAMPUS COMMAND CENTER ────────────────────────────
 export default function DashboardPage() {
   const headerRef = useRef<HTMLDivElement>(null);
-  const [trendRange, setTrendRange] = useState<"today" | "week" | "month">("week");
   const [seenActivityIds, setSeenActivityIds] = useState<Set<number>>(new Set());
   const [newIds, setNewIds] = useState<Set<number>>(new Set());
+  const [clock, setClock] = useState("");
 
-  const { data: stats, isLoading: statsLoading, isError: statsError, error: statsErr, refetch: refetchStats } = useGetDashboardStats({ query: { queryKey: getGetDashboardStatsQueryKey(), refetchInterval: 30000 } });
+  const { data: snapshot, isLoading: ccLoading, isError: ccError, error: ccErr, refetch: refetchCc, isFetching: ccFetching } = useQuery<CommandCenterSnapshot>({
+    queryKey: ["command-center"],
+    queryFn: api.commandCenter,
+    refetchInterval: 15000,
+  });
   const { data: activity, isLoading: activityLoading, isError: activityError, error: activityErr, refetch: refetchActivity } = useGetRecentActivity({ query: { queryKey: getGetRecentActivityQueryKey(), refetchInterval: 30000 } });
-  const { data: classroomStats, isLoading: classroomsLoading, isError: classroomsError, error: classroomsErr, refetch: refetchClassrooms } = useGetClassroomSummary({ query: { queryKey: getGetClassroomSummaryQueryKey(), refetchInterval: 30000 } });
-  const trendRangeRef = useRef(trendRange);
-  trendRangeRef.current = trendRange;
   const { data: trend, isLoading: trendLoading, isError: trendError, error: trendErr, refetch: refetchTrend } = useQuery({
-    queryKey: ["attendance-trend", trendRange],
-    queryFn: () => api.trend(trendRange),
+    queryKey: ["attendance-trend", "week"],
+    queryFn: () => api.trend("week"),
     refetchInterval: 60000,
   });
+
+  const tz = snapshot?.timezone ?? "Africa/Addis_Ababa";
+
+  // live school-timezone clock
+  useEffect(() => {
+    const tick = () => {
+      try {
+        setClock(new Intl.DateTimeFormat("en-GB", {
+          timeZone: tz, hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+        }).format(new Date()));
+      } catch {
+        setClock(new Date().toLocaleTimeString());
+      }
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [tz]);
 
   // Detect genuinely-new feed entries → slide-in animation
   useEffect(() => {
@@ -287,73 +536,106 @@ export default function DashboardPage() {
     );
   }, []);
 
-  const rate = stats?.attendanceRate !== undefined ? `${stats.attendanceRate}%` : "—";
+  const stats = snapshot?.stats;
+  const rate = stats ? `${stats.attendanceRate}%` : "—";
 
   return (
     <div className="relative">
       <MeshBackground />
-      <div className="relative z-10 space-y-6 max-w-7xl mx-auto">
-        {/* ── Header ── */}
-        <div ref={headerRef} className="gx-page-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <SectionTitle className="gx-title-gradient" sub={<>LIVE MONITORING ACTIVE · REALTIME PUSH</>}>
-            SYSTEM OVERVIEW
+      <div className="relative z-10 space-y-5 max-w-7xl mx-auto pb-2">
+        {/* ── Command header ── */}
+        <div ref={headerRef} className="gx-page-header flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+          <SectionTitle className="gx-title-gradient" sub={<>WHOLE-CAMPUS LIVE COMMAND · EVERY GATE · EVERY ROOM · EVERY PARENT</>}>
+            CAMPUS COMMAND CENTER
           </SectionTitle>
-          <div
-            className="gx-glow-hover flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] text-purple-300/60 border border-purple-500/15"
-            style={{ background: "rgba(124,58,237,0.06)" }}
-          >
-            <Eye size={12} className="text-purple-400" />
-            {format(new Date(), "EEEE, MMM d yyyy")}
+          <div className="flex flex-wrap items-center gap-2">
+            <div
+              className="gx-glow-hover flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] text-purple-300/60 border border-purple-500/15 font-mono"
+              style={{ background: "rgba(124,58,237,0.06)" }}
+            >
+              <Clock size={12} className="text-purple-400" />
+              <span className="tabular-nums">{clock || "--:--:--"}</span>
+              <span className="text-foreground/30">({tz})</span>
+            </div>
+            <div
+              className="gx-glow-hover flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] text-foreground/50 border border-foreground/10"
+            >
+              <Eye size={12} className="text-purple-400" />
+              {format(new Date(), "EEEE, MMM d yyyy")}
+            </div>
+            {ccFetching && !ccLoading && (
+              <span className="st-badge st-badge-cyan"><RefreshSpin /> sync</span>
+            )}
           </div>
         </div>
 
-        {/* ── Stats Grid ── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          {statsLoading ? (
-            Array(4).fill(0).map((_, i) => <GlowSkeleton key={i} className="h-28" />)
-          ) : statsError ? (
-            <div className="col-span-2 lg:col-span-4">
-              <QueryErrorBox
-                title="Failed to load dashboard stats"
-                message={statsErr instanceof Error ? statsErr.message : "Unknown error"}
-                onRetry={() => void refetchStats()}
-              />
-            </div>
-          ) : (
-            <>
-              <StatCard title="Attendance Rate" value={rate} sub="Today's completion" icon={Activity} color="155,91,255" delay={0.1} />
-              <StatCard
-                title="Present / Total"
-                value={`${stats?.presentToday ?? 0}/${stats?.totalStudents ?? 0}`}
-                sub={<><span className="st-amber">{stats?.lateToday ?? 0} late</span> · <span className="st-red">{stats?.absentToday ?? 0} absent</span></>}
-                icon={UserCheck} color="34,197,94" delay={0.18}
-              />
-              <StatCard title="Active Classrooms" value={String(stats?.totalClassrooms ?? 0)} sub="Monitored zones" icon={School} color="34,211,238" delay={0.26} />
-              <StatCard title="SMS Sent Today" value={String(stats?.smsSentToday ?? 0)} sub="Parent notifications" icon={MessageSquare} color="245,158,11" delay={0.34} />
-            </>
-          )}
+        {/* ── KPI wall ── */}
+        {ccError ? (
+          <QueryErrorBox
+            title="Failed to load the command center snapshot"
+            message={ccErr instanceof Error ? ccErr.message : "Unknown error"}
+            onRetry={() => void refetchCc()}
+          />
+        ) : (
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
+            {ccLoading || !stats ? (
+              Array(6).fill(0).map((_, i) => <GlowSkeleton key={i} className="h-28" />)
+            ) : (
+              <>
+                <StatCard title="Attendance Rate" value={rate} sub="Whole campus today" icon={Activity} color="155,91,255" delay={0.05} />
+                <StatCard
+                  title="Present"
+                  value={`${stats.presentToday}/${stats.totalStudents}`}
+                  sub={<span className="st-amber">{stats.lateToday} late arrivals</span>}
+                  icon={UserCheck} color="34,197,94" delay={0.1}
+                />
+                <StatCard
+                  title="Absent"
+                  value={String(stats.absentToday)}
+                  sub={<span className="text-red-400/80">parents auto-alerted</span>}
+                  icon={UserX} color="239,68,68" delay={0.15}
+                  alert={stats.absentToday > 0}
+                />
+                <StatCard
+                  title="Inside Now"
+                  value={String(snapshot?.occupancy.inside ?? 0)}
+                  sub={<span>{snapshot?.occupancy.checkedOut ?? 0} checked out</span>}
+                  icon={DoorOpen} color="34,211,238" delay={0.2}
+                />
+                <StatCard
+                  title="Parent SMS"
+                  value={String(stats.smsSentToday)}
+                  sub={<span>{snapshot?.sms.queued ?? 0} queued · {snapshot?.sms.failedToday ?? 0} failed</span>}
+                  icon={MessageSquare} color="245,158,11" delay={0.25}
+                />
+                <StatCard
+                  title="Campus Scale"
+                  value={String(stats.totalStudents)}
+                  sub={<span>{stats.totalClassrooms} classrooms monitored</span>}
+                  icon={Users} color="124,58,237" delay={0.3}
+                />
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── Arrival pulse + live ops feed ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <ArrivalPulse
+            arrivals={snapshot?.arrivals}
+            loading={ccLoading}
+            error={ccError ? (ccErr instanceof Error ? ccErr : new Error("Unknown")) : null}
+            onRetry={() => void refetchCc()}
+          />
+          <LiveOpsTicker />
         </div>
 
-        {/* ── Charts Row ── */}
+        {/* ── Weekly trend + occupancy ── */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <GlowCard variant="gradient" className="lg:col-span-2 p-5">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold uppercase tracking-widest gx-gradient-text">ATTENDANCE TREND</h3>
-              <div className="flex items-center gap-1 p-1 rounded-lg bg-muted border border-foreground/10">
-                {(["today", "week", "month"] as const).map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => setTrendRange(r)}
-                    className={`px-2.5 py-1 rounded-md text-[10px] uppercase font-semibold tracking-wider transition-all ${
-                      trendRange === r
-                        ? "gx-nav-pill text-purple-200"
-                        : "text-foreground/35 hover:text-foreground/60"
-                    }`}
-                  >
-                    {r}
-                  </button>
-                ))}
-              </div>
+              <h3 className="text-sm font-semibold uppercase tracking-widest gx-gradient-text">7-DAY ATTENDANCE TREND</h3>
+              <span className="st-badge st-badge-slate">campus-wide</span>
             </div>
             {trendError ? (
               <QueryErrorBox
@@ -369,106 +651,50 @@ export default function DashboardPage() {
           <OccupancyCard />
         </div>
 
-        {/* ── Live feed + Classroom monitor ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <GlowCard variant="gradient" className="p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Zap size={13} className="text-purple-400" />
-                <h3 className="text-sm font-semibold uppercase tracking-widest gx-gradient-text">LIVE FEED</h3>
-              </div>
-              <StatusBadge value="valid" label="REALTIME" tone="green" />
-            </div>
-            <div className="max-h-72 overflow-y-auto pr-1">
-              {activityLoading ? (
-                <FeedSkeletonRow />
-              ) : activityError ? (
-                <QueryErrorBox
-                  title="Failed to load live feed"
-                  message={activityErr instanceof Error ? activityErr.message : "Unknown error"}
-                  onRetry={() => void refetchActivity()}
-                />
-              ) : !activity?.length ? (
-                <GlowEmpty icon={<Zap size={22} />} title="No activity today" hint="Check-ins will stream in live." />
-              ) : (
-                activity.map((log) => <ActivityRow key={log.id} log={log} isNew={newIds.has(log.id)} />)
-              )}
-            </div>
-          </GlowCard>
+        {/* ── Classroom command grid ── */}
+        <ClassroomCommandGrid
+          snapshot={snapshot}
+          loading={ccLoading}
+          error={ccError ? (ccErr instanceof Error ? ccErr : new Error("Unknown")) : null}
+          onRetry={() => void refetchCc()}
+        />
 
-          <GlowCard variant="gradient" className="lg:col-span-2 p-5">
-            <h3 className="text-sm font-semibold uppercase tracking-widest gx-gradient-text mb-4">CLASSROOM MONITOR</h3>
-            {classroomsLoading ? (
-              <ChartSkeleton height="h-52 sm:h-64" />
-            ) : classroomsError ? (
+        {/* ── Fleet + pipeline strip ── */}
+        <CommandFleetStrip snapshot={snapshot} loading={ccLoading} />
+
+        {/* ── Live check-in feed ── */}
+        <GlowCard variant="gradient" className="p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Zap size={13} className="text-purple-400" />
+              <h3 className="text-sm font-semibold uppercase tracking-widest gx-gradient-text">LATEST CHECK-INS</h3>
+            </div>
+            <StatusBadge value="valid" label="REALTIME" tone="green" />
+          </div>
+          <div className="max-h-72 overflow-y-auto pr-1">
+            {activityLoading ? (
+              <FeedSkeletonRow />
+            ) : activityError ? (
               <QueryErrorBox
-                title="Failed to load classroom monitor"
-                message={classroomsErr instanceof Error ? classroomsErr.message : "Unknown error"}
-                onRetry={() => void refetchClassrooms()}
+                title="Failed to load live feed"
+                message={activityErr instanceof Error ? activityErr.message : "Unknown error"}
+                onRetry={() => void refetchActivity()}
               />
-            ) : !classroomStats?.length ? (
-              <GlowEmpty icon={<School size={22} />} title="No classroom data available" hint="Create classrooms and enroll students to see the monitor." />
+            ) : !activity?.length ? (
+              <GlowEmpty icon={<Zap size={22} />} title="No activity today" hint="Check-ins will stream in live." />
             ) : (
-              <div className="h-52 sm:h-64 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={classroomStats} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                    <XAxis dataKey="classroomName" stroke="hsl(var(--border))" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
-                    <YAxis stroke="hsl(var(--border))" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: "hsl(var(--popover))", borderColor: "hsl(var(--popover-border))", borderRadius: 10 }}
-                      itemStyle={{ color: "hsl(var(--popover-foreground))", fontSize: 11 }}
-                      cursor={{ fill: "rgba(155,91,255,0.05)" }}
-                    />
-                    <Legend wrapperStyle={{ fontSize: 11, color: "hsl(var(--muted-foreground))" }} />
-                    <Bar dataKey="presentCount" name="Present" stackId="a" fill="#10b981" radius={[0, 0, 4, 4]} />
-                    <Bar dataKey="absentCount" name="Absent" stackId="a" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+              activity.map((log) => <ActivityRow key={log.id} log={log} isNew={newIds.has(log.id)} />)
             )}
-          </GlowCard>
-        </div>
+          </div>
+        </GlowCard>
 
         {/* ── Absence Risk Radar ── */}
         <RiskRadarCard />
-
-        {/* ── Quick Stats Row ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {[
-            { label: "Face Recognition", value: "Operational", icon: Eye, color: "155,91,255" },
-            { label: "QR Door Terminals", value: "Armed", icon: DoorOpen, color: "34,211,238" },
-            { label: "SMS Gateway", value: "Active", icon: MessageSquare, color: "34,197,94" },
-          ].map((item, i) => {
-            const Icon = item.icon;
-            return (
-              <GlowCard key={i} variant="gradient" className="p-4 flex items-center gap-3">
-                <div
-                  className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                  style={{ background: `rgba(${item.color},0.1)`, border: `1px solid rgba(${item.color},0.2)` }}
-                >
-                  <Icon size={15} style={{ color: `rgb(${item.color})` }} />
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-widest text-foreground/30">{item.label}</p>
-                  <p className="text-xs font-semibold text-foreground/70 mt-0.5">{item.value}</p>
-                </div>
-                <div className="ml-auto">
-                  <StatusDot tone={statusToneFor(item.value)} pulse />
-                </div>
-              </GlowCard>
-            );
-          })}
-        </div>
       </div>
     </div>
   );
 }
 
-import type { StatusTone } from "@/components/gx/Primitives";
-
-function statusToneFor(value: string): StatusTone {
-  if (value === "Operational" || value === "Active") return "green";
-  if (value === "Armed") return "purple";
-  return "slate";
+function RefreshSpin() {
+  return <span className="inline-block h-2.5 w-2.5 animate-spin rounded-full border border-current border-t-transparent" aria-hidden />;
 }
