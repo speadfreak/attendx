@@ -19,29 +19,29 @@ const LEVEL_STYLE: Record<RiskLevel, { dot: string; text: string; bar: string; l
 function RiskRow({ risk }: { risk: StudentRisk }) {
   const style = LEVEL_STYLE[risk.level];
   return (
-    <div className="rounded-xl border border-white/5 bg-black/20 p-3 hover:border-purple-500/25 transition-colors">
+    <div className="rounded-xl border border-foreground/10 bg-muted p-3 hover:border-purple-500/25 transition-colors">
       <div className="flex items-center gap-2.5 min-w-0">
         <span className="relative flex h-2.5 w-2.5 shrink-0">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-40" style={{ background: style.dot }} />
           <span className="relative inline-flex h-2.5 w-2.5 rounded-full" style={{ background: style.dot }} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-white/85" title={risk.name}>{risk.name}</p>
-          <p className="truncate text-[10px] font-mono text-white/35" title={`${risk.studentCode} · ${risk.classroomName ?? "no classroom"}`}>
+          <p className="truncate text-sm font-medium text-foreground/85" title={risk.name}>{risk.name}</p>
+          <p className="truncate text-[10px] font-mono text-foreground/35" title={`${risk.studentCode} · ${risk.classroomName ?? "no classroom"}`}>
             {risk.studentCode}{risk.classroomName ? ` · ${risk.classroomName}` : ""}
           </p>
         </div>
         <div className="text-right shrink-0">
           <p className={`text-sm font-bold ${style.text}`}>{risk.score}</p>
-          <p className="text-[9px] uppercase tracking-widest text-white/30">{style.label}</p>
+          <p className="text-[9px] uppercase tracking-widest text-foreground/30">{style.label}</p>
         </div>
       </div>
-      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/5">
+      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-foreground/5">
         <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, risk.score)}%`, background: style.bar }} />
       </div>
       <div className="mt-1.5 flex flex-wrap gap-1">
         {risk.reasons.slice(0, 3).map((reason, i) => (
-          <span key={i} className="rounded-md border border-white/5 bg-white/[0.03] px-1.5 py-0.5 text-[10px] text-white/45">
+          <span key={i} className="rounded-md border border-foreground/10 bg-foreground/5 px-1.5 py-0.5 text-[10px] text-foreground/45">
             {reason}
           </span>
         ))}
@@ -66,14 +66,14 @@ export function RiskRadarCard() {
         <div className="flex items-center gap-2 min-w-0">
           <Radar size={14} className="text-purple-400 shrink-0" />
           <h3 className="text-sm font-semibold uppercase tracking-widest gx-gradient-text">ABSENCE RISK RADAR</h3>
-          <span className="text-[10px] text-white/30 font-mono hidden sm:inline">· {data?.windowDays ?? 21}d window</span>
+          <span className="text-[10px] text-foreground/30 font-mono hidden sm:inline">· {data?.windowDays ?? 21}d window</span>
         </div>
         {counts && (
           <div className="flex flex-wrap items-center gap-2 text-[10px]">
             {(Object.entries(counts) as Array<[RiskLevel, number]>).map(([level, n]) => (
-              <span key={level} className="inline-flex items-center gap-1 rounded-md border border-white/5 bg-white/[0.03] px-1.5 py-0.5">
+              <span key={level} className="inline-flex items-center gap-1 rounded-md border border-foreground/10 bg-foreground/5 px-1.5 py-0.5">
                 <span className="h-1.5 w-1.5 rounded-full" style={{ background: LEVEL_STYLE[level].dot }} />
-                <span className="text-white/45">{n} {level}</span>
+                <span className="text-foreground/45">{n} {level}</span>
               </span>
             ))}
           </div>
@@ -82,7 +82,7 @@ export function RiskRadarCard() {
 
       {isLoading ? (
         <div className="space-y-2">
-          {Array(4).fill(0).map((_, i) => <div key={i} className="h-16 animate-pulse rounded-xl bg-white/[0.04]" />)}
+          {Array(4).fill(0).map((_, i) => <div key={i} className="h-16 animate-pulse rounded-xl bg-foreground/5" />)}
         </div>
       ) : isError || !data ? (
         <GlowEmpty icon={<ShieldAlert size={22} />} title="Radar unavailable" hint="Could not compute risk scores right now." />

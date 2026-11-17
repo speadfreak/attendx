@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLiveEvents, type LiveStatus } from "@/hooks/useLiveEvents";
 import { NotificationCenter } from "@/components/NotificationCenter";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { openCommandPalette } from "@/components/CommandPalette";
 import { api, type FraudSummary } from "@/lib/api";
 import {
@@ -133,7 +134,7 @@ export function LiveBadge() {
   };
   const t = tone[status];
   return (
-    <span className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/30 border border-white/5 text-[9px] font-mono text-white/50 tracking-widest">
+    <span className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-foreground/5 border border-foreground/10 text-[9px] font-mono text-muted-foreground tracking-widest">
       <span className={`st-dot ${t.cls} ${status === "live" ? "animate-pulse" : ""}`} />
       {t.label}
     </span>
@@ -217,7 +218,7 @@ function FraudNavBadge({ compact = false }: { compact?: boolean }) {
     // Collapsed rail: count survives as a tiny glowing numbered dot on the tile.
     return (
       <span
-        className="absolute -top-1 -right-1 z-20 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[9px] font-mono font-bold leading-none text-red-100"
+        className="absolute -top-1 -right-1 z-20 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[9px] font-mono font-bold leading-none text-red-700 dark:text-red-100"
         style={{
           background: "linear-gradient(135deg, rgba(248,113,113,0.38), rgba(239,68,68,0.28))",
           border: "1px solid rgba(248,113,113,0.6)",
@@ -381,7 +382,7 @@ export function Layout({ children }: { children: ReactNode }) {
             ) : (
               <div
                 aria-hidden="true"
-                className="px-2 pt-0.5 pb-1.5 text-[9px] font-mono font-semibold uppercase tracking-[0.22em] text-white/25 select-none"
+                className="px-2 pt-0.5 pb-1.5 text-[9px] font-mono font-semibold uppercase tracking-[0.22em] text-muted-foreground/60 select-none"
               >
                 {group.label}
               </div>
@@ -409,7 +410,7 @@ export function Layout({ children }: { children: ReactNode }) {
                       className={`nav-item flex items-center rounded-lg cursor-pointer text-sm transition-colors ${
                         isActive
                           ? "active gx-nav-pill text-purple-200 font-medium"
-                          : "gx-nav-hover text-white/40 hover:text-white/80"
+                          : "gx-nav-hover text-muted-foreground hover:text-foreground"
                       } ${
                         rail
                           ? "relative w-11 h-11 mx-auto justify-center"
@@ -420,7 +421,7 @@ export function Layout({ children }: { children: ReactNode }) {
                         isActive ? "gx-accent-grad bg-purple-500/25" : ""
                       }`}>
                         {isActive && <div className="absolute inset-0 rounded-md bg-purple-500/30 blur-sm" />}
-                        <Icon size={15} className={`relative z-10 ${isActive ? "text-white" : "text-white/40"}`} />
+                        <Icon size={15} className={`relative z-10 ${isActive ? "text-white" : "text-muted-foreground"}`} />
                       </div>
 
                       {rail ? (
@@ -481,14 +482,14 @@ export function Layout({ children }: { children: ReactNode }) {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, transition: { duration: 0.12 } }}
             transition={{ duration: 0.16, ease: "easeOut" }}
-            className="fixed z-[70] pointer-events-none whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium text-white/90 backdrop-blur-md"
+            className="fixed z-[70] pointer-events-none whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium text-popover-foreground/90 backdrop-blur-md"
             style={{
               left: RAIL_WIDTH + 10,
               top: railTip.top,
               y: "-50%",
-              background: "linear-gradient(135deg, rgba(18,9,32,0.94), rgba(10,5,18,0.94))",
+              background: "linear-gradient(135deg, hsl(var(--popover) / 0.96), hsl(var(--popover) / 0.92))",
               border: "1px solid rgba(var(--gx-accent-from), 0.38)",
-              boxShadow: "0 0 18px rgba(var(--gx-accent-from), 0.22), 0 8px 24px rgba(0,0,0,0.45)",
+              boxShadow: "0 0 18px rgba(var(--gx-accent-from), 0.22), 0 8px 24px rgba(88,28,135,0.30)",
             }}
           >
             {railTip.label}
@@ -502,12 +503,12 @@ export function Layout({ children }: { children: ReactNode }) {
         className={`gx-sidebar-rail hidden h-full shrink-0 md:flex flex-col overflow-hidden relative backdrop-blur-xl border-r gx-accent-border ${
           collapsed ? "w-[76px]" : "w-60"
         }`}
-        style={{ background: "linear-gradient(180deg, rgba(13,5,21,0.84) 0%, rgba(8,5,16,0.92) 100%)" }}
+        style={{ background: "linear-gradient(180deg, hsl(var(--sidebar) / 0.86) 0%, hsl(var(--sidebar) / 0.94) 100%)" }}
       >
         <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-purple-500/40 to-transparent" />
 
         {/* Brand block — collapses to the bare emblem + rail toggle */}
-        <div className="border-b border-white/5">
+        <div className="border-b border-foreground/10">
           <div
             ref={logoRef}
             className={`flex items-center transition-[padding,gap] duration-300 ${
@@ -528,12 +529,12 @@ export function Layout({ children }: { children: ReactNode }) {
               {!collapsed && (
                 <motion.div key="brand-title" {...railLabelMotion} className="min-w-0">
                   <h1
-                    className="text-base font-black text-white leading-none tracking-wider"
+                    className="text-base font-black text-foreground leading-none tracking-wider"
                     style={{ fontFamily: "'Orbitron', monospace" }}
                   >
                     ATTEND<span className="text-gradient">X</span>
                   </h1>
-                  <p className="text-[9px] text-purple-400/50 tracking-widest mt-0.5">COMMAND CENTER</p>
+                  <p className="text-[9px] text-purple-500/70 dark:text-purple-400/50 tracking-widest mt-0.5">COMMAND CENTER</p>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -543,7 +544,7 @@ export function Layout({ children }: { children: ReactNode }) {
               aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
               aria-expanded={!collapsed}
               title={collapsed ? "Expand sidebar (⌘B)" : "Collapse sidebar (⌘B)"}
-              className={`h-11 w-11 shrink-0 grid place-items-center rounded-lg text-white/35 hover:text-purple-300 hover:bg-purple-500/10 active:scale-95 transition gx-glow-hover ${
+              className={`h-11 w-11 shrink-0 grid place-items-center rounded-lg text-muted-foreground hover:text-purple-500 dark:hover:text-purple-300 hover:bg-purple-500/10 active:scale-95 transition gx-glow-hover ${
                 collapsed ? "" : "ml-auto"
               }`}
               style={{ border: "1px solid rgba(155,91,255,0.14)" }}
@@ -561,7 +562,7 @@ export function Layout({ children }: { children: ReactNode }) {
             onClick={() => openCommandPalette()}
             onMouseEnter={(e) => { if (collapsed) showRailTip("Quick jump…", e.currentTarget); }}
             onMouseLeave={hideRailTip}
-            className={`gx-glow-hover flex items-center rounded-lg text-xs text-white/35 hover:text-purple-300 hover:bg-purple-500/8 transition-colors ${
+            className={`gx-glow-hover flex items-center rounded-lg text-xs text-muted-foreground hover:text-purple-500 dark:hover:text-purple-300 hover:bg-purple-500/8 transition-colors ${
               collapsed ? "h-11 w-11 mx-auto justify-center" : "w-full gap-2 px-3 py-2"
             }`}
             style={{ border: "1px dashed rgba(155,91,255,0.18)" }}
@@ -571,7 +572,7 @@ export function Layout({ children }: { children: ReactNode }) {
               {!collapsed && (
                 <motion.span key="quickjump" {...railLabelMotion} className="flex-1 min-w-0 flex items-center gap-2">
                   Quick jump…
-                  <kbd className="ml-auto flex items-center gap-0.5 text-[9px] font-mono bg-white/5 px-1.5 py-0.5 rounded">
+                  <kbd className="ml-auto flex items-center gap-0.5 text-[9px] font-mono bg-muted px-1.5 py-0.5 rounded">
                     <Command size={9} />K
                   </kbd>
                 </motion.span>
@@ -581,11 +582,11 @@ export function Layout({ children }: { children: ReactNode }) {
         </div>
 
         {/* Footer — stacks to avatar + logout in rail mode */}
-        <div className={`border-t border-white/5 mt-auto transition-[padding] duration-300 ${collapsed ? "px-2 py-3" : "p-4"}`}>
+        <div className={`border-t border-foreground/10 mt-auto transition-[padding] duration-300 ${collapsed ? "px-2 py-3" : "p-4"}`}>
           {collapsed ? (
             <div className="flex flex-col items-center gap-2.5">
               <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border shrink-0"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border shrink-0 text-white"
                 style={{
                   background: "linear-gradient(135deg, #7C3AED, #9B5BFF)",
                   borderColor: "rgba(155,91,255,0.3)",
@@ -600,7 +601,7 @@ export function Layout({ children }: { children: ReactNode }) {
                 onClick={logout}
                 aria-label="Log out"
                 title="Log out"
-                className="text-white/30 hover:text-red-400 hover:bg-red-500/10 h-8 w-8"
+                className="text-muted-foreground hover:text-red-500 dark:hover:text-red-400 hover:bg-red-500/10 h-8 w-8"
               >
                 <LogOut size={14} />
               </Button>
@@ -620,22 +621,22 @@ export function Layout({ children }: { children: ReactNode }) {
                     {admin?.name?.charAt(0) || "A"}
                   </div>
                   <div className="overflow-hidden">
-                    <p className="text-xs font-semibold truncate text-white/80">{admin?.name}</p>
-                    <p className="text-[10px] text-white/30 truncate">{admin?.email}</p>
+                    <p className="text-xs font-semibold truncate text-foreground/85">{admin?.name}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{admin?.email}</p>
                   </div>
                 </div>
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={logout}
-                  className="text-white/30 hover:text-red-400 hover:bg-red-500/10 shrink-0 h-7 w-7"
+                  className="text-muted-foreground hover:text-red-500 dark:hover:text-red-400 hover:bg-red-500/10 shrink-0 h-7 w-7"
                 >
                   <LogOut size={13} />
                 </Button>
               </div>
               <div className="flex items-center justify-between">
                 <RoleBadge role={admin?.role} />
-                <div className="text-[9px] text-white/15 tracking-widest">BY JOSEPH JAMES</div>
+                <div className="text-[9px] text-foreground/25 tracking-widest">BY JOSEPH JAMES</div>
               </div>
             </>
           )}
@@ -654,30 +655,30 @@ export function Layout({ children }: { children: ReactNode }) {
         className={`fixed inset-y-0 left-0 z-50 w-64 flex flex-col md:hidden transition-transform duration-300 border-r gx-accent-border backdrop-blur-xl ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
-        style={{ background: "linear-gradient(180deg, rgba(13,5,21,0.90) 0%, rgba(8,5,16,0.95) 100%)" }}
+        style={{ background: "linear-gradient(180deg, hsl(var(--sidebar) / 0.92) 0%, hsl(var(--sidebar) / 0.96) 100%)" }}
       >
-        <div className="p-4 flex items-center justify-between border-b border-white/5">
+        <div className="p-4 flex items-center justify-between border-b border-foreground/10">
           <div className="flex items-center gap-2">
             <img src="/attendx-emblem.png" alt="AttendX emblem" className="w-7 h-7 rounded-lg object-cover" style={{ filter: "drop-shadow(0 0 6px rgba(155,91,255,0.6))" }} />
-            <h1 className="font-black text-white tracking-wider text-sm" style={{ fontFamily: "'Orbitron', monospace" }}>
+            <h1 className="font-black text-foreground tracking-wider text-sm" style={{ fontFamily: "'Orbitron', monospace" }}>
               ATTEND<span className="text-gradient">X</span>
             </h1>
           </div>
-          <Button variant="ghost" size="icon" onClick={() => setMobileOpen(false)} className="text-white/40 h-7 w-7">
+          <Button variant="ghost" size="icon" onClick={() => setMobileOpen(false)} className="text-muted-foreground h-7 w-7">
             <X size={16} />
           </Button>
         </div>
         <NavLinks onNavigate={() => setMobileOpen(false)} />
-        <div className="p-4 border-t border-white/5">
+        <div className="p-4 border-t border-foreground/10">
           <div className="flex items-center gap-2.5 mb-2">
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0" style={{ background: "linear-gradient(135deg, #7C3AED, #9B5BFF)" }}>
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 text-white" style={{ background: "linear-gradient(135deg, #7C3AED, #9B5BFF)" }}>
               {admin?.name?.charAt(0) || "A"}
             </div>
             <div className="flex-1 overflow-hidden">
-              <p className="text-xs font-semibold truncate text-white/80">{admin?.name}</p>
+              <p className="text-xs font-semibold truncate text-foreground/85">{admin?.name}</p>
               <RoleBadge role={admin?.role} />
             </div>
-            <Button variant="ghost" size="icon" onClick={logout} className="text-white/30 hover:text-red-400 h-7 w-7">
+            <Button variant="ghost" size="icon" onClick={logout} className="text-muted-foreground hover:text-red-500 dark:hover:text-red-400 h-7 w-7">
               <LogOut size={13} />
             </Button>
           </div>
@@ -687,16 +688,16 @@ export function Layout({ children }: { children: ReactNode }) {
       {/* ── Main column — owns the ONLY vertical scroll in the app ── */}
       <main className="min-w-0 flex-1 flex flex-col overflow-hidden">
         {/* Desktop topbar (static header — it no longer scrolls, no sticky needed) */}
-        <header className="gx-topbar-line hidden md:flex h-12 items-center px-5 justify-between shrink-0 z-30 border-b border-white/5"
-          style={{ background: "rgba(8,5,16,0.68)", backdropFilter: "blur(14px)" }}>
+        <header className="gx-topbar-line hidden md:flex h-12 items-center px-5 justify-between shrink-0 z-30 border-b border-foreground/10"
+          style={{ background: "hsl(var(--card) / 0.68)", backdropFilter: "blur(14px)" }}>
           <button
             onClick={() => openCommandPalette()}
-            className="gx-glow-hover flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-white/30 hover:text-white/60 hover:bg-purple-500/8 transition-colors w-72"
-            style={{ border: "1px solid rgba(155,91,255,0.12)", background: "rgba(20,8,40,0.5)" }}
+            className="gx-glow-hover flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground/70 hover:bg-purple-500/8 transition-colors w-72"
+            style={{ border: "1px solid rgba(155,91,255,0.12)", background: "hsl(var(--card) / 0.5)" }}
           >
             <Search size={13} />
             Search students, actions, pages…
-            <kbd className="ml-auto flex items-center gap-0.5 text-[9px] font-mono bg-white/5 px-1.5 py-0.5 rounded">
+            <kbd className="ml-auto flex items-center gap-0.5 text-[9px] font-mono bg-muted px-1.5 py-0.5 rounded">
               <Command size={9} />K
             </kbd>
           </button>
@@ -704,21 +705,22 @@ export function Layout({ children }: { children: ReactNode }) {
             <NetDot />
             <InstallAppButton />
             <LiveBadge />
+            <ThemeToggle />
             <NotificationCenter />
           </div>
         </header>
 
         {/* Mobile header */}
         <header
-          className="gx-topbar-line md:hidden h-14 flex items-center px-4 justify-between shrink-0 z-30 border-b border-white/5"
-          style={{ background: "rgba(8,5,16,0.80)", backdropFilter: "blur(14px)" }}
+          className="gx-topbar-line md:hidden h-14 flex items-center px-4 justify-between shrink-0 z-30 border-b border-foreground/10"
+          style={{ background: "hsl(var(--card) / 0.8)", backdropFilter: "blur(14px)" }}
         >
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" onClick={() => setMobileOpen(true)} className="text-white/50 -ml-2 h-8 w-8">
+            <Button variant="ghost" size="icon" onClick={() => setMobileOpen(true)} className="text-muted-foreground -ml-2 h-8 w-8">
               <Menu size={18} />
             </Button>
             <img src="/attendx-emblem.png" alt="AttendX emblem" className="w-6 h-6 rounded-md object-cover" style={{ filter: "drop-shadow(0 0 4px rgba(155,91,255,0.6))" }} />
-            <span className="font-black text-sm text-white tracking-wider" style={{ fontFamily: "'Orbitron', monospace" }}>
+            <span className="font-black text-sm text-foreground tracking-wider" style={{ fontFamily: "'Orbitron', monospace" }}>
               ATTEND<span className="text-gradient">X</span>
             </span>
           </div>
@@ -726,6 +728,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <NetDot />
             <InstallAppButton />
             <LiveBadge />
+            <ThemeToggle compact />
             <NotificationCenter />
           </div>
         </header>

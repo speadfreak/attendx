@@ -84,7 +84,7 @@ export default function SmsTemplatesPage() {
         <GlowCard variant="gradient" className="p-4">
           <div className="flex items-center gap-2 mb-2">
             <Variable size={13} className="text-cyan-400" />
-            <span className="text-[10px] uppercase tracking-widest text-white/40">Variables — click to copy</span>
+            <span className="text-[10px] uppercase tracking-widest text-foreground/40">Variables — click to copy</span>
           </div>
           <div className="flex flex-wrap gap-2">
             {VARIABLES.map((v) => (
@@ -133,7 +133,7 @@ export default function SmsTemplatesPage() {
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <MessageSquare size={14} className={`st-${row.tone}`} />
-                    <span className="text-xs font-semibold uppercase tracking-widest text-white/60">{row.label}</span>
+                    <span className="text-xs font-semibold uppercase tracking-widest text-foreground/60">{row.label}</span>
                   </div>
                   <span className={`st-badge st-badge-${row.tone}`}>{row.hint ? "active" : "idle"}</span>
                 </div>
@@ -141,12 +141,12 @@ export default function SmsTemplatesPage() {
                   value={templates[row.key]}
                   onChange={(e) => update(row.key, e.target.value)}
                   rows={2}
-                  className="w-full bg-black/40 border border-purple-500/15 rounded-lg p-3 text-sm text-white/80 focus:outline-none focus:border-purple-500/45 font-mono"
+                  className="w-full bg-muted border border-purple-500/15 rounded-lg p-3 text-sm text-foreground/80 focus:outline-none focus:border-purple-500/45 font-mono"
                 />
-                <div className="flex items-start gap-2 mt-2 text-[11px] text-white/35">
+                <div className="flex items-start gap-2 mt-2 text-[11px] text-foreground/35">
                   <Eye size={12} className="mt-0.5 shrink-0 text-purple-400" />
                   <p>
-                    <span className="text-white/50">Preview:</span> {renderPreview(templates[row.key])}
+                    <span className="text-foreground/50">Preview:</span> {renderPreview(templates[row.key])}
                   </p>
                 </div>
               </GlowCard>
@@ -155,8 +155,8 @@ export default function SmsTemplatesPage() {
         )}
 
         <GlowCard variant="gradient" className="p-4">
-          <p className="text-[11px] text-white/35 leading-relaxed">
-            <strong className="text-white/60">How sending works:</strong> present, late & absent marks enqueue an SMS job; the worker
+          <p className="text-[11px] text-foreground/35 leading-relaxed">
+            <strong className="text-foreground/60">How sending works:</strong> present, late & absent marks enqueue an SMS job; the worker
             renders your template (student name, time, classroom) and delivers via Twilio when configured — otherwise the
             message is recorded as a simulated delivery in SMS Logs. The end-of-day absent sweep marks every student
             without a record and notifies each parent with the absent template.

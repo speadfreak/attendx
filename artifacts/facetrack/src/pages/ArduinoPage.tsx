@@ -53,6 +53,7 @@ import { CodeEditor } from "@/components/arduino/CodeEditor";
 import { Hint } from "@/components/arduino/Hint";
 import { Plotter, extractPlotValues, mergePlot, MAX_PLOT_POINTS, MAX_PLOT_SERIES, type PlotState } from "@/components/arduino/Plotter";
 import { SerialTerminal } from "@/components/arduino/SerialTerminal";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import {
   SerialMonitor,
   closePortQuietly,
@@ -148,7 +149,7 @@ function PanelHead({
   right?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3 border-b border-white/5 pb-3">
+    <div className="flex items-start justify-between gap-3 border-b border-foreground/10 pb-3">
       <div className="flex items-start gap-3">
         <span
           aria-hidden="true"
@@ -157,11 +158,11 @@ function PanelHead({
           {step}
         </span>
         <div>
-          <h2 className="flex items-center gap-2 text-sm font-bold tracking-wide text-white/90">
+          <h2 className="flex items-center gap-2 text-sm font-bold tracking-wide text-foreground/90">
             <Icon className="h-4 w-4 text-emerald-400" aria-hidden="true" />
             {title}
           </h2>
-          {sub && <p className="mt-0.5 text-xs text-white/40">{sub}</p>}
+          {sub && <p className="mt-0.5 text-xs text-foreground/40">{sub}</p>}
         </div>
       </div>
       {right}
@@ -172,8 +173,8 @@ function PanelHead({
 function InfoRow({ label, value, mono = true }: { label: string; value: React.ReactNode; mono?: boolean }) {
   return (
     <div className="flex items-baseline justify-between gap-3 py-1">
-      <dt className="text-[11px] uppercase tracking-wider text-white/35">{label}</dt>
-      <dd className={cn("text-right text-xs text-white/80", mono && "font-mono")}>{value}</dd>
+      <dt className="text-[11px] uppercase tracking-wider text-foreground/35">{label}</dt>
+      <dd className={cn("text-right text-xs text-foreground/80", mono && "font-mono")}>{value}</dd>
     </div>
   );
 }
@@ -1265,17 +1266,20 @@ export default function ArduinoPage() {
           >
             ARDUINO GATE CONTROLLER LAB
           </SectionTitle>
-          <div
-            className="flex items-center gap-2 rounded-lg border border-white/10 bg-slate-950/70 px-3 py-2"
-            aria-label={`Connection status: ${connStateLabel}`}
-          >
-            <LedDot tone={ledTone} />
-            <span className="font-mono text-[11px] tracking-widest text-white/70">{connStateLabel}</span>
-            {board && (
-              <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 font-mono text-[10px] text-emerald-300">
-                {board.chip}
-              </Badge>
-            )}
+          <div className="flex items-center gap-2">
+            <div
+              className="flex items-center gap-2 rounded-lg border border-foreground/10 bg-card/70 px-3 py-2"
+              aria-label={`Connection status: ${connStateLabel}`}
+            >
+              <LedDot tone={ledTone} />
+              <span className="font-mono text-[11px] tracking-widest text-foreground/70">{connStateLabel}</span>
+              {board && (
+                <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 font-mono text-[10px] text-emerald-300">
+                  {board.chip}
+                </Badge>
+              )}
+            </div>
+            <ThemeToggle compact />
           </div>
         </motion.div>
 
@@ -1290,7 +1294,7 @@ export default function ArduinoPage() {
               <p className="mt-1 text-amber-200/80">
                 Direct USB needs Chrome/Edge on desktop over HTTPS. For every other browser (and for remote boards),
                 expand <span className="font-semibold">Remote Serial Bridge</span> in panel 01 and run{" "}
-                <code className="rounded bg-slate-950 px-1 py-0.5 font-mono text-amber-300">
+                <code className="rounded bg-muted px-1 py-0.5 font-mono text-amber-300">
                   node hardware/arduino-bridge.mjs
                 </code>{" "}
                 on the machine holding the board — monitor, terminal and ingestion stream through it just the same.
@@ -1309,7 +1313,7 @@ export default function ArduinoPage() {
             transition={{ duration: 0.35, delay: 0.05 }}
             className="lg:col-span-5 xl:col-span-4"
           >
-            <GlowCard hover={false} className="flex h-full flex-col gap-4 bg-slate-950/80 p-5">
+            <GlowCard hover={false} className="flex h-full flex-col gap-4 p-5">
               <PanelHead
                 step="01"
                 icon={Cable}
@@ -1354,7 +1358,7 @@ export default function ArduinoPage() {
                   >
                     <Button
                       variant="outline"
-                      className="min-h-11 border-slate-700"
+                      className="min-h-11 border-border"
                       disabled={!serialSupported || !hasPort || bridgeMode || busy !== null || flashing}
                       onClick={() => void runIdentify()}
                       aria-label="Identify board and read chip signature"
@@ -1386,7 +1390,7 @@ export default function ArduinoPage() {
 
               {quickPorts.length > 0 && (
                 <div className="space-y-1.5">
-                  <span className="text-[11px] uppercase tracking-wider text-white/35">
+                  <span className="text-[11px] uppercase tracking-wider text-foreground/35">
                     Quick reconnect — already authorized, no picker
                   </span>
                   <div className="flex flex-wrap gap-2">
@@ -1431,7 +1435,7 @@ export default function ArduinoPage() {
                   </button>
                 </CollapsibleTrigger>
                 <CollapsibleContent>
-                  <ul className="space-y-2 px-3 pb-3 text-[11px] leading-relaxed text-white/55">
+                  <ul className="space-y-2 px-3 pb-3 text-[11px] leading-relaxed text-foreground/55">
                     <li>
                       <span className="font-semibold text-amber-200">Charge-only USB cable.</span> The #1 cause — a
                       power-only cable enumerates nothing. Swap for a data cable.
@@ -1450,7 +1454,7 @@ export default function ArduinoPage() {
                     </li>
                     <li>
                       <span className="font-semibold text-amber-200">Linux permissions.</span>{" "}
-                      <code className="rounded bg-slate-950 px-1 py-0.5 font-mono text-emerald-300">
+                      <code className="rounded bg-muted px-1 py-0.5 font-mono text-emerald-300">
                         sudo usermod -aG dialout $USER
                       </code>{" "}
                       (log out + in), and disable modemmanager — it loves claiming fresh serial ports.
@@ -1498,9 +1502,9 @@ export default function ArduinoPage() {
                 </CollapsibleTrigger>
                 <CollapsibleContent>
                   <div className="space-y-2.5 px-3 pb-3">
-                    <p className="text-[11px] leading-relaxed text-white/50">
+                    <p className="text-[11px] leading-relaxed text-foreground/50">
                       Web Serial only exists in Chrome/Edge on desktop — the relay lifts both limits. Run{" "}
-                      <code className="rounded bg-slate-950 px-1 py-0.5 font-mono text-violet-300">
+                      <code className="rounded bg-muted px-1 py-0.5 font-mono text-violet-300">
                         node hardware/arduino-bridge.mjs
                       </code>{" "}
                       on the machine holding the board (Linux/macOS), then open its port from HERE — monitor, control
@@ -1513,7 +1517,7 @@ export default function ArduinoPage() {
                         onChange={(e) => setBridgeUrlDraft(e.target.value)}
                         aria-label="Bridge URL for the serial relay"
                         placeholder="http://127.0.0.1:8791"
-                        className="h-9 min-h-11 border-slate-800 bg-slate-950/80 font-mono text-[11px]"
+                        className="h-9 min-h-11 border-border bg-muted font-mono text-[11px]"
                       />
                       <Button
                         variant="outline"
@@ -1541,11 +1545,11 @@ export default function ArduinoPage() {
                           bridgePorts.map((p) => (
                             <div
                               key={p.path}
-                              className="flex items-center justify-between gap-2 rounded border border-slate-800 bg-slate-950/70 px-2.5 py-1.5"
+                              className="flex items-center justify-between gap-2 rounded border border-border bg-muted/50 px-2.5 py-1.5"
                             >
                               <div className="min-w-0">
-                                <p className="truncate font-mono text-[11px] text-white/80">{p.path}</p>
-                                {p.boardName && <p className="truncate text-[10px] text-white/40">{p.boardName}</p>}
+                                <p className="truncate font-mono text-[11px] text-foreground/80">{p.path}</p>
+                                {p.boardName && <p className="truncate text-[10px] text-foreground/40">{p.boardName}</p>}
                               </div>
                               <Button
                                 variant="outline"
@@ -1576,7 +1580,7 @@ export default function ArduinoPage() {
                 </CollapsibleContent>
               </Collapsible>
 
-              <dl className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2">
+              <dl className="rounded-lg border border-border bg-muted/50 px-3 py-2">
                 <InfoRow label="Device" value={deviceLabel ?? "—"} />
                 <InfoRow label="USB ids" value={usbInfo ? formatUsbIds(usbInfo) : "—"} />
                 <InfoRow label="Board" value={board?.boards ?? (board ? "unknown" : "—")} />
@@ -1598,7 +1602,7 @@ export default function ArduinoPage() {
                 />
               </dl>
 
-              <div className="mt-auto flex items-start gap-2 rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-[11px] leading-relaxed text-white/40">
+              <div className="mt-auto flex items-start gap-2 rounded-lg border border-border bg-muted/50 p-3 text-[11px] leading-relaxed text-foreground/40">
                 <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-300/70" aria-hidden="true" />
                 <span>
                   Permission is remembered per port: after your first Connect, the board shows up under Quick
@@ -1620,7 +1624,7 @@ export default function ArduinoPage() {
             transition={{ duration: 0.35, delay: 0.1 }}
             className="lg:col-span-7 xl:col-span-8"
           >
-            <GlowCard hover={false} className="flex h-full flex-col gap-4 bg-slate-950/80 p-5">
+            <GlowCard hover={false} className="flex h-full flex-col gap-4 p-5">
               <PanelHead
                 step="02"
                 icon={Cpu}
@@ -1638,11 +1642,11 @@ export default function ArduinoPage() {
               {/* toolbar: template / my sketches / name / save / copy / download */}
               <div className="grid gap-2 md:grid-cols-[1fr_1fr_auto]">
                 <div className="space-y-1.5">
-                  <label className="text-[11px] uppercase tracking-wider text-white/35" htmlFor="template-select">
+                  <label className="text-[11px] uppercase tracking-wider text-foreground/35" htmlFor="template-select">
                     Templates
                   </label>
                   <Select value={sketchId} onValueChange={loadTemplate}>
-                    <SelectTrigger id="template-select" aria-label="Load a template sketch into the editor" className="min-h-11 border-slate-700 bg-slate-950/60">
+                    <SelectTrigger id="template-select" aria-label="Load a template sketch into the editor" className="min-h-11 border-border bg-muted">
                       <SelectValue placeholder={sketchId === "__my__" ? "My sketch" : "Pick a sketch"} />
                     </SelectTrigger>
                     <SelectContent>
@@ -1655,7 +1659,7 @@ export default function ArduinoPage() {
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[11px] uppercase tracking-wider text-white/35" htmlFor="mysketch-select">
+                  <label className="text-[11px] uppercase tracking-wider text-foreground/35" htmlFor="mysketch-select">
                     My sketches ({mySketches.length})
                   </label>
                   <div className="flex gap-2">
@@ -1664,7 +1668,7 @@ export default function ArduinoPage() {
                       onValueChange={loadMySketch}
                       disabled={mySketches.length === 0}
                     >
-                      <SelectTrigger id="mysketch-select" aria-label="Load one of your saved sketches" className="min-h-11 w-full border-slate-700 bg-slate-950/60">
+                      <SelectTrigger id="mysketch-select" aria-label="Load one of your saved sketches" className="min-h-11 w-full border-border bg-muted">
                         <SelectValue placeholder="nothing saved yet" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1691,7 +1695,7 @@ export default function ArduinoPage() {
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[11px] uppercase tracking-wider text-white/35" htmlFor="sketch-name">
+                  <label className="text-[11px] uppercase tracking-wider text-foreground/35" htmlFor="sketch-name">
                     Sketch name
                   </label>
                   <div className="flex gap-2">
@@ -1703,13 +1707,13 @@ export default function ArduinoPage() {
                         setDirty(true);
                       }}
                       aria-label="Sketch name used when compiling and saving"
-                      className="min-h-11 border-slate-700 bg-slate-950/60 font-mono text-xs"
+                      className="min-h-11 border-border bg-muted font-mono text-xs"
                     />
                     <Hint label="Save this source under the current name (localStorage, this browser)">
                       <Button
                         variant="outline"
                         size="icon"
-                        className="min-h-11 w-11 shrink-0 border-slate-700"
+                        className="min-h-11 w-11 shrink-0 border-border"
                         onClick={saveMySketch}
                         aria-label="Save sketch"
                       >
@@ -1731,35 +1735,35 @@ export default function ArduinoPage() {
                 ariaLabel={`C++ source of ${sketchName}`}
                 maxHeightClass="max-h-[380px]"
               />
-              <p className="-mt-2 text-[10px] text-white/30">
+              <p className="-mt-2 text-[10px] text-foreground/30">
                 Tab indents · Ctrl/Cmd + Enter compiles · {source.split("\n").length} lines · {source.length} chars
               </p>
 
               {/* compiler bar */}
               <div className="grid items-end gap-2 md:grid-cols-[1fr_1fr_auto]">
                 <div className="space-y-1.5">
-                  <label className="text-[11px] uppercase tracking-wider text-white/35" htmlFor="fqbn-select">
+                  <label className="text-[11px] uppercase tracking-wider text-foreground/35" htmlFor="fqbn-select">
                     Board target
                   </label>
                   <Select value={fqbn} onValueChange={setFqbn}>
-                    <SelectTrigger id="fqbn-select" aria-label="Board target for the compiler" className="min-h-11 border-slate-700 bg-slate-950/60">
+                    <SelectTrigger id="fqbn-select" aria-label="Board target for the compiler" className="min-h-11 border-border bg-muted">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       {FQBN_PRESETS.map((p) => (
                         <SelectItem key={p.fqbn} value={p.fqbn}>
-                          {p.label} <span className="text-white/30">({p.fqbn})</span>
+                          {p.label} <span className="text-foreground/30">({p.fqbn})</span>
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[11px] uppercase tracking-wider text-white/35" htmlFor="compiler-mode">
+                  <label className="text-[11px] uppercase tracking-wider text-foreground/35" htmlFor="compiler-mode">
                     Compiler host
                   </label>
                   <Select value={compileMode} onValueChange={(v) => setCompileMode(v as CompilerMode)}>
-                    <SelectTrigger id="compiler-mode" aria-label="Which arduino-cli host compiles the sketch" className="min-h-11 border-slate-700 bg-slate-950/60">
+                    <SelectTrigger id="compiler-mode" aria-label="Which arduino-cli host compiles the sketch" className="min-h-11 border-border bg-muted">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1787,13 +1791,13 @@ export default function ArduinoPage() {
               </div>
 
               {/* compiler probes + bridge url */}
-              <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+              <div className="rounded-lg border border-border bg-muted/50 p-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] uppercase tracking-wider text-white/35">Compiler hosts</span>
+                  <span className="text-[11px] uppercase tracking-wider text-foreground/35">Compiler hosts</span>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 text-[10px] text-white/50 hover:text-white/80"
+                    className="h-7 text-[10px] text-foreground/50 hover:text-foreground/80"
                     disabled={probing}
                     onClick={() => void runProbe()}
                     aria-label="Re-probe compilers"
@@ -1810,11 +1814,11 @@ export default function ArduinoPage() {
                   const available = probe?.available === true;
                   return (
                     <div key={row.mode} className="mt-1.5 flex items-start justify-between gap-3 text-[11px]">
-                      <span className="flex shrink-0 items-center gap-2 text-white/70">
+                      <span className="flex shrink-0 items-center gap-2 text-foreground/70">
                         <LedDot tone={available ? "on" : probing ? "busy" : "idle"} />
                         {row.label}
                       </span>
-                      <span className={cn("text-right", available ? "text-emerald-300" : "text-white/35")}>
+                      <span className={cn("text-right", available ? "text-emerald-300" : "text-foreground/35")}>
                         {probes === null
                           ? "probing…"
                           : available
@@ -1830,19 +1834,19 @@ export default function ArduinoPage() {
                     onChange={(e) => setBridgeUrlDraft(e.target.value)}
                     aria-label="Local compile bridge URL"
                     placeholder="http://127.0.0.1:8791"
-                    className="h-8 border-slate-800 bg-slate-950/80 font-mono text-[10px]"
+                    className="h-8 border-border bg-muted font-mono text-[10px]"
                   />
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-8 shrink-0 border-slate-700 text-[10px]"
+                    className="h-8 shrink-0 border-border text-[10px]"
                     onClick={applyBridgeUrl}
                     aria-label="Save bridge URL and re-probe"
                   >
                     save bridge url
                   </Button>
                 </div>
-                <p className="mt-2 text-[10px] leading-relaxed text-white/35">
+                <p className="mt-2 text-[10px] leading-relaxed text-foreground/35">
                   The browser cannot run avr-gcc. Self-hosted APIs with <span className="font-mono text-emerald-300">arduino-cli</span> in PATH compile via the
                   server; everyone else runs the one-file bridge on their own machine:{" "}
                   <span className="font-mono text-emerald-300">node hardware/arduino-bridge.mjs</span> (then flash over
@@ -1858,7 +1862,7 @@ export default function ArduinoPage() {
                       "rounded-lg border p-3 text-xs",
                       compileMsg.tone === "ok" && "border-emerald-500/40 bg-emerald-500/10 text-emerald-200",
                       compileMsg.tone === "error" && "border-red-500/40 bg-red-500/10 text-red-200",
-                      compileMsg.tone === "info" && "border-slate-700 bg-slate-900/60 text-slate-200",
+                      compileMsg.tone === "info" && "border-border bg-card/60 text-muted-foreground",
                     )}
                   >
                     <p className="flex items-start gap-2">
@@ -1872,7 +1876,7 @@ export default function ArduinoPage() {
                     {compileMsg.log && (
                       <pre
                         className={cn(
-                          "mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded border border-white/10 bg-slate-950/90 p-2 font-mono text-[10px]",
+                          "mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded border border-foreground/10 bg-slate-950/90 p-2 font-mono text-[10px]",
                           SCROLLBAR_CLASSES,
                         )}
                       >
@@ -1885,13 +1889,13 @@ export default function ArduinoPage() {
 
               <div className="flex flex-wrap gap-2">
                 <Hint label="Copy the editor source to the clipboard">
-                  <Button variant="outline" size="sm" className="min-h-11 border-slate-700" onClick={() => void copySketch()} aria-label="Copy sketch source">
+                  <Button variant="outline" size="sm" className="min-h-11 border-border" onClick={() => void copySketch()} aria-label="Copy sketch source">
                     {copied ? <Check className="h-4 w-4 text-emerald-400" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
                     {copied ? "Copied" : "Copy source"}
                   </Button>
                 </Hint>
                 <Hint label={`Download ${sanitizeSketchName(sketchName)}.ino`}>
-                  <Button variant="outline" size="sm" className="min-h-11 border-slate-700" onClick={downloadSketch} aria-label="Download sketch as .ino file">
+                  <Button variant="outline" size="sm" className="min-h-11 border-border" onClick={downloadSketch} aria-label="Download sketch as .ino file">
                     <FileDown className="h-4 w-4" aria-hidden="true" />
                     Download .ino
                   </Button>
@@ -1909,7 +1913,7 @@ export default function ArduinoPage() {
             transition={{ duration: 0.35, delay: 0.15 }}
             className="lg:col-span-7 xl:col-span-8"
           >
-            <GlowCard hover={false} className="flex h-full flex-col gap-4 bg-slate-950/80 p-5">
+            <GlowCard hover={false} className="flex h-full flex-col gap-4 p-5">
               <PanelHead
                 step="03"
                 icon={Zap}
@@ -1917,7 +1921,7 @@ export default function ArduinoPage() {
                 sub="hand-rolled STK500v1 over Web Serial — no external flashing libs"
                 right={
                   board ? (
-                    <Badge variant="outline" className="border-slate-700 font-mono text-[10px] text-slate-300">
+                    <Badge variant="outline" className="border-border font-mono text-[10px] text-muted-foreground">
                       flash baud {board.baud}
                     </Badge>
                   ) : null
@@ -1940,11 +1944,11 @@ export default function ArduinoPage() {
                   }}
                   className={cn(
                     "flex flex-col items-center justify-center gap-1 rounded-lg border border-dashed p-4 text-center transition-colors",
-                    dragOver ? "border-emerald-400 bg-emerald-500/10" : "border-slate-700 bg-slate-950/60",
+                    dragOver ? "border-emerald-400 bg-emerald-500/10" : "border-border bg-muted",
                   )}
                 >
-                  <FileUp className="h-5 w-5 text-slate-500" aria-hidden="true" />
-                  <p className="text-xs text-white/60">Drop a compiled .hex here</p>
+                  <FileUp className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+                  <p className="text-xs text-foreground/60">Drop a compiled .hex here</p>
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -1970,10 +1974,10 @@ export default function ArduinoPage() {
                   </Button>
                 </div>
 
-                <div className="flex flex-col justify-between gap-2 rounded-lg border border-slate-800 bg-slate-950/60 p-4">
+                <div className="flex flex-col justify-between gap-2 rounded-lg border border-border bg-muted/50 p-4">
                   <div>
-                    <p className="text-xs font-semibold text-white/70">Built-in AttendX gate firmware</p>
-                    <p className="mt-1 font-mono text-[10px] text-white/35">/firmware/gate-geofence.hex</p>
+                    <p className="text-xs font-semibold text-foreground/70">Built-in AttendX gate firmware</p>
+                    <p className="mt-1 font-mono text-[10px] text-foreground/35">/firmware/gate-geofence.hex</p>
                   </div>
                   {builtinState === "available" ? (
                     <Button
@@ -1988,7 +1992,7 @@ export default function ArduinoPage() {
                       Use built-in hex
                     </Button>
                   ) : (
-                    <p className="text-[11px] text-white/40">
+                    <p className="text-[11px] text-foreground/40">
                       {builtinState === "checking"
                         ? "Checking for the built-in image…"
                         : "Not deployed in this build (404) — compile the sketch in panel 02 or drop a .hex file."}
@@ -2004,8 +2008,8 @@ export default function ArduinoPage() {
                     <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 font-mono text-emerald-300">
                       validated
                     </Badge>
-                    <span className="font-mono text-slate-300">{hexMeta.name}</span>
-                    <span className="text-white/40">
+                    <span className="font-mono text-muted-foreground">{hexMeta.name}</span>
+                    <span className="text-foreground/40">
                       {hexMeta.dataBytes} program bytes · image span {(hexMeta.spanBytes / 1024).toFixed(1)} KB ·
                       gaps filled 0xFF
                     </span>
@@ -2037,7 +2041,7 @@ export default function ArduinoPage() {
                 {flashing && flashProgress && (
                   <div className="space-y-1.5">
                     <Progress value={flashPct} aria-label={`Flash progress: ${flashPct}%`} className="h-2" />
-                    <p className="font-mono text-[11px] text-slate-400">
+                    <p className="font-mono text-[11px] text-muted-foreground">
                       {flashProgress.written} / {flashProgress.total} pages written ({flashPct}%)
                     </p>
                   </div>
@@ -2113,14 +2117,14 @@ export default function ArduinoPage() {
             transition={{ duration: 0.35, delay: 0.2 }}
             className="lg:col-span-5 xl:col-span-4"
           >
-            <GlowCard hover={false} className="flex h-full flex-col gap-4 bg-slate-950/80 p-5">
+            <GlowCard hover={false} className="flex h-full flex-col gap-4 p-5">
               <PanelHead
                 step="04"
                 icon={FileDown}
                 title="SKETCH LIBRARY"
                 sub="gate-firmware sources · 9600 8N1 · terminal commands documented"
               />
-              <div className="flex max-h-[520px] flex-col gap-3 overflow-y-auto pr-1 [scrollbar-gutter:stable] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-700/80 [&::-webkit-scrollbar-track]:bg-transparent">
+              <div className="flex max-h-[520px] flex-col gap-3 overflow-y-auto pr-1 [scrollbar-gutter:stable] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-foreground/20 [&::-webkit-scrollbar-track]:bg-transparent">
                 {SKETCHES.map((s) => {
                   const active = s.id === sketchId;
                   return (
@@ -2128,36 +2132,36 @@ export default function ArduinoPage() {
                       key={s.id}
                       className={cn(
                         "rounded-lg border p-4 transition-colors",
-                        active ? "border-emerald-500/40 bg-emerald-500/5" : "border-slate-800 bg-slate-950/60",
+                        active ? "border-emerald-500/40 bg-emerald-500/5" : "border-border bg-muted/50",
                       )}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <h3 className="text-sm font-semibold text-white/85">{s.name}</h3>
+                        <h3 className="text-sm font-semibold text-foreground/85">{s.name}</h3>
                         {active && (
                           <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 font-mono text-[10px] text-emerald-300">
                             in editor
                           </Badge>
                         )}
                       </div>
-                      <p className="mt-1.5 text-xs leading-relaxed text-white/45">{s.description}</p>
+                      <p className="mt-1.5 text-xs leading-relaxed text-foreground/45">{s.description}</p>
                       {s.commands && s.commands.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-1">
                           {s.commands.slice(0, 6).map((c) => (
                             <span
                               key={c.cmd}
                               title={c.hint}
-                              className="rounded border border-slate-700 bg-slate-950/80 px-1.5 py-0.5 font-mono text-[9.5px] text-cyan-300/90"
+                              className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[9.5px] text-cyan-300/90"
                             >
                               {c.cmd}
                             </span>
                           ))}
                           {s.commands.length > 6 && (
-                            <span className="font-mono text-[9.5px] text-white/30">+{s.commands.length - 6} more</span>
+                            <span className="font-mono text-[9.5px] text-foreground/30">+{s.commands.length - 6} more</span>
                           )}
                         </div>
                       )}
                       <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-[10px] text-white/35">{s.filename}</span>
+                        <span className="font-mono text-[10px] text-foreground/35">{s.filename}</span>
                         <Button
                           variant={active ? "secondary" : "outline"}
                           size="sm"
@@ -2173,9 +2177,9 @@ export default function ArduinoPage() {
                   );
                 })}
               </div>
-              <p className="mt-auto text-[11px] leading-relaxed text-white/35">
+              <p className="mt-auto text-[11px] leading-relaxed text-foreground/35">
                 Compile inside the lab (panel 02) when an arduino-cli host is reachable, or outside:{" "}
-                <code className="rounded bg-slate-950 px-1 py-0.5 font-mono text-emerald-300">
+                <code className="rounded bg-muted px-1 py-0.5 font-mono text-emerald-300">
                   arduino-cli compile --fqbn {fqbn}
                 </code>{" "}
                 → drop the .hex into panel 03. The flasher burns it verbatim over STK500v1 — it never invents bytes.
@@ -2192,7 +2196,7 @@ export default function ArduinoPage() {
             transition={{ duration: 0.35, delay: 0.25 }}
             className="lg:col-span-7 xl:col-span-7"
           >
-            <GlowCard hover={false} className="flex h-full flex-col gap-4 bg-slate-950/80 p-5">
+            <GlowCard hover={false} className="flex h-full flex-col gap-4 p-5">
               <PanelHead
                 step="05"
                 icon={Terminal}
@@ -2201,7 +2205,7 @@ export default function ArduinoPage() {
                 right={
                   <div className="flex items-center gap-2">
                     <LedDot tone={monitorRunning ? "on" : "idle"} />
-                    <Badge variant="outline" className="border-slate-700 font-mono text-[10px] text-slate-400">
+                    <Badge variant="outline" className="border-border font-mono text-[10px] text-muted-foreground">
                       {monitorLines.length}/{MONITOR_MAX_LINES} lines
                     </Badge>
                   </div>
@@ -2210,11 +2214,11 @@ export default function ArduinoPage() {
 
               <div className="flex flex-wrap items-end gap-3">
                 <div className="space-y-1.5">
-                  <label className="text-[11px] uppercase tracking-wider text-white/35" htmlFor="monitor-baud">
+                  <label className="text-[11px] uppercase tracking-wider text-foreground/35" htmlFor="monitor-baud">
                     Monitor baud
                   </label>
                   <Select value={String(monitorBaud)} onValueChange={(v) => void changeMonitorBaud(Number(v))}>
-                    <SelectTrigger id="monitor-baud" aria-label="Serial monitor baud rate" className="min-h-11 w-36 border-slate-700 bg-slate-950/60">
+                    <SelectTrigger id="monitor-baud" aria-label="Serial monitor baud rate" className="min-h-11 w-36 border-border bg-muted">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -2240,8 +2244,8 @@ export default function ArduinoPage() {
                   </Button>
                 </Hint>
 
-                <div className="ml-auto flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2">
-                  <label htmlFor="ingest-switch" className="text-xs text-white/60">
+                <div className="ml-auto flex items-center gap-3 rounded-lg border border-border bg-muted/50 px-3 py-2">
+                  <label htmlFor="ingest-switch" className="text-xs text-foreground/60">
                     Ingest into AttendX
                   </label>
                   <Switch
@@ -2257,11 +2261,11 @@ export default function ArduinoPage() {
               {/* ingest target + status */}
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="space-y-1.5">
-                  <label className="text-[11px] uppercase tracking-wider text-white/35" htmlFor="ingest-gate">
+                  <label className="text-[11px] uppercase tracking-wider text-foreground/35" htmlFor="ingest-gate">
                     Ingest target gate
                   </label>
                   <Select value={gateId} onValueChange={setGateId}>
-                    <SelectTrigger id="ingest-gate" aria-label="Gate that receives the ingested sensor events" className="min-h-11 border-slate-700 bg-slate-950/60">
+                    <SelectTrigger id="ingest-gate" aria-label="Gate that receives the ingested sensor events" className="min-h-11 border-border bg-muted">
                       <SelectValue placeholder={gatesQuery.isLoading ? "loading gates…" : "select a gate"} />
                     </SelectTrigger>
                     <SelectContent>
@@ -2279,17 +2283,17 @@ export default function ArduinoPage() {
                     </p>
                   )}
                   {!gatesQuery.isError && gatesQuery.data && gatesQuery.data.length === 0 && (
-                    <p className="text-[10px] text-white/35">No gates registered — create one in Gates & Geofence.</p>
+                    <p className="text-[10px] text-foreground/35">No gates registered — create one in Gates & Geofence.</p>
                   )}
                 </div>
-                <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-[11px]" aria-live="polite">
+                <div className="rounded-lg border border-border bg-muted/50 p-3 text-[11px]" aria-live="polite">
                   <div className="flex items-center justify-between">
-                    <span className="uppercase tracking-wider text-white/35">Ingest status</span>
-                    <span className={cn("font-mono", ingestOn ? "text-emerald-300" : "text-white/35")}>
+                    <span className="uppercase tracking-wider text-foreground/35">Ingest status</span>
+                    <span className={cn("font-mono", ingestOn ? "text-emerald-300" : "text-foreground/35")}>
                       {ingestOn ? "ARMED" : "OFF"}
                     </span>
                   </div>
-                  <p className="mt-1 font-mono text-white/70">
+                  <p className="mt-1 font-mono text-foreground/70">
                     {ingestStats.lastPosted !== null
                       ? `last batch: ${ingestStats.lastPosted} accepted${ingestStats.lastSkipped ? `, ${ingestStats.lastSkipped} skipped` : ""} · total ${ingestStats.totalPosted} across ${ingestStats.batches} batch(es)`
                       : "no batches posted yet"}
@@ -2308,7 +2312,7 @@ export default function ArduinoPage() {
                 macros={selectedSketch?.commands ?? []}
               />
 
-              <p className="flex items-center gap-2 text-[11px] text-white/35">
+              <p className="flex items-center gap-2 text-[11px] text-foreground/35">
                 <Activity className="h-3.5 w-3.5 text-emerald-400/60" aria-hidden="true" />
                 {monitorEventCount} sensor event{monitorEventCount === 1 ? "" : "s"} captured this session · events
                 emerald · errors red · heartbeats violet · your input cyan · chatter slate
@@ -2325,7 +2329,7 @@ export default function ArduinoPage() {
             transition={{ duration: 0.35, delay: 0.3 }}
             className="lg:col-span-5 xl:col-span-5"
           >
-            <GlowCard hover={false} className="flex h-full flex-col gap-4 bg-slate-950/80 p-5">
+            <GlowCard hover={false} className="flex h-full flex-col gap-4 p-5">
               <PanelHead
                 step="06"
                 icon={Activity}
@@ -2336,7 +2340,7 @@ export default function ArduinoPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="min-h-9 border-slate-700"
+                      className="min-h-9 border-border"
                       onClick={() => setPlot({ names: [], data: {} })}
                       aria-label="Clear the plotter"
                     >
@@ -2347,10 +2351,10 @@ export default function ArduinoPage() {
                 }
               />
               <Plotter plot={plot} heightClass="h-56" />
-              <p className="text-[11px] leading-relaxed text-white/35">
+              <p className="text-[11px] leading-relaxed text-foreground/35">
                 Send <span className="font-mono text-cyan-300">STATUS</span> in panel 05 (or let the geofence sketch
                 emit events) and the values chart here live — up to {MAX_PLOT_SERIES} series × {MAX_PLOT_POINTS}
-                points. <span className="text-white/50">ts/uptime fields are excluded</span> so the scale stays useful.
+                points. <span className="text-foreground/50">ts/uptime fields are excluded</span> so the scale stays useful.
               </p>
             </GlowCard>
           </motion.div>

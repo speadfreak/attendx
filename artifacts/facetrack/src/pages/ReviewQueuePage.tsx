@@ -161,8 +161,8 @@ export default function ReviewQueuePage() {
                         <Fingerprint size={18} className={`st-${tone}`} />
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-white/85">{review.studentName ?? "Unknown face"}</p>
-                        <p className="text-[10px] text-white/35">
+                        <p className="text-sm font-semibold text-foreground/85">{review.studentName ?? "Unknown face"}</p>
+                        <p className="text-[10px] text-foreground/35">
                           {review.classroomName ?? "no classroom"} · {review.source} · {format(new Date(review.createdAt), "HH:mm")}
                         </p>
                       </div>
@@ -178,27 +178,27 @@ export default function ReviewQueuePage() {
                   </div>
 
                   {/* descriptor fingerprint */}
-                  <div className="rounded-xl bg-black/30 border border-white/5 p-3 mb-4">
-                    <p className="text-[9px] uppercase tracking-widest text-white/30 mb-2">Captured face signature</p>
+                  <div className="rounded-xl bg-muted border border-foreground/10 p-3 mb-4">
+                    <p className="text-[9px] uppercase tracking-widest text-foreground/30 mb-2">Captured face signature</p>
                     <FingerprintArt seed={review.id} tone={tone} />
                   </div>
 
                   {/* candidates */}
                   <div className="space-y-1.5 mb-4">
-                    <p className="text-[9px] uppercase tracking-widest text-white/30 mb-1">Top candidates</p>
+                    <p className="text-[9px] uppercase tracking-widest text-foreground/30 mb-1">Top candidates</p>
                     {!cands ? (
                       <GlowSkeleton className="h-16 !rounded-lg" />
                     ) : cands.candidates.length === 0 ? (
-                      <p className="text-xs text-white/30 italic">No face encodings to compare against.</p>
+                      <p className="text-xs text-foreground/30 italic">No face encodings to compare against.</p>
                     ) : (
                       cands.candidates.map((c, i) => (
                         <div
                           key={c.studentId}
-                          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.02] border border-white/5"
+                          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-foreground/[0.02] border border-foreground/10"
                         >
-                          <span className="text-[10px] font-mono text-white/25 w-4">#{i + 1}</span>
-                          <span className="text-xs text-white/75 flex-1 truncate">{c.name}</span>
-                          <span className="text-[10px] font-mono text-white/30">d={c.distance}</span>
+                          <span className="text-[10px] font-mono text-foreground/25 w-4">#{i + 1}</span>
+                          <span className="text-xs text-foreground/75 flex-1 truncate">{c.name}</span>
+                          <span className="text-[10px] font-mono text-foreground/30">d={c.distance}</span>
                           <ConfidenceChip confidence={c.confidence} />
                           <button
                             className="st-badge st-badge-purple"
@@ -225,7 +225,7 @@ export default function ReviewQueuePage() {
                     <button
                       disabled={busyId === review.id}
                       onClick={() => decide(review.id, "reject")}
-                      className="flex-1 py-2 rounded-lg text-xs font-semibold text-red-200 bg-red-500/12 border border-red-500/25 hover:bg-red-500/20 transition-all disabled:opacity-40"
+                      className="flex-1 py-2 rounded-lg text-xs font-semibold text-red-300 bg-red-500/12 border border-red-500/25 hover:bg-red-500/20 transition-all disabled:opacity-40"
                     >
                       <X size={12} className="inline mr-1" /> Reject
                     </button>

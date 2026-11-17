@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 import { LiveEventsProvider } from "@/hooks/useLiveEvents";
 import { Layout } from "@/components/Layout";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -34,11 +35,11 @@ function Forbidden() {
   return (
     <div className="min-h-[50vh] flex flex-col items-center justify-center gap-4 text-center">
       <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
-        <ShieldOff className="w-7 h-7 text-red-400" />
+        <ShieldOff className="w-7 h-7 text-red-500 dark:text-red-400" />
       </div>
       <div>
-        <h2 className="text-xl font-bold text-white/80">Access restricted</h2>
-        <p className="text-sm text-white/40 mt-1">Your role doesn't have access to this surface. Ask a super admin if you need it.</p>
+        <h2 className="text-xl font-bold text-foreground/80">Access restricted</h2>
+        <p className="text-sm text-muted-foreground mt-1">Your role doesn't have access to this surface. Ask a super admin if you need it.</p>
       </div>
     </div>
   );
@@ -114,17 +115,19 @@ function Router() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <AuthProvider>
-          <LiveEventsProvider>
-            <Router />
-            <CommandPalette />
-          </LiveEventsProvider>
-        </AuthProvider>
-        <Toaster />
-      </TooltipProvider>
-    </QueryClientProvider>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <AuthProvider>
+            <LiveEventsProvider>
+              <Router />
+              <CommandPalette />
+            </LiveEventsProvider>
+          </AuthProvider>
+          <Toaster />
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }
 

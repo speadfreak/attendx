@@ -66,7 +66,7 @@ export function NotificationCenter() {
       <PopoverTrigger asChild>
         <button
           className="relative w-9 h-9 rounded-xl flex items-center justify-center transition-colors hover:bg-purple-500/10"
-          style={{ border: "1px solid rgba(155,91,255,0.18)", background: "rgba(20,8,40,0.6)" }}
+          style={{ border: "1px solid rgba(155,91,255,0.18)", background: "hsl(var(--card))" }}
           aria-label={`Notifications${alertCount ? `, ${alertCount} unread alerts` : ""}`}
           onClick={() => load(true)}
         >
@@ -82,12 +82,12 @@ export function NotificationCenter() {
       <PopoverContent
         align="end"
         className="w-[360px] p-0 border-purple-500/20"
-        style={{ background: "linear-gradient(135deg, rgba(20,8,40,0.98), rgba(12,4,24,0.99))", boxShadow: "var(--gx-glow-outer-strong)" }}
+        style={{ background: "hsl(var(--popover))", boxShadow: "var(--gx-glow-outer-strong)" }}
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-foreground/10">
           <div className="flex items-center gap-2">
             <Bell size={13} className="text-purple-400" />
-            <span className="text-xs font-semibold text-white/70 uppercase tracking-widest">System Events</span>
+            <span className="text-xs font-semibold text-foreground/70 uppercase tracking-widest">System Events</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="gx-chip gx-chip-red">{counts.critical} critical</span>
@@ -103,7 +103,7 @@ export function NotificationCenter() {
               return (
                 <button
                   key={item.id}
-                  className="w-full text-left px-4 py-3 border-b border-white/5 last:border-0 hover:bg-purple-500/8 transition-colors flex gap-3"
+                  className="w-full text-left px-4 py-3 border-b border-foreground/10 last:border-0 hover:bg-accent transition-colors flex gap-3"
                   onClick={() => { setOpen(false); setLocation(item.link); }}
                 >
                   <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${item.severity === "critical" ? "bg-red-500/10 border border-red-500/20" : "bg-amber-500/10 border border-amber-500/20"}`}>
@@ -112,10 +112,10 @@ export function NotificationCenter() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className={`st-dot ${SEVERITY_DOT[item.severity]}`} />
-                      <p className="text-xs font-medium text-white/80 truncate">{item.title}</p>
+                      <p className="text-xs font-medium text-foreground/80 truncate">{item.title}</p>
                     </div>
-                    <p className="text-[11px] text-white/35 mt-0.5 line-clamp-2">{item.detail}</p>
-                    <p className="text-[9px] text-white/25 mt-1 uppercase tracking-wider">
+                    <p className="text-[11px] text-foreground/35 mt-0.5 line-clamp-2">{item.detail}</p>
+                    <p className="text-[9px] text-foreground/25 mt-1 uppercase tracking-wider">
                       {formatDistanceToNow(new Date(item.at), { addSuffix: true })} · {item.category}
                     </p>
                   </div>
@@ -124,7 +124,7 @@ export function NotificationCenter() {
             })
           )}
         </div>
-        <div className="px-4 py-2 border-t border-white/5 text-[9px] text-white/25 flex items-center justify-between">
+        <div className="px-4 py-2 border-t border-foreground/10 text-[9px] text-foreground/25 flex items-center justify-between">
           <span>{counts.pendingReviews} matches awaiting review</span>
           <button className="text-purple-400 hover:text-purple-300" onClick={() => { setOpen(false); setLocation("/review-queue"); }}>
             Open review queue →

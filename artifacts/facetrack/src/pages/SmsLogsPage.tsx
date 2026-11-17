@@ -98,7 +98,7 @@ function StatusChip({ log }: { log: SmsLogRow }) {
         );
       case "canceled":
         return (
-          <span className={`${chip} border-slate-400/30 bg-slate-500/10 text-slate-500`}>
+          <span className={`${chip} border-slate-400/30 bg-slate-500/10 text-muted-foreground`}>
             Canceled
           </span>
         );
@@ -110,7 +110,7 @@ function StatusChip({ log }: { log: SmsLogRow }) {
         );
       default:
         return (
-          <span className={`${chip} border-slate-400/30 bg-slate-500/10 text-slate-500`}>
+          <span className={`${chip} border-slate-400/30 bg-slate-500/10 text-muted-foreground`}>
             {log.status}
           </span>
         );

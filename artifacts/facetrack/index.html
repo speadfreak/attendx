@@ -1,15 +1,38 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
     <title>AttendX ⚡ – Intelligent Attendance System</title>
+    <script>
+      /* ── AttendX theme boot (no-FOUC) ─────────────────────────
+         Runs before first paint: resolves the stored theme
+         (light | dark | system, default dark), toggles the
+         .dark class on <html> and syncs the browser chrome
+         theme-color. Keep in sync with ThemeContext.tsx. */
+      (function () {
+        try {
+          var mode = localStorage.getItem("ft_theme") || "dark";
+          if (mode !== "light" && mode !== "dark" && mode !== "system") mode = "dark";
+          var dark = mode === "dark" || (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.classList.toggle("dark", dark);
+          document.documentElement.style.colorScheme = dark ? "dark" : "light";
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (!meta) {
+            meta = document.createElement("meta");
+            meta.setAttribute("name", "theme-color");
+            document.head.appendChild(meta);
+          }
+          meta.setAttribute("content", dark ? "#070311" : "#f6f3fc");
+        } catch (e) { /* private mode etc. — stay dark via CSS default */ }
+      })();
+    </script>
     <!-- New SVG favicon first — vector, crisp at every size, theme #020617. -->
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <meta name="theme-color" content="#020617" />
+    <meta name="theme-color" content="#070311" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

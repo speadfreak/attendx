@@ -123,7 +123,7 @@ export function SerialTerminal({
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 border-slate-700 bg-slate-950/60 px-2.5 font-mono text-[10px] text-cyan-300 hover:border-cyan-500/40 hover:bg-cyan-500/10"
+                className="h-7 border-border bg-muted px-2.5 font-mono text-[10px] text-cyan-300 hover:border-cyan-500/40 hover:bg-cyan-500/10"
                 disabled={!canSend}
                 onClick={() => send(m.cmd)}
                 aria-label={`Send ${m.cmd} to the board`}
@@ -164,8 +164,8 @@ export function SerialTerminal({
       <div className="flex items-center gap-2">
         <div
           className={cn(
-            "flex min-w-0 flex-1 items-center gap-2 rounded-lg border bg-slate-950/90 px-3 py-1.5",
-            canSend ? "border-slate-800 focus-within:border-cyan-500/50" : "border-slate-800/60 opacity-60",
+            "flex min-w-0 flex-1 items-center gap-2 rounded-lg border bg-muted px-3 py-1.5",
+            canSend ? "border-border focus-within:border-cyan-500/50" : "border-border/60 opacity-60",
           )}
         >
           <Terminal className="h-3.5 w-3.5 shrink-0 text-cyan-400/70" aria-hidden="true" />
@@ -183,11 +183,11 @@ export function SerialTerminal({
             aria-label="Serial command input"
             aria-disabled={!canSend}
             placeholder={canSend ? placeholder : (disabledReason ?? "connect + start the monitor first")}
-            className="min-w-0 flex-1 bg-transparent font-mono text-[11px] text-cyan-100 caret-cyan-300 outline-none placeholder:text-slate-600"
+            className="min-w-0 flex-1 bg-transparent font-mono text-[11px] text-cyan-800 caret-cyan-600 outline-none placeholder:text-muted-foreground/70 dark:text-cyan-100 dark:caret-cyan-300"
           />
-          <span className="hidden shrink-0 items-center gap-1 text-[10px] text-slate-600 sm:flex">
-            <kbd className="rounded border border-slate-700 px-1">↵</kbd> send
-            <kbd className="ml-1 rounded border border-slate-700 px-1">↑</kbd> history
+          <span className="hidden shrink-0 items-center gap-1 text-[10px] text-muted-foreground sm:flex">
+            <kbd className="rounded border border-border px-1">↵</kbd> send
+            <kbd className="ml-1 rounded border border-border px-1">↑</kbd> history
           </span>
         </div>
         <Hint label="Send the current line">
@@ -205,7 +205,7 @@ export function SerialTerminal({
           <Button
             variant="outline"
             size="sm"
-            className="min-h-9 border-slate-700"
+            className="min-h-9 border-border"
             onClick={() => setHistoryOpen((v) => !v)}
             aria-label="Toggle command history"
             aria-pressed={historyOpen}
@@ -217,7 +217,7 @@ export function SerialTerminal({
           <Button
             variant="outline"
             size="sm"
-            className="min-h-9 border-slate-700"
+            className="min-h-9 border-border"
             onClick={onClear}
             aria-label="Clear terminal transcript"
           >
@@ -227,9 +227,9 @@ export function SerialTerminal({
       </div>
 
       {historyOpen && (
-        <div className={cn("max-h-32 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950/80 p-2", SCROLLBAR_CLASSES)}>
+        <div className={cn("max-h-32 overflow-y-auto rounded-lg border border-border bg-card/80 p-2", SCROLLBAR_CLASSES)}>
           {historyRef.current.length === 0 ? (
-            <p className="px-1 text-[11px] text-slate-600">nothing sent yet</p>
+            <p className="px-1 text-[11px] text-muted-foreground">nothing sent yet</p>
           ) : (
             historyRef.current
               .slice()
@@ -238,7 +238,7 @@ export function SerialTerminal({
                 <button
                   key={`${h}-${i}`}
                   type="button"
-                  className="block w-full truncate rounded px-1.5 py-0.5 text-left font-mono text-[11px] text-slate-400 hover:bg-slate-800/70 hover:text-cyan-200"
+                  className="block w-full truncate rounded px-1.5 py-0.5 text-left font-mono text-[11px] text-muted-foreground hover:bg-foreground/10 hover:text-cyan-700 dark:hover:text-cyan-200"
                   onClick={() => {
                     setInput(h);
                     setHistoryOpen(false);

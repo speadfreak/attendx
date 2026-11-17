@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -1166,19 +1167,19 @@ export default function CameraNodePage() {
   const hbDegraded = hbFailures > 0;
 
   const healthChip = (() => {
-    if (!cameraRunning) return { icon: HeartPulse, text: "camera off", tone: "text-white/40 border-white/10" };
+    if (!cameraRunning) return { icon: HeartPulse, text: "camera off", tone: "text-foreground/40 border-foreground/10" };
     if (healthStatus === "ok") return { icon: HeartPulse, text: "health ok", tone: "text-emerald-300 border-emerald-400/25 bg-emerald-400/10" };
     if (healthStatus === "obstructed") return { icon: EyeOff, text: "lens obstructed", tone: "text-amber-300 border-amber-400/25 bg-amber-400/10" };
     if (healthStatus === "frozen") return { icon: Snowflake, text: "stream frozen", tone: "text-red-300 border-red-400/25 bg-red-400/10" };
-    return { icon: HeartPulse, text: "health ?", tone: "text-white/50 border-white/10" };
+    return { icon: HeartPulse, text: "health ?", tone: "text-foreground/50 border-foreground/10" };
   })();
 
   const batteryChip = (() => {
-    if (battery.level === null) return { icon: Activity, text: "battery n/a", tone: "text-white/40 border-white/10" };
+    if (battery.level === null) return { icon: Activity, text: "battery n/a", tone: "text-foreground/40 border-foreground/10" };
     const icon = battery.charging ? BatteryCharging : battery.level <= 20 ? BatteryLow : BatteryMedium;
     const tone = battery.level <= 20 && !battery.charging
       ? "text-red-300 border-red-400/25 bg-red-400/10"
-      : "text-white/70 border-white/10";
+      : "text-foreground/70 border-foreground/10";
     return { icon, text: `${battery.level}%${battery.charging ? " ⚡" : ""}`, tone };
   })();
 
@@ -1188,14 +1189,14 @@ export default function CameraNodePage() {
 
   if (phase !== "ready") {
     return (
-      <div className="fixed inset-0 flex items-start justify-center overflow-y-auto bg-slate-950 px-5 py-10 text-white sm:items-center">
+      <div className="fixed inset-0 flex items-start justify-center overflow-y-auto bg-background px-5 py-10 text-foreground sm:items-center">
         <style>{REGION_CSS}</style>
         <div className="w-full max-w-md">
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35 }}
-            className="rounded-3xl border border-white/10 bg-slate-900/80 p-6 shadow-2xl shadow-emerald-500/5 backdrop-blur"
+            className="rounded-3xl border border-foreground/10 bg-card/80 p-6 shadow-2xl shadow-emerald-500/5 backdrop-blur"
           >
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-400/30 bg-emerald-400/10">
@@ -1203,14 +1204,14 @@ export default function CameraNodePage() {
               </div>
               <div>
                 <h1 className="text-xl font-bold tracking-tight">AttendX Gate Camera</h1>
-                <p className="text-sm text-white/45">Phone as gate camera node · Phase 7</p>
+                <p className="text-sm text-foreground/45">Phone as gate camera node · Phase 7</p>
               </div>
             </div>
 
             {phase === "validating" ? (
               <div className="mt-8 flex flex-col items-center gap-3 py-10 text-center">
                 <Loader2 className="h-7 w-7 animate-spin text-emerald-300" />
-                <p className="text-sm text-white/60">Validating stored device session…</p>
+                <p className="text-sm text-foreground/60">Validating stored device session…</p>
               </div>
             ) : (
               <>
@@ -1228,7 +1229,7 @@ export default function CameraNodePage() {
                 )}
 
                 <div className="mt-6">
-                  <label htmlFor="atx-pair-token" className="text-xs font-semibold uppercase tracking-wider text-white/40">
+                  <label htmlFor="atx-pair-token" className="text-xs font-semibold uppercase tracking-wider text-foreground/40">
                     Pairing token
                   </label>
                   <Input
@@ -1236,7 +1237,7 @@ export default function CameraNodePage() {
                     value={tokenInput}
                     onChange={(e) => setTokenInput(e.target.value)}
                     placeholder="Paste the token from Operations → Gate devices"
-                    className="mt-2 h-12 border-white/15 bg-slate-950/60 font-mono text-sm text-white placeholder:text-white/25"
+                    className="mt-2 h-12 border-foreground/15 bg-background/60 font-mono text-sm text-foreground placeholder:text-muted-foreground/70"
                     autoComplete="off"
                     spellCheck={false}
                   />
@@ -1250,10 +1251,10 @@ export default function CameraNodePage() {
                   </Button>
                 </div>
 
-                <div className="my-5 flex items-center gap-3 text-xs text-white/30">
-                  <span className="h-px flex-1 bg-white/10" />
+                <div className="my-5 flex items-center gap-3 text-xs text-foreground/30">
+                  <span className="h-px flex-1 bg-foreground/10" />
                   or scan the pairing QR
-                  <span className="h-px flex-1 bg-white/10" />
+                  <span className="h-px flex-1 bg-foreground/10" />
                 </div>
 
                 {!pairScanning ? (
@@ -1261,12 +1262,12 @@ export default function CameraNodePage() {
                     <Button
                       onClick={() => void startPairScan()}
                       variant="outline"
-                      className="h-12 w-full border-white/15 bg-transparent text-base text-white hover:bg-white/5"
+                      className="h-12 w-full border-foreground/15 bg-transparent text-base text-foreground hover:bg-foreground/5"
                     >
                       <QrCode className="h-5 w-5 text-emerald-300" />
                       Scan pairing QR
                     </Button>
-                    <p className="mt-2 text-center text-[11px] leading-relaxed text-white/35">
+                    <p className="mt-2 text-center text-[11px] leading-relaxed text-foreground/35">
                       Or skip both: scan the QR on the Operations console with your
                       phone's regular camera app — it opens this page already paired.
                     </p>
@@ -1284,13 +1285,13 @@ export default function CameraNodePage() {
                 )}
 
                 {pairingError && (
-                  <p className="mt-4 flex items-start gap-2 rounded-xl border border-red-400/25 bg-red-400/10 px-3 py-2.5 text-sm text-red-200">
+                  <p className="mt-4 flex items-start gap-2 rounded-xl border border-red-400/25 bg-red-400/10 px-3 py-2.5 text-sm text-red-300">
                     <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
                     <span>{pairingError}</span>
                   </p>
                 )}
 
-                <p className="mt-6 text-center text-xs leading-relaxed text-white/30">
+                <p className="mt-6 text-center text-xs leading-relaxed text-foreground/30">
                   The token rotates on every heartbeat — this device keeps itself
                   logged in automatically once paired. Unpair from the action bar
                   or remotely via the Operations console.
@@ -1308,7 +1309,7 @@ export default function CameraNodePage() {
   const fallbackEngineActive = mode === "qr" && engineKind === "html5qrcode";
 
   return (
-    <div className="fixed inset-0 select-none overflow-hidden bg-slate-950 text-white">
+    <div className="fixed inset-0 select-none overflow-hidden bg-background text-foreground">
       <style>{REGION_CSS}</style>
       {/* camera surface */}
       <video
@@ -1331,11 +1332,11 @@ export default function CameraNodePage() {
 
       {/* camera-off / error state */}
       {!cameraRunning && (
-        <div className="absolute inset-0 flex items-center justify-center bg-slate-950/95 px-6">
+        <div className="absolute inset-0 flex items-center justify-center bg-background/95 px-6">
           {cameraState === "starting" ? (
             <div className="flex flex-col items-center gap-3">
               <Loader2 className="h-9 w-9 animate-spin text-emerald-300" />
-              <p className="text-base text-white/60">Starting camera…</p>
+              <p className="text-base text-foreground/60">Starting camera…</p>
             </div>
           ) : cameraState === "error" && cameraError ? (
             <motion.div
@@ -1357,14 +1358,14 @@ export default function CameraNodePage() {
                       ? "No camera available"
                       : "Camera failed"}
               </h2>
-              <p className="mt-2 text-sm leading-relaxed text-white/60">{cameraError.message}</p>
+              <p className="mt-2 text-sm leading-relaxed text-foreground/60">{cameraError.message}</p>
               <div className="mt-5 flex flex-col gap-2">
                 <Button onClick={retryCamera} className="h-12 bg-emerald-500 text-base font-semibold text-slate-950 hover:bg-emerald-400">
                   <RefreshCw className="h-5 w-5" />
                   Try again
                 </Button>
                 {cameraError.kind === "permission" && (
-                  <p className="text-xs text-white/40">
+                  <p className="text-xs text-foreground/40">
                     iOS: Settings → Safari → Camera. Android: lock icon in the address bar → Permissions.
                   </p>
                 )}
@@ -1372,9 +1373,9 @@ export default function CameraNodePage() {
             </motion.div>
           ) : (
             <div className="flex flex-col items-center gap-3 text-center">
-              <VideoOff className="h-9 w-9 text-white/30" />
-              <p className="text-lg font-medium text-white/60">Camera is off</p>
-              <p className="max-w-xs text-sm text-white/35">
+              <VideoOff className="h-9 w-9 text-foreground/30" />
+              <p className="text-lg font-medium text-foreground/60">Camera is off</p>
+              <p className="max-w-xs text-sm text-foreground/35">
                 Heartbeats keep flowing so the node stays visible on the Operations console.
                 Start the camera to begin {mode === "face" ? "face matching" : "QR scanning"}.
               </p>
@@ -1388,7 +1389,7 @@ export default function CameraNodePage() {
         <motion.div
           initial={{ y: -24, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/45 px-4 py-2.5 backdrop-blur-md"
+          className="flex items-center justify-between gap-3 rounded-2xl border border-foreground/10 bg-card/45 px-4 py-2.5 backdrop-blur-md"
         >
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -1404,10 +1405,10 @@ export default function CameraNodePage() {
                 {identity?.name ?? "Camera node"}
               </span>
             </div>
-            <div className="mt-0.5 flex items-center gap-1 text-xs text-white/45">
+            <div className="mt-0.5 flex items-center gap-1 text-xs text-foreground/45">
               <MapPin className="h-3 w-3" />
               {gateLabel ? `Gate ${gateLabel}` : "No gate assigned"}
-              <span className="mx-1 text-white/20">·</span>
+              <span className="mx-1 text-foreground/20">·</span>
               <span className="truncate font-mono text-[10px]">{deviceIdRef.current || "unregistered"}</span>
             </div>
           </div>
@@ -1418,30 +1419,31 @@ export default function CameraNodePage() {
               {mode === "face" ? <ScanFace className="h-3.5 w-3.5" /> : <QrCode className="h-3.5 w-3.5" />}
               {mode.toUpperCase()}
             </span>
+            <ThemeToggle compact />
           </div>
         </motion.div>
 
         {/* status chips */}
         <div className="flex flex-wrap gap-1.5">
           <Chip className={`backdrop-blur-md ${healthChip.tone}`} icon={healthChip.icon} label={healthChip.text} />
-          <Chip className={`border-white/10 bg-black/45 backdrop-blur-md ${batteryChip.tone}`} icon={batteryChip.icon} label={batteryChip.text} />
-          <Chip className="border-white/10 bg-black/45 text-white/70 backdrop-blur-md" icon={Gauge} label={cameraRunning ? `${fps?.toFixed(1) ?? "0.0"} fps` : "— fps"} />
-          <Chip className="border-white/10 bg-black/45 text-white/70 backdrop-blur-md" icon={Monitor} label={resolution ?? "—"} />
+          <Chip className={`border-foreground/10 bg-card/45 backdrop-blur-md ${batteryChip.tone}`} icon={batteryChip.icon} label={batteryChip.text} />
+          <Chip className="border-foreground/10 bg-card/45 text-foreground/70 backdrop-blur-md" icon={Gauge} label={cameraRunning ? `${fps?.toFixed(1) ?? "0.0"} fps` : "— fps"} />
+          <Chip className="border-foreground/10 bg-card/45 text-foreground/70 backdrop-blur-md" icon={Monitor} label={resolution ?? "—"} />
           <Chip
-            className={`border-white/10 bg-black/45 backdrop-blur-md ${connection ? "text-white/70" : "text-amber-300"}`}
+            className={`border-foreground/10 bg-card/45 backdrop-blur-md ${connection ? "text-foreground/70" : "text-amber-300"}`}
             icon={connection ? Wifi : WifiOff}
             label={connection ?? "offline?"}
           />
-          <Chip className="border-white/10 bg-black/45 text-white/70 backdrop-blur-md" icon={Signal} label={spec.label} />
+          <Chip className="border-foreground/10 bg-card/45 text-foreground/70 backdrop-blur-md" icon={Signal} label={spec.label} />
           {dataSaver && <Chip className="border-emerald-400/25 bg-emerald-400/10 text-emerald-200 backdrop-blur-md" icon={Leaf} label="data saver" />}
           {mode === "face" && facesInView !== null && (
             <Chip className="border-violet-400/25 bg-violet-400/10 text-violet-200 backdrop-blur-md" icon={ScanFace} label={`${facesInView} in view`} />
           )}
           {mode === "face" && faceSyncError && (
-            <Chip className="border-red-400/25 bg-red-400/10 text-red-200 backdrop-blur-md" icon={AlertTriangle} label="match sync error" />
+            <Chip className="border-red-400/25 bg-red-400/10 text-red-300 backdrop-blur-md" icon={AlertTriangle} label="match sync error" />
           )}
           {mode === "qr" && (
-            <Chip className="border-white/10 bg-black/45 text-white/50 backdrop-blur-md" icon={QrCode} label={qrEngineLabel(engineKind)} />
+            <Chip className="border-foreground/10 bg-card/45 text-foreground/50 backdrop-blur-md" icon={QrCode} label={qrEngineLabel(engineKind)} />
           )}
           {spoolCount > 0 && (
             <Chip className="border-amber-400/25 bg-amber-400/10 text-amber-200 backdrop-blur-md" icon={RefreshCw} label={`${spoolCount} spooled`} />
@@ -1470,7 +1472,7 @@ export default function CameraNodePage() {
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
-              className={`flex items-center gap-2 self-start rounded-xl border px-3 py-2 text-sm backdrop-blur-md ${healthStatus === "obstructed" ? "border-amber-400/25 bg-amber-400/10 text-amber-200" : "border-red-400/25 bg-red-400/10 text-red-200"}`}
+              className={`flex items-center gap-2 self-start rounded-xl border px-3 py-2 text-sm backdrop-blur-md ${healthStatus === "obstructed" ? "border-amber-400/25 bg-amber-400/10 text-amber-200" : "border-red-400/25 bg-red-400/10 text-red-300"}`}
             >
               {healthStatus === "obstructed" ? <EyeOff className="h-4 w-4" /> : <Snowflake className="h-4 w-4" />}
               {healthStatus === "obstructed"
@@ -1488,7 +1490,7 @@ export default function CameraNodePage() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="self-start rounded-xl border border-violet-400/30 bg-violet-500/15 px-3 py-2 text-sm font-medium text-violet-100 backdrop-blur-md"
+              className="self-start rounded-xl border border-violet-400/30 bg-violet-500/15 px-3 py-2 text-sm font-medium text-violet-200 backdrop-blur-md"
             >
               Remote command executed — {commandPing.label}
             </motion.div>
@@ -1506,7 +1508,7 @@ export default function CameraNodePage() {
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 1.02 }}
               transition={{ type: "spring", stiffness: 320, damping: 24 }}
-              className={`w-full max-w-lg rounded-3xl border-2 px-6 py-8 text-center backdrop-blur-xl ${
+              className={`w-full max-w-lg rounded-3xl border-2 px-6 py-8 text-center text-white backdrop-blur-xl ${
                 hero.kind === "qr"
                   ? hero.verdict.kind === "valid"
                     ? "border-emerald-400/60 bg-emerald-500/20 shadow-2xl shadow-emerald-500/25"
@@ -1578,7 +1580,7 @@ export default function CameraNodePage() {
       {/* recent matches feed */}
       {mode === "face" && faceFeed.length > 0 && (
         <div className="absolute bottom-44 left-3 z-20 w-64 sm:w-72">
-          <div className={`max-h-40 overflow-y-auto rounded-2xl border border-white/10 bg-black/50 backdrop-blur-md ${SCROLLBAR_CLASSES}`}>
+          <div className={`max-h-40 overflow-y-auto rounded-2xl border border-white/10 bg-black/50 text-white backdrop-blur-md ${SCROLLBAR_CLASSES}`}>
             <p className="sticky top-0 bg-black/70 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40 backdrop-blur">
               Recent matches · {committedCount} committed today
             </p>
@@ -1606,7 +1608,7 @@ export default function CameraNodePage() {
         <motion.div
           initial={{ y: 32, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          className="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-2 rounded-3xl border border-white/10 bg-black/55 p-3 backdrop-blur-xl"
+          className="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-2 rounded-3xl border border-foreground/10 bg-card/55 p-3 backdrop-blur-xl"
         >
           {cameraOn ? (
             <Button
@@ -1631,7 +1633,7 @@ export default function CameraNodePage() {
             onClick={() => void flipCamera()}
             variant="outline"
             aria-label="Flip camera"
-            className="h-12 border-white/15 bg-transparent px-4 text-white hover:bg-white/5"
+            className="h-12 border-foreground/15 bg-transparent px-4 text-foreground hover:bg-foreground/5"
           >
             <SwitchCamera className="h-5 w-5" />
             <span className="hidden sm:inline">Flip</span>
@@ -1642,7 +1644,7 @@ export default function CameraNodePage() {
               onClick={() => void toggleTorch()}
               variant="outline"
               aria-label="Toggle flashlight"
-              className={`h-12 border-white/15 px-4 hover:bg-white/5 ${torchOn ? "bg-amber-400/20 text-amber-200" : "bg-transparent text-white"}`}
+              className={`h-12 border-foreground/15 px-4 hover:bg-foreground/5 ${torchOn ? "bg-amber-400/20 text-amber-200" : "bg-transparent text-foreground"}`}
             >
               {torchOn ? <FlashlightOff className="h-5 w-5" /> : <Flashlight className="h-5 w-5" />}
               <span className="hidden sm:inline">Torch</span>
@@ -1650,7 +1652,7 @@ export default function CameraNodePage() {
           )}
 
           {/* mode segmented control */}
-          <div className="flex h-12 items-center rounded-2xl border border-white/15 bg-slate-950/60 p-1" role="group" aria-label="Detection mode">
+          <div className="flex h-12 items-center rounded-2xl border border-foreground/15 bg-background/60 p-1" role="group" aria-label="Detection mode">
             {(["face", "qr"] as NodeMode[]).map((m) => (
               <button
                 key={m}
@@ -1660,9 +1662,9 @@ export default function CameraNodePage() {
                 className={`flex h-10 items-center gap-1.5 rounded-xl px-4 text-sm font-semibold transition-colors ${
                   mode === m
                     ? m === "face"
-                      ? "bg-violet-500/25 text-violet-100"
-                      : "bg-emerald-500/25 text-emerald-100"
-                    : "text-white/45 hover:text-white/80"
+                      ? "bg-violet-500/25 text-violet-200"
+                      : "bg-emerald-500/25 text-emerald-200"
+                    : "text-foreground/45 hover:text-foreground/80"
                 }`}
               >
                 {m === "face" ? <ScanFace className="h-4 w-4" /> : <QrCode className="h-4 w-4" />}
@@ -1677,10 +1679,10 @@ export default function CameraNodePage() {
               if (v === "low" || v === "balanced" || v === "hd") setLocalQuality(v);
             }}
           >
-            <SelectTrigger aria-label="Capture quality" className="h-12 w-[8.5rem] border-white/15 bg-slate-950/60 text-sm text-white">
+            <SelectTrigger aria-label="Capture quality" className="h-12 w-[8.5rem] border-foreground/15 bg-background/60 text-sm text-foreground">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="border-white/10 bg-slate-900 text-white">
+            <SelectContent className="border-border bg-popover text-popover-foreground">
               {QUALITY_ORDER.map((q) => (
                 <SelectItem key={q} value={q}>
                   {QUALITY_SPECS[q].label}
@@ -1694,7 +1696,7 @@ export default function CameraNodePage() {
             onClick={() => void toggleFullscreen()}
             variant="outline"
             aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-            className="h-12 border-white/15 bg-transparent px-4 text-white hover:bg-white/5"
+            className="h-12 border-foreground/15 bg-transparent px-4 text-foreground hover:bg-foreground/5"
           >
             {fullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
           </Button>
@@ -1727,17 +1729,17 @@ export default function CameraNodePage() {
 
       {/* unpair confirm */}
       <AlertDialog open={unpairOpen} onOpenChange={setUnpairOpen}>
-        <AlertDialogContent className="border-white/10 bg-slate-900 text-white">
+        <AlertDialogContent className="border-border bg-card text-foreground">
           <AlertDialogHeader>
             <AlertDialogTitle>Unpair this camera node?</AlertDialogTitle>
-            <AlertDialogDescription className="text-white/55">
+            <AlertDialogDescription className="text-foreground/55">
               The stored token is erased and the phone returns to the pairing screen.
               The operator can revoke the session remotely at any time from the
               Operations console.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-white/15 bg-transparent text-white hover:bg-white/5">Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="border-foreground/15 bg-transparent text-foreground hover:bg-foreground/5">Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => unpairLocal()}
               className="bg-red-500 text-white hover:bg-red-400"

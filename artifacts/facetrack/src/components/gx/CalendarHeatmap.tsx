@@ -81,7 +81,7 @@ export function CalendarHeatmap({
           {grid.map((_, i) => {
             const label = monthLabels.find((m) => m.col === i);
             return (
-              <div key={i} className="w-[13px] text-[8px] text-white/30 text-left whitespace-nowrap">
+              <div key={i} className="w-[13px] text-[8px] text-foreground/30 text-left whitespace-nowrap">
                 {label?.label ?? ""}
               </div>
             );
@@ -107,7 +107,7 @@ export function CalendarHeatmap({
             </div>
           ))}
         </div>
-        <div className="flex items-center gap-3 mt-2 text-[9px] text-white/30 uppercase tracking-wider">
+        <div className="flex items-center gap-3 mt-2 text-[9px] text-foreground/30 uppercase tracking-wider">
           <span className="flex items-center gap-1"><span className="heatmap-cell hm-present inline-block" /> Present</span>
           <span className="flex items-center gap-1"><span className="heatmap-cell hm-late inline-block" /> Late</span>
           <span className="flex items-center gap-1"><span className="heatmap-cell hm-absent inline-block" /> Absent</span>

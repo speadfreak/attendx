@@ -188,7 +188,7 @@ export function CommandPalette() {
                 <CommandItem key={c.id} onSelect={() => run(() => setLocation(`/classrooms?focus=${c.id}`))}>
                   <School className="mr-2 h-4 w-4 text-purple-400" />
                   <span>{c.name}</span>
-                  {c.teacherName && <span className="ml-auto text-xs text-white/30">{c.teacherName}</span>}
+                  {c.teacherName && <span className="ml-auto text-xs text-foreground/30">{c.teacherName}</span>}
                 </CommandItem>
               ))}
             </CommandGroup>
@@ -229,7 +229,7 @@ export function CommandPalette() {
           </>
         )}
       </CommandList>
-      <div className="border-t border-white/5 px-4 py-2 text-[10px] text-white/25 flex items-center justify-between">
+      <div className="border-t border-foreground/10 px-4 py-2 text-[10px] text-foreground/25 flex items-center justify-between">
         <span className="flex items-center gap-1.5">
           <Sparkles className="h-3 w-3 text-purple-400" /> AttendX Command Center
         </span>
@@ -253,8 +253,8 @@ function Group({
       <Users className="mr-2 h-4 w-4 text-purple-400" />
       <span className="flex-1">
         {student.name}
-        <span className="ml-2 text-xs text-white/30 font-mono">{student.studentId}</span>
-        {student.classroomName && <span className="ml-2 text-xs text-white/20">{student.classroomName}</span>}
+        <span className="ml-2 text-xs text-foreground/30 font-mono">{student.studentId}</span>
+        {student.classroomName && <span className="ml-2 text-xs text-foreground/20">{student.classroomName}</span>}
       </span>
       <span className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
         <button

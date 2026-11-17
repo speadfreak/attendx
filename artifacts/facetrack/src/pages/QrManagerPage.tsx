@@ -299,7 +299,7 @@ export default function QrManagerPage() {
               <GlowCard key={i} variant="gradient" className="gx-stat p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-[9px] uppercase tracking-widest text-white/35">{s.label}</p>
+                    <p className="text-[9px] uppercase tracking-widest text-foreground/35">{s.label}</p>
                     <p className="counter-num text-2xl mt-1 gx-gradient-text">{s.value}</p>
                   </div>
                   <s.icon size={16} className={`st-${s.tone}`} />
@@ -310,7 +310,7 @@ export default function QrManagerPage() {
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-1 p-1 rounded-xl bg-black/30 border border-white/5 w-fit">
+        <div className="flex items-center gap-1 p-1 rounded-xl bg-muted border border-foreground/10 w-fit">
           {([
             { id: "console", label: "Issue console", icon: QrCode },
             { id: "print", label: "Print sheet", icon: Printer },
@@ -320,7 +320,7 @@ export default function QrManagerPage() {
               key={t.id}
               onClick={() => setTab(t.id)}
               className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all ${
-                tab === t.id ? "gx-nav-pill text-purple-200" : "text-white/40 hover:text-white/70"
+                tab === t.id ? "gx-nav-pill text-purple-200" : "text-foreground/40 hover:text-foreground/70"
               }`}
             >
               <t.icon size={13} /> {t.label}
@@ -335,18 +335,18 @@ export default function QrManagerPage() {
               <GlowCard variant="gradient" className="p-4">
                 <div className="flex flex-col sm:flex-row gap-2 mb-4">
                   <div className="relative flex-1">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-white/25" />
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-foreground/25" />
                     <input
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                       placeholder="Search students…"
-                      className="w-full bg-black/40 border border-purple-500/15 rounded-lg pl-9 pr-3 py-2 text-sm text-white/80 focus:outline-none focus:border-purple-500/45"
+                      className="w-full bg-muted border border-purple-500/15 rounded-lg pl-9 pr-3 py-2 text-sm text-foreground/80 focus:outline-none focus:border-purple-500/45"
                     />
                   </div>
                   <select
                     value={classroomId}
                     onChange={(e) => setClassroomId(e.target.value)}
-                    className="bg-black/40 border border-purple-500/15 rounded-lg px-3 py-2 text-sm text-white/70 focus:outline-none"
+                    className="bg-muted border border-purple-500/15 rounded-lg px-3 py-2 text-sm text-foreground/70 focus:outline-none"
                   >
                     <option value="all">All classrooms</option>
                     {classrooms.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -354,7 +354,7 @@ export default function QrManagerPage() {
                   <select
                     value={expiry}
                     onChange={(e) => setExpiry(e.target.value)}
-                    className="bg-black/40 border border-purple-500/15 rounded-lg px-3 py-2 text-sm text-white/70 focus:outline-none"
+                    className="bg-muted border border-purple-500/15 rounded-lg px-3 py-2 text-sm text-foreground/70 focus:outline-none"
                     title="Badge expiry"
                   >
                     <option value="0">No expiry</option>
@@ -366,14 +366,14 @@ export default function QrManagerPage() {
                   </select>
                 </div>
 
-                <div className="max-h-80 overflow-y-auto rounded-lg border border-white/5">
+                <div className="max-h-80 overflow-y-auto rounded-lg border border-foreground/10">
                   {filteredStudents.length === 0 ? (
                     <TableSkeleton rows={5} cols={3} />
                   ) : (
                     filteredStudents.map((s) => {
                       const active = issueStateById.get(s.id);
                       return (
-                        <label key={s.id} className="flex items-center gap-3 px-3 py-2.5 border-b border-white/5 last:border-0 hover:bg-purple-500/5 cursor-pointer">
+                        <label key={s.id} className="flex items-center gap-3 px-3 py-2.5 border-b border-foreground/10 last:border-0 hover:bg-purple-500/5 cursor-pointer">
                           <input
                             type="checkbox"
                             checked={selected.has(s.id)}
@@ -384,12 +384,12 @@ export default function QrManagerPage() {
                             {s.name.charAt(0)}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="text-sm text-white/80 truncate">{s.name}</p>
-                            <p className="text-[10px] text-white/30 font-mono">{s.studentId} · {s.classroomName ?? "no classroom"}</p>
+                            <p className="text-sm text-foreground/80 truncate">{s.name}</p>
+                            <p className="text-[10px] text-foreground/30 font-mono">{s.studentId} · {s.classroomName ?? "no classroom"}</p>
                           </div>
                           {active ? (
                             <span className="flex items-center gap-2">
-                              <span className="text-[9px] font-mono text-white/30">{active.serial}</span>
+                              <span className="text-[9px] font-mono text-foreground/30">{active.serial}</span>
                               <StatusBadge value="valid" label="active" tone="green" />
                             </span>
                           ) : (
@@ -405,7 +405,7 @@ export default function QrManagerPage() {
 
             <div className="lg:col-span-4 space-y-3">
               <GlowCard accent variant="gradient" className="p-4">
-                <p className="text-[10px] uppercase tracking-widest text-white/35 mb-3">Issue actions</p>
+                <p className="text-[10px] uppercase tracking-widest text-foreground/35 mb-3">Issue actions</p>
                 <div className="space-y-2">
                   <button
                     disabled={!selected.size || busy}
@@ -421,7 +421,7 @@ export default function QrManagerPage() {
                   >
                     <School size={12} className="inline mr-1.5" /> Whole-classroom batch
                   </button>
-                  <p className="text-[9px] text-white/25 leading-relaxed">
+                  <p className="text-[9px] text-foreground/25 leading-relaxed">
                     Rotating kills every older badge instantly — safe for lost cards.
                     Expiry turns badges into time-boxed passes.
                   </p>
@@ -429,7 +429,7 @@ export default function QrManagerPage() {
               </GlowCard>
 
               <GlowCard variant="gradient" className="p-4">
-                <p className="text-[10px] uppercase tracking-widest text-white/35 mb-3">Badge inventory</p>
+                <p className="text-[10px] uppercase tracking-widest text-foreground/35 mb-3">Badge inventory</p>
                 {issuesLoading ? (
                   <FeedSkeletonRow rows={4} />
                 ) : issuesError ? (
@@ -443,16 +443,16 @@ export default function QrManagerPage() {
                 ) : (
                   <div className="max-h-72 overflow-y-auto space-y-1.5 pr-1">
                     {issues.slice(0, 50).map((issue) => (
-                      <div key={issue.id} className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-white/[0.02] border border-white/5">
+                      <div key={issue.id} className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-foreground/5 border border-foreground/10">
                         <StatusDot tone={issue.state === "active" ? "green" : issue.state === "expired" ? "amber" : "red"} />
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs text-white/75 truncate">{issue.studentName ?? "?"}</p>
-                          <p className="text-[9px] text-white/30 font-mono">{issue.serial} · v{issue.version} · {issue.scans} scans</p>
+                          <p className="text-xs text-foreground/75 truncate">{issue.studentName ?? "?"}</p>
+                          <p className="text-[9px] text-foreground/30 font-mono">{issue.serial} · v{issue.version} · {issue.scans} scans</p>
                         </div>
                         <div className="flex items-center gap-1">
                           <button
                             title="Rotate (reprint)"
-                            className="p-1.5 rounded-md text-white/40 hover:text-purple-300 hover:bg-purple-500/10"
+                            className="p-1.5 rounded-md text-foreground/40 hover:text-purple-300 hover:bg-purple-500/10"
                             onClick={() => rotate(issue.studentId)}
                           >
                             <RotateCcw size={12} />
@@ -460,7 +460,7 @@ export default function QrManagerPage() {
                           {issue.state === "active" && (
                             <button
                               title="Revoke"
-                              className="p-1.5 rounded-md text-white/40 hover:text-red-400 hover:bg-red-500/10"
+                              className="p-1.5 rounded-md text-foreground/40 hover:text-red-400 hover:bg-red-500/10"
                               onClick={() => revoke(issue)}
                             >
                               <Ban size={12} />
@@ -482,7 +482,7 @@ export default function QrManagerPage() {
             <div className="gx-no-print flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
               <div className="flex items-center gap-2">
                 <Printer size={15} className="text-purple-400" />
-                <span className="text-sm text-white/70">
+                <span className="text-sm text-foreground/70">
                   {pendingTokens.length ? `${pendingTokens.length} fresh badge${pendingTokens.length === 1 ? "" : "s"} ready` : "Active badges by classroom"}
                 </span>
               </div>
@@ -491,7 +491,7 @@ export default function QrManagerPage() {
                   <select
                     value={printClassroomId}
                     onChange={(e) => setPrintClassroomId(e.target.value)}
-                    className="bg-black/40 border border-purple-500/15 rounded-lg px-3 py-2 text-sm text-white/70"
+                    className="bg-muted border border-purple-500/15 rounded-lg px-3 py-2 text-sm text-foreground/70"
                   >
                     <option value="all">All classrooms</option>
                     {classrooms.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -512,7 +512,7 @@ export default function QrManagerPage() {
                 {printRows.map((row, i) =>
                   row.token.startsWith("reprint:") ? (
                     <div key={i} className="opacity-70">
-                      <div className="flex items-center gap-2 text-xs text-white/40 p-3">
+                      <div className="flex items-center gap-2 text-xs text-foreground/40 p-3">
                         <RotateCcw size={13} className="text-amber-400" />
                         {row.student.name} — badge {row.serial} is active.
                         <button className="st-badge st-badge-amber" onClick={() => rotate(students.find((s) => s.name === row.student.name)?.id ?? 0)}>
@@ -542,10 +542,10 @@ export default function QrManagerPage() {
         {tab === "scans" && (
           <GlowCard variant="gradient" className="p-4">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-sm text-white/70 flex items-center gap-2">
+              <span className="text-sm text-foreground/70 flex items-center gap-2">
                 <ShieldCheck size={14} className="text-emerald-400" /> Every tap & every anomaly
               </span>
-              <span className="text-[10px] text-white/30">valid · duplicate · expired · revoked · forged · stale-version</span>
+              <span className="text-[10px] text-foreground/30">valid · duplicate · expired · revoked · forged · stale-version</span>
             </div>
             {logsLoading ? (
               <TableSkeleton rows={6} cols={5} />
@@ -562,17 +562,17 @@ export default function QrManagerPage() {
                 {scanLogs.map((log) => {
                   const bad = log.result !== "valid" && log.result !== "duplicate";
                   return (
-                    <div key={log.id} className="flex items-center gap-3 px-3 py-2.5 border-b border-white/5 last:border-0">
+                    <div key={log.id} className="flex items-center gap-3 px-3 py-2.5 border-b border-foreground/10 last:border-0">
                       <StatusDot tone={log.result === "valid" ? "green" : log.result === "duplicate" ? "amber" : "red"} />
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs text-white/80">
-                          {log.studentName ?? <span className="text-white/40 italic">unknown badge</span>}
-                          <span className="ml-2 font-mono text-[10px] text-white/30">{log.terminalId}</span>
+                        <p className="text-xs text-foreground/80">
+                          {log.studentName ?? <span className="text-foreground/40 italic">unknown badge</span>}
+                          <span className="ml-2 font-mono text-[10px] text-foreground/30">{log.terminalId}</span>
                         </p>
-                        <p className="text-[10px] text-white/35">{log.status ? `status: ${log.status}` : ""} {log.detail && Object.keys(log.detail).length ? `· ${JSON.stringify(log.detail).slice(0, 80)}` : ""}</p>
+                        <p className="text-[10px] text-foreground/35">{log.status ? `status: ${log.status}` : ""} {log.detail && Object.keys(log.detail).length ? `· ${JSON.stringify(log.detail).slice(0, 80)}` : ""}</p>
                       </div>
                       <StatusBadge value={log.result} tone={bad ? "red" : log.result === "duplicate" ? "amber" : "green"} />
-                      <span className="text-[10px] font-mono text-white/30">{format(new Date(log.createdAt), "HH:mm:ss")}</span>
+                      <span className="text-[10px] font-mono text-foreground/30">{format(new Date(log.createdAt), "HH:mm:ss")}</span>
                     </div>
                   );
                 })}

@@ -16,9 +16,9 @@ import { useToast } from "@/hooks/use-toast";
  * shown with an actionable FIX line.
  */
 
-const inputCls = "w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/85 placeholder:text-white/25 focus:border-purple-500/50 focus:outline-none";
-const labelCls = "text-[10px] font-semibold uppercase tracking-widest text-white/40";
-const smallBtn = "inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-xs font-medium text-white/75 transition-colors hover:bg-white/[0.09] disabled:opacity-40";
+const inputCls = "w-full rounded-lg border border-foreground/10 bg-muted px-3 py-2 text-sm text-foreground/85 placeholder:text-muted-foreground/70 focus:border-purple-500/50 focus:outline-none";
+const labelCls = "text-[10px] font-semibold uppercase tracking-widest text-foreground/40";
+const smallBtn = "inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-foreground/10 bg-foreground/5 px-3 text-xs font-medium text-foreground/75 transition-colors hover:bg-foreground/10 disabled:opacity-40";
 const primaryBtn = "inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-purple-600 px-3.5 text-xs font-semibold text-white transition-colors hover:bg-purple-500 disabled:opacity-40";
 
 const SEVERITY_STYLE = {
@@ -37,8 +37,8 @@ function RecommendationList({ diagnostics }: { diagnostics: SmsDiagnostics }) {
           <div key={i} className={`flex items-start gap-2.5 rounded-xl border p-3 ${style.cls}`}>
             <Icon size={15} className={`mt-0.5 shrink-0 ${style.iconCls}`} />
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold text-white/85">{rec.title}</p>
-              <p className="mt-0.5 text-[11px] leading-relaxed text-white/55">{rec.detail}</p>
+              <p className="text-xs font-semibold text-foreground/85">{rec.title}</p>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-foreground/55">{rec.detail}</p>
             </div>
           </div>
         );
@@ -213,10 +213,10 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
 
       {/* Pending delivery — honest queue truth (hidden if stats can't be fetched) */}
       {health && (
-        <div className={`mb-4 flex items-center justify-between gap-3 rounded-xl border p-3 ${pendingDelivery > 0 ? "border-amber-400/25 bg-amber-400/[0.06]" : "border-white/5 bg-black/20"}`}>
+        <div className={`mb-4 flex items-center justify-between gap-3 rounded-xl border p-3 ${pendingDelivery > 0 ? "border-amber-400/25 bg-amber-400/[0.06]" : "border-foreground/10 bg-muted"}`}>
           <div className="min-w-0">
             <p className={labelCls}>pending delivery</p>
-            <p className="mt-1 text-[11px] leading-snug text-white/45">Awaiting carrier confirmation — auto-reconciles every minute</p>
+            <p className="mt-1 text-[11px] leading-snug text-foreground/45">Awaiting carrier confirmation — auto-reconciles every minute</p>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-2">
             {pendingDelivery > 0 ? (
@@ -228,7 +228,7 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
                 <span className="text-2xl font-bold tabular-nums text-amber-300 animate-pulse">{pendingDelivery}</span>
               </span>
             ) : (
-              <span className="text-2xl font-bold tabular-nums text-white/35">0</span>
+              <span className="text-2xl font-bold tabular-nums text-foreground/35">0</span>
             )}
             {/* T4: on-demand "check with carrier now" */}
             <button
@@ -261,7 +261,7 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
             {textbeeDevice && textbeeDevice.sims.length > 0 && (
               <p className="mt-1 flex flex-wrap gap-1">
                 {textbeeDevice.sims.map((sim) => (
-                  <span key={sim.subscriptionId ?? sim.carrier} className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 font-mono text-[10px] text-white/60">
+                  <span key={sim.subscriptionId ?? sim.carrier} className="inline-flex items-center gap-1 rounded-md border border-foreground/10 bg-foreground/5 px-1.5 py-0.5 font-mono text-[10px] text-foreground/60">
                     <span className={`h-1.5 w-1.5 rounded-full ${(sim.serviceState ?? "").toUpperCase() === "IN_SERVICE" ? "bg-emerald-400" : "bg-red-400"}`} />
                     SIM {sim.subscriptionId ?? "?"} · {sim.carrier ?? "unknown"}
                   </span>
@@ -306,20 +306,20 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
 
       {/* Sender-pool routing is useful, but country rules still apply. */}
       {provider === "twilio" && messagingServiceConfigured === false && (
-        <div className="mb-4 flex items-start gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-2.5">
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-foreground/10 bg-foreground/5 p-2.5">
           <Info size={13} className="mt-0.5 shrink-0 text-cyan-300" />
-          <p className="text-[11px] leading-relaxed text-white/55">
+          <p className="text-[11px] leading-relaxed text-foreground/55">
             A Messaging Service manages sender selection. For Ethio Telecom in Ethiopia, its pool must include a registered Alphanumeric Sender ID; the SID alone does not enable delivery.
           </p>
         </div>
       )}
 
       {/* Sender config */}
-      <div className="rounded-xl border border-white/5 bg-black/20 p-4">
+      <div className="rounded-xl border border-foreground/10 bg-muted p-4">
         <p className={labelCls}>sender configuration</p>
         <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="min-w-0">
-            <label className="mb-1 block text-[11px] text-white/50" htmlFor="sms-channel-mode">Channel strategy</label>
+            <label className="mb-1 block text-[11px] text-foreground/50" htmlFor="sms-channel-mode">Channel strategy</label>
             <select
               id="sms-channel-mode"
               value={channelMode}
@@ -332,7 +332,7 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
             </select>
           </div>
           <div className="min-w-0">
-            <label className="mb-1 block text-[11px] text-white/50" htmlFor="sms-service-sid">Messaging Service SID (sender pool)</label>
+            <label className="mb-1 block text-[11px] text-foreground/50" htmlFor="sms-service-sid">Messaging Service SID (sender pool)</label>
             <input
               id="sms-service-sid"
               value={serviceSid}
@@ -342,7 +342,7 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
             />
           </div>
           <div className="min-w-0">
-            <label className="mb-1 block text-[11px] text-white/50" htmlFor="sms-from-number">From number (fallback)</label>
+            <label className="mb-1 block text-[11px] text-foreground/50" htmlFor="sms-from-number">From number (fallback)</label>
             <input
               id="sms-from-number"
               value={fromNumber}
@@ -352,7 +352,7 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
             />
           </div>
           <div className="min-w-0">
-            <label className="mb-1 block text-[11px] text-white/50" htmlFor="sms-default-country">Default country for local numbers</label>
+            <label className="mb-1 block text-[11px] text-foreground/50" htmlFor="sms-default-country">Default country for local numbers</label>
             <input
               id="sms-default-country"
               value={defaultCountry}
@@ -362,7 +362,7 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
             />
           </div>
           <div className="min-w-0">
-            <label className="mb-1 block text-[11px] text-white/50" htmlFor="sms-afro-sender">AfroMessage sender name (FROM label)</label>
+            <label className="mb-1 block text-[11px] text-foreground/50" htmlFor="sms-afro-sender">AfroMessage sender name (FROM label)</label>
             <input
               id="sms-afro-sender"
               value={afroSenderName}
@@ -377,7 +377,7 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
           <button type="button" className={primaryBtn} onClick={() => void saveSettings()} disabled={saving}>
             {saving ? <RefreshCw size={13} className="animate-spin" /> : <ShieldCheck size={13} />} save sender config
           </button>
-          <p className="text-[10px] leading-snug text-white/35 min-w-0 flex-1">
+          <p className="text-[10px] leading-snug text-foreground/35 min-w-0 flex-1">
             {afroActive
               ? <>
                   Sending via <span className="text-emerald-300/80">AfroMessage</span>. A custom sender name must be registered/verified in the AfroMessage dashboard first; without one, messages arrive from your identifier's default short code.
@@ -392,11 +392,11 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
       </div>
 
       {/* Test send */}
-      <div className="mt-4 rounded-xl border border-white/5 bg-black/20 p-4">
+      <div className="mt-4 rounded-xl border border-foreground/10 bg-muted p-4">
         <p className={labelCls}>live test send</p>
         <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="min-w-0">
-            <label className="mb-1 block text-[11px] text-white/50" htmlFor="sms-test-to">To (parent number)</label>
+            <label className="mb-1 block text-[11px] text-foreground/50" htmlFor="sms-test-to">To (parent number)</label>
             <input
               id="sms-test-to"
               value={testTo}
@@ -406,7 +406,7 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
             />
           </div>
           <div className="min-w-0">
-            <label className="mb-1 block text-[11px] text-white/50" htmlFor="sms-test-body">Message (optional)</label>
+            <label className="mb-1 block text-[11px] text-foreground/50" htmlFor="sms-test-body">Message (optional)</label>
             <input
               id="sms-test-body"
               value={testBody}
@@ -433,12 +433,12 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
                   : "Delivery failed"}
               </p>
             </div>
-            <p className="mt-1 text-white/45 font-mono break-all">
+            <p className="mt-1 text-foreground/45 font-mono break-all">
               to: {testResult.normalizedTo} · via: {testResult.sender.via}{testResult.sender.afroSenderName ? ` (${testResult.sender.afroSenderName})` : ""}{testResult.sender.messagingServiceSid ? ` (${testResult.sender.messagingServiceSid.slice(0, 10)}…)` : ""}
             </p>
             {testResult.attempts.map((a, i) => (
-              <p key={i} className="mt-1 text-white/55">
-                channel <span className="font-mono text-white/70">{a.channel}</span>: {a.ok ? "✅ accepted" : `❌ ${a.error?.message ?? "failed"}`}
+              <p key={i} className="mt-1 text-foreground/55">
+                channel <span className="font-mono text-foreground/70">{a.channel}</span>: {a.ok ? "✅ accepted" : `❌ ${a.error?.message ?? "failed"}`}
               </p>
             ))}
             {testResult.error?.fix && (
@@ -453,7 +453,7 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
       {/* Advanced diagnostics */}
       <button
         type="button"
-        className="mt-4 flex w-full items-center justify-between gap-2 rounded-xl border border-white/5 bg-white/[0.02] px-4 py-2.5 text-xs font-semibold text-white/60 transition-colors hover:bg-white/[0.05]"
+        className="mt-4 flex w-full items-center justify-between gap-2 rounded-xl border border-foreground/10 bg-foreground/5 px-4 py-2.5 text-xs font-semibold text-foreground/60 transition-colors hover:bg-foreground/10"
         onClick={() => setShowAdvanced((v) => !v)}
         aria-expanded={showAdvanced}
       >
@@ -464,7 +464,7 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
       {showAdvanced && (
         <div className="mt-3 space-y-3">
           {diagFetching && !diagnostics ? (
-            <div className="h-20 animate-pulse rounded-xl bg-white/[0.04]" />
+            <div className="h-20 animate-pulse rounded-xl bg-foreground/5" />
           ) : diagError || !diagnostics ? (
             <div className="rounded-xl border border-red-400/20 bg-red-400/[0.05] p-3 text-[11px] text-red-200/80">
               Diagnostics failed: {diagError instanceof Error ? diagError.message : "unknown error"} (admin role required)
@@ -473,13 +473,13 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
             <>
               {diagnostics.twilio.enabled && !textbeeActive && (
                 <div className="flex flex-wrap gap-2 text-[10px]">
-                  <span className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-white/60">
+                  <span className="inline-flex items-center gap-1 rounded-lg border border-foreground/10 bg-foreground/5 px-2 py-1 text-foreground/60">
                     <Radio size={11} className="text-emerald-400" /> account: {diagnostics.twilio.accountStatus ?? "?"}
                   </span>
-                  <span className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-white/60">
+                  <span className="inline-flex items-center gap-1 rounded-lg border border-foreground/10 bg-foreground/5 px-2 py-1 text-foreground/60">
                     <CircleDollarSign size={11} className="text-amber-300" /> balance: {diagnostics.twilio.balance ?? "?"} {diagnostics.twilio.currency ?? ""}
                   </span>
-                  <span className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-white/60">
+                  <span className="inline-flex items-center gap-1 rounded-lg border border-foreground/10 bg-foreground/5 px-2 py-1 text-foreground/60">
                     <Globe size={11} className="text-cyan-300" /> numbers: {diagnostics.numbers.length} · services: {diagnostics.messagingServices.length}
                   </span>
                 </div>
@@ -488,14 +488,14 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
               <RecommendationList diagnostics={diagnostics} />
 
               {diagnostics.messagingServices.length > 0 && (
-                <div className="rounded-xl border border-white/5 bg-black/20 p-3">
+                <div className="rounded-xl border border-foreground/10 bg-muted p-3">
                   <p className={labelCls}>your messaging services — click “use” to apply</p>
                   <div className="mt-2 space-y-2">
                     {diagnostics.messagingServices.map((svc) => (
-                      <div key={svc.sid} className="flex flex-wrap items-center gap-2 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2">
+                      <div key={svc.sid} className="flex flex-wrap items-center gap-2 rounded-lg border border-foreground/10 bg-foreground/5 px-3 py-2">
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs font-medium text-white/80">{svc.friendlyName}</p>
-                          <p className="truncate font-mono text-[10px] text-white/35" title={svc.sid}>{svc.sid} · {svc.poolSize} number(s) in pool{svc.usecase ? ` · ${svc.usecase}` : ""}</p>
+                          <p className="truncate text-xs font-medium text-foreground/80">{svc.friendlyName}</p>
+                          <p className="truncate font-mono text-[10px] text-foreground/35" title={svc.sid}>{svc.sid} · {svc.poolSize} number(s) in pool{svc.usecase ? ` · ${svc.usecase}` : ""}</p>
                         </div>
                         <button
                           type="button"
@@ -511,7 +511,7 @@ export function SmsHealthCard({ chrome = "glow" }: { chrome?: "glow" | "panel" }
               )}
 
               {diagnostics.destinations.length > 0 && (
-                <div className="rounded-xl border border-white/5 bg-black/20 p-3">
+                <div className="rounded-xl border border-foreground/10 bg-muted p-3">
                   <p className={labelCls}>parent destination reachability (live pricing)</p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {diagnostics.destinations.map((d) => (

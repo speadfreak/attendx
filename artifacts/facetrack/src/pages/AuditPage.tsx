@@ -105,18 +105,18 @@ export default function AuditPage() {
         <GlowCard variant="gradient" className="p-4">
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-white/25" />
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-foreground/25" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search actions, actors, payloads…"
-                className="w-full bg-black/40 border border-purple-500/15 rounded-lg pl-9 pr-3 py-2 text-sm text-white/80 focus:outline-none focus:border-purple-500/45"
+                className="w-full bg-muted border border-purple-500/15 rounded-lg pl-9 pr-3 py-2 text-sm text-foreground/80 focus:outline-none focus:border-purple-500/45"
               />
             </div>
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
-              className="bg-black/40 border border-purple-500/15 rounded-lg px-3 py-2 text-sm text-white/70"
+              className="bg-muted border border-purple-500/15 rounded-lg px-3 py-2 text-sm text-foreground/70"
             >
               <option value="all">All target types</option>
               {types.map((t) => <option key={t} value={t}>{t}</option>)}
@@ -151,7 +151,7 @@ export default function AuditPage() {
                 const tone = actionTone(log.action);
                 const Icon = actionIcon(log.action);
                 return (
-                  <div key={log.id} className="flex items-start gap-3 px-3 py-3 border-b border-white/5 last:border-0 hover:bg-purple-500/5 transition-colors">
+                  <div key={log.id} className="flex items-start gap-3 px-3 py-3 border-b border-foreground/10 last:border-0 hover:bg-purple-500/5 transition-colors">
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5`}
                       style={{ background: `rgba(var(--st-${tone.tone}),0.08)`, border: `1px solid rgba(var(--st-${tone.tone}),0.2)` }}>
                       <Icon size={13} className={`st-${tone.tone}`} />
@@ -159,20 +159,20 @@ export default function AuditPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <StatusDot tone={tone.tone} />
-                        <span className="text-xs font-mono text-white/80">{log.action}</span>
+                        <span className="text-xs font-mono text-foreground/80">{log.action}</span>
                         <StatusBadge value={tone.label} tone={tone.tone} />
                       </div>
-                      <p className="text-[11px] text-white/40 mt-1">
+                      <p className="text-[11px] text-foreground/40 mt-1">
                         {log.actorName ?? "system"} → <span className="font-mono">{log.targetType}</span>
                         {log.targetId ? ` #${log.targetId}` : ""}
                       </p>
                       {Object.keys(log.payload ?? {}).length > 0 && (
-                        <p className="text-[10px] text-white/25 font-mono mt-1 truncate max-w-lg">
+                        <p className="text-[10px] text-foreground/25 font-mono mt-1 truncate max-w-lg">
                           {JSON.stringify(log.payload)}
                         </p>
                       )}
                     </div>
-                    <span className="text-[10px] font-mono text-white/30 shrink-0 mt-1">
+                    <span className="text-[10px] font-mono text-foreground/30 shrink-0 mt-1">
                       {format(new Date(log.createdAt), "MMM d HH:mm:ss")}
                     </span>
                   </div>

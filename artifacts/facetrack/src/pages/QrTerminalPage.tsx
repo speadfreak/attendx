@@ -450,7 +450,7 @@ export default function QrTerminalPage() {
   // GPS indicator: good ≤20m (emerald) / poor >20m (amber) / unavailable (slate)
   const geoAccuracy = geo?.accuracy ?? null;
   const geoLabel = geo ? `GPS ±${Math.round(geoAccuracy ?? 0)}m` : "GPS off";
-  const geoToneCls = !geo ? "text-slate-400" : (geoAccuracy ?? 0) <= 20 ? "text-emerald-400" : "text-amber-400";
+  const geoToneCls = !geo ? "text-muted-foreground" : (geoAccuracy ?? 0) <= 20 ? "text-emerald-400" : "text-amber-400";
   const geoTitle = !geo
     ? "Location unavailable — scans still work; geofence checks may be limited"
     : `Location accuracy ±${Math.round(geoAccuracy ?? 0)} m (${(geoAccuracy ?? 0) <= 20 ? "good" : "poor"})`;
@@ -460,8 +460,8 @@ export default function QrTerminalPage() {
     duplicate: { bg: "rgba(245,158,11,0.12)", ring: "rgba(245,158,11,0.5)", label: "ALREADY IN", cls: "text-amber-400" },
     blocked: { bg: "rgba(239,68,68,0.12)", ring: "rgba(239,68,68,0.5)", label: "DENIED", cls: "text-red-400" },
     geofence: { bg: "rgba(239,68,68,0.18)", ring: "rgba(239,68,68,0.7)", label: "OUT OF BOUNDS", cls: "text-red-400" },
-    replayed: { bg: "rgba(148,163,184,0.12)", ring: "rgba(148,163,184,0.45)", label: "ALREADY RECORDED", cls: "text-slate-300" },
-    queued: { bg: "rgba(148,163,184,0.10)", ring: "rgba(148,163,184,0.4)", label: "QUEUED OFFLINE", cls: "text-slate-300" },
+    replayed: { bg: "rgba(148,163,184,0.12)", ring: "rgba(148,163,184,0.45)", label: "ALREADY RECORDED", cls: "text-muted-foreground" },
+    queued: { bg: "rgba(148,163,184,0.10)", ring: "rgba(148,163,184,0.4)", label: "QUEUED OFFLINE", cls: "text-muted-foreground" },
   };
 
   return (
@@ -474,8 +474,8 @@ export default function QrTerminalPage() {
             <div
               className="flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 shadow-lg"
               style={{
-                background: "rgba(2,6,23,0.92)",
-                borderColor: online ? "rgba(148,163,184,0.35)" : "rgba(239,68,68,0.5)",
+                background: "color-mix(in oklab, hsl(var(--card)) 92%, transparent)",
+                borderColor: online ? "hsl(var(--border))" : "rgba(239,68,68,0.5)",
                 backdropFilter: "blur(8px)",
               }}
             >
@@ -484,18 +484,18 @@ export default function QrTerminalPage() {
                 title={online ? "Connected to the server" : "Offline — scans are spooled locally"}
               >
                 <span className={`inline-block h-2 w-2 rounded-full ${online ? "bg-emerald-400" : "bg-red-400"}`} />
-                <span className="text-[10px] font-mono uppercase tracking-widest text-white/50">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-foreground/50">
                   {online ? "online" : "offline"}
                 </span>
               </span>
-              <CloudUpload size={16} className={online ? "text-emerald-400" : "text-slate-400"} />
+              <CloudUpload size={16} className={online ? "text-emerald-400" : "text-muted-foreground"} />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-white/85">
+                <p className="truncate text-sm font-semibold text-foreground/85">
                   {pending > 0
                     ? `${pending} scan${pending === 1 ? "" : "s"} queued — will sync automatically`
                     : "Offline — new scans will be queued automatically"}
                 </p>
-                <p className="font-mono text-[10px] text-white/40">
+                <p className="font-mono text-[10px] text-foreground/40">
                   {syncing
                     ? "syncing…"
                     : lastSyncAt
@@ -541,14 +541,14 @@ export default function QrTerminalPage() {
 
         {editingTerminal && (
           <GlowCard variant="gradient" className="p-4 flex flex-col sm:flex-row gap-2 items-start sm:items-center">
-            <label className="text-xs text-white/50 flex items-center gap-2">
+            <label className="text-xs text-foreground/50 flex items-center gap-2">
               <Terminal size={13} className="text-cyan-400" /> Terminal ID (this door):
             </label>
             <input
               autoFocus
               defaultValue={terminalId}
               onKeyDown={(e) => { if (e.key === "Enter") saveTerminal((e.target as HTMLInputElement).value); }}
-              className="bg-black/40 border border-purple-500/20 rounded-lg px-3 py-1.5 text-sm text-white/80 focus:outline-none focus:border-purple-500/50"
+              className="bg-muted border border-purple-500/20 rounded-lg px-3 py-1.5 text-sm text-foreground/80 focus:outline-none focus:border-purple-500/50"
               placeholder="e.g. main-gate"
             />
             <button className="st-badge st-badge-green" onClick={() => saveTerminal((document.activeElement as HTMLInputElement)?.value ?? terminalId)}>
@@ -591,21 +591,21 @@ export default function QrTerminalPage() {
                 {verdict === "duplicate" && <Clock className="w-9 h-9 text-amber-400" />}
                 {verdict === "geofence" && <ShieldAlert className="w-9 h-9 text-red-400" />}
                 {verdict === "blocked" && <XCircle className="w-9 h-9 text-red-400" />}
-                {verdict === "replayed" && <Info className="w-9 h-9 text-slate-300" />}
-                {verdict === "queued" && <CloudUpload className="w-9 h-9 text-slate-300" />}
+                {verdict === "replayed" && <Info className="w-9 h-9 text-muted-foreground" />}
+                {verdict === "queued" && <CloudUpload className="w-9 h-9 text-muted-foreground" />}
                 <div className="text-left">
                   <p className={`text-2xl font-black tracking-widest ${verdictStyles[verdict].cls}`} style={{ fontFamily: "'Orbitron', monospace" }}>
                     {verdictStyles[verdict].label}
                   </p>
-                  <p className="text-sm text-white/70 mt-1">{scanResult.student?.name ?? scanResult.message}</p>
+                  <p className="text-sm text-foreground/70 mt-1">{scanResult.student?.name ?? scanResult.message}</p>
                   {scanResult.student && (
-                    <p className="text-xs text-white/40 mt-0.5 font-mono">
+                    <p className="text-xs text-foreground/40 mt-0.5 font-mono">
                       {scanResult.student.studentId}{scanResult.attendance?.status ? ` · ${scanResult.attendance.status.toUpperCase()}` : ""}
                       {scanResult.attendance?.markedAt ? ` · ${format(new Date(scanResult.attendance.markedAt), "HH:mm:ss")}` : ""}
                     </p>
                   )}
                   {scanResult.replayed && (
-                    <p className="mt-1 flex items-center justify-center gap-1.5 text-[11px] text-slate-300/80">
+                    <p className="mt-1 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground/80">
                       <Info size={11} /> Already recorded (synced from offline)
                     </p>
                   )}
@@ -622,7 +622,7 @@ export default function QrTerminalPage() {
                 </div>
               )}
               {scanResult.spooled && (
-                <p className="mt-2 font-mono text-[11px] text-white/40">recorded from offline spool</p>
+                <p className="mt-2 font-mono text-[11px] text-foreground/40">recorded from offline spool</p>
               )}
             </motion.div>
           )}
@@ -684,10 +684,10 @@ export default function QrTerminalPage() {
                     onChange={(e) => void switchCamera(e.target.value)}
                     disabled={switching}
                     aria-label="Select camera"
-                    className="bg-black/40 border border-purple-500/20 rounded-lg px-2.5 py-1.5 text-sm text-white/80 focus:outline-none focus:border-purple-500/50 disabled:opacity-50 max-w-[200px] sm:max-w-[260px]"
+                    className="bg-muted border border-purple-500/20 rounded-lg px-2.5 py-1.5 text-sm text-foreground/80 focus:outline-none focus:border-purple-500/50 disabled:opacity-50 max-w-[200px] sm:max-w-[260px]"
                   >
                     {devices.map((d, i) => (
-                      <option key={d.id} value={d.id} className="bg-black text-white">
+                      <option key={d.id} value={d.id} className="bg-popover text-popover-foreground">
                         {d.label || `Camera ${i + 1}`}
                       </option>
                     ))}
@@ -712,15 +712,15 @@ export default function QrTerminalPage() {
                     <Zap size={11} /> torch
                   </button>
                 )}
-                {switching && <span className="text-[11px] text-white/40 font-mono">switching…</span>}
+                {switching && <span className="text-[11px] text-foreground/40 font-mono">switching…</span>}
                 <span
-                  className="flex items-center gap-1 rounded-full border border-white/10 bg-black/40 px-2 py-0.5"
+                  className="flex items-center gap-1 rounded-full border border-foreground/10 bg-muted px-2 py-0.5"
                   title={geoTitle}
                 >
                   <MapPin size={11} className={geoToneCls} />
-                  <span className="font-mono text-[10px] text-white/50">{geoLabel}</span>
+                  <span className="font-mono text-[10px] text-foreground/50">{geoLabel}</span>
                 </span>
-                <span className="ml-auto text-[11px] text-white/40 font-mono truncate max-w-[45%]" title={activeLabel}>
+                <span className="ml-auto text-[11px] text-foreground/40 font-mono truncate max-w-[45%]" title={activeLabel}>
                   camera: {activeLabel}
                 </span>
               </div>
@@ -730,7 +730,7 @@ export default function QrTerminalPage() {
             <GlowCard variant="gradient" className="p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Keyboard size={13} className="text-purple-400" />
-                <p className="text-[10px] uppercase tracking-widest text-white/40">Manual / USB scanner entry</p>
+                <p className="text-[10px] uppercase tracking-widest text-foreground/40">Manual / USB scanner entry</p>
               </div>
               <form
                 onSubmit={(e) => { e.preventDefault(); void submitToken(manualToken); setManualToken(""); }}
@@ -740,22 +740,22 @@ export default function QrTerminalPage() {
                   value={manualToken}
                   onChange={(e) => setManualToken(e.target.value)}
                   placeholder="AXQR1.… token"
-                  className="flex-1 bg-black/40 border border-purple-500/20 rounded-lg px-3 py-2 text-xs font-mono text-white/80 focus:outline-none focus:border-purple-500/50"
+                  className="flex-1 bg-muted border border-purple-500/20 rounded-lg px-3 py-2 text-xs font-mono text-foreground/80 focus:outline-none focus:border-purple-500/50"
                 />
                 <button type="submit" className="st-badge st-badge-purple px-4">submit</button>
               </form>
               <div className="grid grid-cols-3 gap-2 mt-4">
                 <div className="gx-stat rounded-lg bg-emerald-500/8 border border-emerald-500/15 p-2.5 text-center">
                   <p className="counter-num text-lg text-emerald-400">{counter.valid}</p>
-                  <p className="text-[8px] uppercase tracking-widest text-white/30">valid today</p>
+                  <p className="text-[8px] uppercase tracking-widest text-foreground/30">valid today</p>
                 </div>
                 <div className="gx-stat rounded-lg bg-amber-500/8 border border-amber-500/15 p-2.5 text-center">
                   <p className="counter-num text-lg text-amber-400">{counter.duplicate}</p>
-                  <p className="text-[8px] uppercase tracking-widest text-white/30">duplicates</p>
+                  <p className="text-[8px] uppercase tracking-widest text-foreground/30">duplicates</p>
                 </div>
                 <div className="gx-stat rounded-lg bg-red-500/8 border border-red-500/15 p-2.5 text-center">
                   <p className="counter-num text-lg text-red-400">{counter.anomalies}</p>
-                  <p className="text-[8px] uppercase tracking-widest text-white/30">blocked</p>
+                  <p className="text-[8px] uppercase tracking-widest text-foreground/30">blocked</p>
                 </div>
               </div>
             </GlowCard>
@@ -791,12 +791,12 @@ export default function QrTerminalPage() {
                         <StatusDot tone={feedDotTone(entry.verdict)} pulse={entry.verdict === "valid"} />
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <p className="text-sm font-medium text-white/85 truncate">{entry.name}</p>
-                            {entry.serial && <span className="text-[9px] font-mono text-white/25">{entry.serial}</span>}
+                            <p className="text-sm font-medium text-foreground/85 truncate">{entry.name}</p>
+                            {entry.serial && <span className="text-[9px] font-mono text-foreground/25">{entry.serial}</span>}
                           </div>
-                          <p className="text-[11px] text-white/40 truncate">{entry.message}</p>
+                          <p className="text-[11px] text-foreground/40 truncate">{entry.message}</p>
                         </div>
-                        <span className="text-[10px] font-mono text-white/30 shrink-0">{format(entry.at, "HH:mm:ss")}</span>
+                        <span className="text-[10px] font-mono text-foreground/30 shrink-0">{format(entry.at, "HH:mm:ss")}</span>
                       </motion.div>
                     ))}
                   </AnimatePresence>

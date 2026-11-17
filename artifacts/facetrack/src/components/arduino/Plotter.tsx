@@ -190,7 +190,7 @@ export function Plotter({ plot, heightClass = "h-56", className }: PlotterProps)
 
   return (
     <div className={cn("space-y-2", className)}>
-      <div ref={wrapRef} className={cn("relative overflow-hidden rounded-lg border border-slate-800 bg-slate-950/95", heightClass)}>
+      <div ref={wrapRef} className={cn("relative overflow-hidden rounded-lg border border-border bg-slate-950/95", heightClass)}>
         <canvas ref={canvasRef} aria-label="Serial data plot" className="absolute inset-0" />
         {!hasData && (
           <div className="absolute inset-0 flex items-center justify-center p-4 text-center">
@@ -205,8 +205,8 @@ export function Plotter({ plot, heightClass = "h-56", className }: PlotterProps)
           {latest.map((s) => (
             <span key={s.name} className="flex items-center gap-1.5 font-mono text-[10px]">
               <span aria-hidden="true" className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: s.color }} />
-              <span className="text-white/50">{s.name}</span>
-              <span className="text-white/85">{s.value ?? "—"}</span>
+              <span className="text-foreground/50">{s.name}</span>
+              <span className="text-foreground/85">{s.value ?? "—"}</span>
             </span>
           ))}
         </div>

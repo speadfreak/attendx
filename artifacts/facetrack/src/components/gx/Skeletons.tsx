@@ -45,8 +45,8 @@ export function FeedSkeletonRow({ rows = 5 }: { rows?: number }) {
       {Array(rows).fill(0).map((_, i) => (
         <div key={i} className="gx-skeleton h-12 !rounded-xl">
           <div className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-purple-400/10" />
-          <div className="absolute left-14 top-3 w-28 h-2.5 rounded bg-white/10" />
-          <div className="absolute left-14 top-7 w-20 h-2 rounded bg-white/5" />
+          <div className="absolute left-14 top-3 w-28 h-2.5 rounded bg-foreground/10" />
+          <div className="absolute left-14 top-7 w-20 h-2 rounded bg-foreground/5" />
         </div>
       ))}
     </div>

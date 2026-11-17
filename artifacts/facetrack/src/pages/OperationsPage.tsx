@@ -48,11 +48,11 @@ import { useToast } from "@/hooks/use-toast";
 
 const panel = "gx-panel rounded-2xl";
 const label = "text-[11px] font-semibold uppercase tracking-[0.15em] text-violet-200/55";
-const quiet = "text-sm text-violet-100/55";
-const actionClass = "gx-glow-hover inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-violet-200/15 bg-violet-200/[0.06] px-3.5 text-sm font-medium text-violet-50 transition-colors hover:bg-violet-200/[0.12] disabled:pointer-events-none disabled:opacity-45";
+const quiet = "text-sm text-violet-200/55";
+const actionClass = "gx-glow-hover inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-violet-200/15 bg-violet-200/[0.06] px-3.5 text-sm font-medium text-foreground transition-colors hover:bg-violet-200/[0.12] disabled:pointer-events-none disabled:opacity-45";
 const accentAction = "gx-btn-accent gx-gradient-pan gx-focus-ring inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3.5 text-sm font-semibold text-white transition-all disabled:pointer-events-none disabled:opacity-45";
-const dangerAction = "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-rose-300/20 bg-rose-400/10 px-3.5 text-sm font-semibold text-rose-200 transition-colors hover:bg-rose-400/15 disabled:pointer-events-none disabled:opacity-45";
-const inputClass = "min-h-10 w-full rounded-lg border border-violet-200/15 bg-[#110d18] px-3 text-sm text-violet-50 outline-none placeholder:text-violet-100/30 focus:border-violet-300/45 focus:ring-2 focus:ring-violet-300/15";
+const dangerAction = "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-rose-300/20 bg-rose-400/10 px-3.5 text-sm font-semibold text-rose-300 transition-colors hover:bg-rose-400/15 disabled:pointer-events-none disabled:opacity-45";
+const inputClass = "min-h-10 w-full rounded-lg border border-violet-200/15 bg-muted px-3 text-sm text-foreground outline-none placeholder:text-violet-200/30 focus:border-violet-300/45 focus:ring-2 focus:ring-violet-300/15";
 
 function formatTime(value?: string | null) {
   if (!value) return "Not reported";
@@ -98,23 +98,23 @@ function summarizeGateWindow(cameraCount: number, events: GateSensorEvent[]) {
 
 function ErrorNotice({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <div className="flex items-start gap-2.5 gx-empty-tint rounded-xl border border-rose-300/15 bg-rose-300/[0.06] p-3 text-sm text-rose-100/80" role="alert">
+    <div className="flex items-start gap-2.5 gx-empty-tint rounded-xl border border-rose-300/15 bg-rose-300/[0.06] p-3 text-sm text-rose-300/80" role="alert">
       <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-300" />
       <span className="min-w-0 flex-1">{message}</span>
-      {onRetry && <button type="button" className="text-xs font-semibold text-rose-200 underline underline-offset-4" onClick={onRetry}>Retry</button>}
+      {onRetry && <button type="button" className="text-xs font-semibold text-rose-300 underline underline-offset-4" onClick={onRetry}>Retry</button>}
     </div>
   );
 }
 
 function Skeleton({ className = "" }: { className?: string }) {
-  return <div aria-hidden="true" className={`animate-pulse rounded-lg bg-violet-100/[0.07] ${className}`} />;
+  return <div aria-hidden="true" className={`animate-pulse rounded-lg bg-violet-200/[0.07] ${className}`} />;
 }
 
 function SectionHeading({ eyebrow, title, detail }: { eyebrow: string; title: string; detail?: string }) {
   return (
     <div className="mb-5">
       <p className={label}>{eyebrow}</p>
-      <h2 className="mt-1 text-lg font-semibold tracking-tight text-violet-50">{title}</h2>
+      <h2 className="mt-1 text-lg font-semibold tracking-tight text-foreground">{title}</h2>
       {detail && <p className={`mt-1 ${quiet}`}>{detail}</p>}
     </div>
   );
@@ -443,7 +443,7 @@ export default function OperationsPage() {
 
   return (
     <div className="mx-auto w-full max-w-[1480px] min-w-0 space-y-4 sm:space-y-6 pb-10">
-      <header className="gx-top-sheen relative overflow-hidden rounded-2xl border border-violet-200/10 bg-[radial-gradient(ellipse_at_top_right,rgba(139,92,246,0.16),transparent_48%),linear-gradient(120deg,#21172e,#17111f)] px-5 py-6 sm:px-7 sm:py-8">
+      <header className="gx-top-sheen relative overflow-hidden rounded-2xl border border-violet-200/10 bg-[radial-gradient(ellipse_at_top_right,rgba(139,92,246,0.16),transparent_48%),linear-gradient(120deg,hsl(var(--card)),hsl(var(--background)))] px-5 py-6 sm:px-7 sm:py-8">
         <div className="absolute -right-16 -top-24 h-64 w-64 rounded-full border border-violet-200/[0.07]" aria-hidden="true" />
         <div className="absolute -right-2 -top-9 h-36 w-36 rounded-full border border-violet-200/[0.08]" aria-hidden="true" />
         <div className="relative flex flex-col justify-between gap-5 md:flex-row md:items-end">
@@ -453,14 +453,14 @@ export default function OperationsPage() {
               <span className={label}>AttendX / Phase 02</span>
             </div>
             <h1 className="gx-title-gradient text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">Operations</h1>
-            <p className="mt-2 max-w-xl text-sm leading-relaxed text-violet-100/60">
+            <p className="mt-2 max-w-xl text-sm leading-relaxed text-violet-200/60">
               Device health, attendance processing, and review controls in one place.
             </p>
           </div>
           <div className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium ${
-            piQuery.isLoading ? "border-violet-200/10 bg-violet-200/[0.04] text-violet-100/55" :
+            piQuery.isLoading ? "border-violet-200/10 bg-violet-200/[0.04] text-violet-200/55" :
               piQuery.data?.online && heartbeatFresh ? "border-emerald-300/20 bg-emerald-300/[0.08] text-emerald-200" :
-                "border-amber-300/20 bg-amber-300/[0.08] text-amber-100"
+                "border-amber-300/20 bg-amber-300/[0.08] text-amber-200"
           }`} aria-live="polite" data-testid="status-pi-connectivity">
             <span className={`h-2 w-2 rounded-full ${piQuery.isLoading ? "bg-violet-300/50" : piQuery.data?.online && heartbeatFresh ? "bg-emerald-300" : "bg-amber-300"}`} />
             {piQuery.isLoading ? "Checking device" : piQuery.data?.online && heartbeatFresh ? "Gate device online" : piQuery.data?.online ? "Heartbeat stale" : "Device offline"}
@@ -469,9 +469,9 @@ export default function OperationsPage() {
       </header>
 
       {feedback && (
-        <div role="status" aria-live="polite" className="flex items-start justify-between gap-3 rounded-xl border border-violet-200/15 bg-violet-300/[0.06] px-4 py-3 text-sm text-violet-100/85">
+        <div role="status" aria-live="polite" className="flex items-start justify-between gap-3 rounded-xl border border-violet-200/15 bg-violet-300/[0.06] px-4 py-3 text-sm text-violet-200/85">
           <span className="min-w-0 flex-1">{feedback}</span>
-          <button type="button" onClick={() => setFeedback("")} aria-label="Dismiss notification" className="shrink-0 text-violet-100/55 hover:text-violet-50"><X size={16} /></button>
+          <button type="button" onClick={() => setFeedback("")} aria-label="Dismiss notification" className="shrink-0 text-violet-200/55 hover:text-foreground"><X size={16} /></button>
         </div>
       )}
 
@@ -479,7 +479,7 @@ export default function OperationsPage() {
         <article className={`${panel} p-5 sm:p-6`}>
           <div className="flex flex-wrap items-start justify-between gap-4">
             <SectionHeading eyebrow="Gate device" title={device?.name || "Raspberry Pi"} detail="Live heartbeat and hardware telemetry" />
-            {device && <span className={`rounded-md px-2.5 py-1 text-xs font-medium ${piQuery.data?.online ? "bg-emerald-300/10 text-emerald-200" : "bg-amber-300/10 text-amber-100"}`}>
+            {device && <span className={`rounded-md px-2.5 py-1 text-xs font-medium ${piQuery.data?.online ? "bg-emerald-300/10 text-emerald-200" : "bg-amber-300/10 text-amber-200"}`}>
               {device.status.replaceAll("_", " ")}
             </span>}
           </div>
@@ -489,7 +489,7 @@ export default function OperationsPage() {
             !device ? (
               <div className="rounded-xl border border-dashed border-violet-200/15 p-5 text-center">
                 <Server size={21} className="mx-auto text-violet-200/45" />
-                <p className="mt-2 text-sm font-medium text-violet-50">No gate device paired</p>
+                <p className="mt-2 text-sm font-medium text-foreground">No gate device paired</p>
                 <p className={`mt-1 ${quiet}`}>Pair a Raspberry Pi to begin receiving health signals.</p>
               </div>
             ) : (
@@ -500,12 +500,12 @@ export default function OperationsPage() {
                   <Metric icon={Thermometer} title="CPU temperature" value={device.cpuTempC == null ? "Not reported" : `${device.cpuTempC.toFixed(1)}°C`} />
                   <Metric icon={Cpu} title="Queue depth" value={String(device.queueDepth)} sub={device.uptimeSeconds == null ? "Uptime not reported" : `${Math.floor(device.uptimeSeconds / 3600)}h uptime`} />
                 </div>
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-violet-100/[0.08] pt-4">
-                  <div className={`flex items-center gap-2 text-xs ${heartbeatFresh ? "text-emerald-200/75" : "text-amber-100/75"}`}>
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-violet-200/[0.08] pt-4">
+                  <div className={`flex items-center gap-2 text-xs ${heartbeatFresh ? "text-emerald-200/75" : "text-amber-200/75"}`}>
                     {heartbeatFresh ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
                     {heartbeatFresh ? `Heartbeat within ${piQuery.data?.staleAfterSeconds}s freshness window` : `Heartbeat exceeds ${piQuery.data?.staleAfterSeconds ?? "the"}s freshness window`}
                   </div>
-                  <span className="flex items-center gap-2 text-xs text-violet-100/50"><Fan size={14} />Fan {device.fanState}{device.fanTempC == null ? "" : ` · ${device.fanTempC.toFixed(1)}°C`}</span>
+                  <span className="flex items-center gap-2 text-xs text-violet-200/50"><Fan size={14} />Fan {device.fanState}{device.fanTempC == null ? "" : ` · ${device.fanTempC.toFixed(1)}°C`}</span>
                 </div>
               </>
             )}
@@ -514,9 +514,9 @@ export default function OperationsPage() {
         <article className={`${panel} p-5 sm:p-6`}>
           <SectionHeading eyebrow="Secure enrollment" title="Pair a device" detail="Issue a short-lived, one-time pairing credential." />
           <form onSubmit={pairDevice} className="space-y-3">
-            <label htmlFor="device-name" className="block text-xs font-medium text-violet-100/75">Device name</label>
+            <label htmlFor="device-name" className="block text-xs font-medium text-violet-200/75">Device name</label>
             <div className="flex flex-col gap-2 sm:flex-row">
-              <input id="device-name" data-testid="input-device-name" value={deviceName} onChange={(event) => setDeviceName(event.target.value)} required maxLength={80} placeholder="e.g. North gate Pi" className="min-h-10 min-w-0 flex-1 rounded-lg border border-violet-200/15 bg-[#110d18] px-3 text-sm text-violet-50 outline-none placeholder:text-violet-100/30 focus:border-violet-300/45 focus:ring-2 focus:ring-violet-300/15" />
+              <input id="device-name" data-testid="input-device-name" value={deviceName} onChange={(event) => setDeviceName(event.target.value)} required maxLength={80} placeholder="e.g. North gate Pi" className="min-h-10 min-w-0 flex-1 rounded-lg border border-violet-200/15 bg-muted px-3 text-sm text-foreground outline-none placeholder:text-violet-200/30 focus:border-violet-300/45 focus:ring-2 focus:ring-violet-300/15" />
               <button type="submit" disabled={pairMutation.isPending || !deviceName.trim()} className={accentAction}>
                 {pairMutation.isPending ? <LoaderCircle size={15} className="animate-spin" /> : <KeyRound size={15} />}
                 Generate token
@@ -526,20 +526,20 @@ export default function OperationsPage() {
           {pairing ? (
             <div className="mt-4 rounded-xl border border-amber-200/20 bg-amber-200/[0.06] p-3.5" role="status">
               <div className="flex items-center justify-between gap-2">
-                <p className="flex items-center gap-2 text-xs font-semibold text-amber-100"><ShieldAlert size={14} />One-time pairing token</p>
-                <button type="button" aria-label="Dismiss pairing token" onClick={() => setPairing(null)} className="text-amber-100/55 hover:text-amber-50"><X size={15} /></button>
+                <p className="flex items-center gap-2 text-xs font-semibold text-amber-200"><ShieldAlert size={14} />One-time pairing token</p>
+                <button type="button" aria-label="Dismiss pairing token" onClick={() => setPairing(null)} className="text-amber-200/55 hover:text-foreground"><X size={15} /></button>
               </div>
-              <code className="mt-2 block break-all rounded-lg bg-black/20 p-2.5 font-mono text-xs leading-relaxed text-amber-50" data-testid="text-pairing-token">{pairing.token}</code>
+              <code className="mt-2 block break-all rounded-lg bg-black/20 p-2.5 font-mono text-xs leading-relaxed text-foreground" data-testid="text-pairing-token">{pairing.token}</code>
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                <span className="text-[11px] text-amber-100/55">Expires {formatTime(pairing.expiresAt)} · Device {pairing.deviceId}</span>
-                <button type="button" onClick={() => void copyToken()} className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-100 hover:text-white">
+                <span className="text-[11px] text-amber-200/55">Expires {formatTime(pairing.expiresAt)} · Device {pairing.deviceId}</span>
+                <button type="button" onClick={() => void copyToken()} className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-200 hover:text-amber-300">
                   {copied ? <Check size={13} /> : <Clipboard size={13} />}{copied ? "Copied" : "Copy token"}
                 </button>
               </div>
-              <p className="mt-2 text-[11px] leading-relaxed text-amber-100/65">This credential exists only on this screen. Dismiss it or leave this page and it cannot be recovered here.</p>
+              <p className="mt-2 text-[11px] leading-relaxed text-amber-200/65">This credential exists only on this screen. Dismiss it or leave this page and it cannot be recovered here.</p>
             </div>
-          ) : feedback.toLowerCase().includes("pair") ? <p className="mt-3 text-xs text-violet-100/55">{feedback}</p> : null}
-          {pairMutation.isError && <p className="mt-3 text-xs text-rose-200">Pairing failed. The server did not return a token.</p>}
+          ) : feedback.toLowerCase().includes("pair") ? <p className="mt-3 text-xs text-violet-200/55">{feedback}</p> : null}
+          {pairMutation.isError && <p className="mt-3 text-xs text-rose-300">Pairing failed. The server did not return a token.</p>}
         </article>
       </section>
 
@@ -550,12 +550,12 @@ export default function OperationsPage() {
             <div className="flex flex-wrap items-center gap-2">
               {gate && <GateVerdictBadge verdict={gate.verdict} />}
               {gate && secondsLeft != null && (
-                <span className="inline-flex items-center gap-1.5 rounded-md border border-violet-200/15 bg-violet-200/[0.06] px-2.5 py-1 font-mono text-xs text-violet-100/70" data-testid="gate-window-countdown">
+                <span className="inline-flex items-center gap-1.5 rounded-md border border-violet-200/15 bg-violet-200/[0.06] px-2.5 py-1 font-mono text-xs text-violet-200/70" data-testid="gate-window-countdown">
                   <Timer size={13} className="text-violet-200/60" />Window ends in {secondsLeft}s
                 </span>
               )}
               {gate && !gate.withinGateHours && (
-                <span className="inline-flex items-center gap-1.5 rounded-md border border-violet-100/10 bg-violet-100/[0.04] px-2.5 py-1 text-xs text-violet-100/50" data-testid="gate-outside-hours">
+                <span className="inline-flex items-center gap-1.5 rounded-md border border-violet-200/10 bg-violet-200/[0.04] px-2.5 py-1 text-xs text-violet-200/50" data-testid="gate-outside-hours">
                   <AlertCircle size={13} />Outside gate hours ({gate.gateActiveFrom}–{gate.gateActiveTo} {gate.timezone})
                 </span>
               )}
@@ -572,30 +572,30 @@ export default function OperationsPage() {
                 <GateCounter icon={Waves} title="Ultrasonic triggers" value={gate.ultrasonic} tone="emerald" sub="motion pulses in the current window" />
                 <GateCounter icon={Zap} title="IR beam breaks" value={gate.ir} tone="cyan" sub="beam crossings in the current window" />
               </div>
-              <p className="mt-2 text-[11px] text-violet-100/45">
+              <p className="mt-2 text-[11px] text-violet-200/45">
                 Alert when camera trails both sensors by &gt;{gate.discrepancyPct}% or sensors disagree by &gt;{gate.discrepancyPct}%.
               </p>
-              <div className="mt-4 rounded-xl border border-violet-100/[0.08] bg-[#110d18] p-3">
+              <div className="mt-4 rounded-xl border border-violet-200/[0.08] bg-muted p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="flex items-center gap-2 text-xs font-semibold text-violet-50"><Activity size={14} className="text-violet-300" />Rolling window counts</p>
-                  <span className="text-[10px] text-violet-100/40">last 60 minutes · {gate.windowSeconds}s windows</span>
+                  <p className="flex items-center gap-2 text-xs font-semibold text-foreground"><Activity size={14} className="text-violet-300" />Rolling window counts</p>
+                  <span className="text-[10px] text-violet-200/40">last 60 minutes · {gate.windowSeconds}s windows</span>
                 </div>
                 {gateWindowsQuery.isLoading ? <Skeleton className="mt-3 h-48 sm:h-56" /> :
                   gateWindowsQuery.isError ? <div className="mt-3"><ErrorNotice message="Window history could not be loaded." onRetry={() => void gateWindowsQuery.refetch()} /></div> :
                     gateSeriesData.length === 0 ? (
-                      <p className="mt-3 rounded-lg border border-dashed border-violet-200/15 px-4 py-6 text-center text-xs text-violet-100/45">No gate windows recorded yet.</p>
+                      <p className="mt-3 rounded-lg border border-dashed border-violet-200/15 px-4 py-6 text-center text-xs text-violet-200/45">No gate windows recorded yet.</p>
                     ) : (
                       <div className="mt-3 h-48 sm:h-56">
                         <ResponsiveContainer width="100%" height="100%">
                           <LineChart data={gateSeriesData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(155,91,255,0.08)" vertical={false} />
-                            <XAxis dataKey="time" stroke="rgba(255,255,255,0.2)" tick={{ fontSize: 10 }} tickMargin={6} minTickGap={24} />
-                            <YAxis stroke="rgba(255,255,255,0.2)" tick={{ fontSize: 10 }} allowDecimals={false} />
+                            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                            <XAxis dataKey="time" stroke="hsl(var(--border))" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} tickMargin={6} minTickGap={24} />
+                            <YAxis stroke="hsl(var(--border))" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
                             <Tooltip
-                              contentStyle={{ backgroundColor: "#0d0515", borderColor: "rgba(155,91,255,0.25)", borderRadius: 10 }}
-                              itemStyle={{ color: "#e2d9f3", fontSize: 11 }}
+                              contentStyle={{ backgroundColor: "hsl(var(--popover))", borderColor: "hsl(var(--popover-border))", borderRadius: 10 }}
+                              itemStyle={{ color: "hsl(var(--popover-foreground))", fontSize: 11 }}
                             />
-                            <Legend wrapperStyle={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }} />
+                            <Legend wrapperStyle={{ fontSize: 11, color: "hsl(var(--muted-foreground))" }} />
                             <Line type="monotone" dataKey="camera" name="Camera" stroke="#a78bfa" strokeWidth={2} dot={false} />
                             <Line type="monotone" dataKey="ultrasonic" name="Ultrasonic" stroke="#34d399" strokeWidth={2} dot={false} />
                             <Line type="monotone" dataKey="ir" name="IR beam" stroke="#22d3ee" strokeWidth={2} dot={false} />
@@ -606,7 +606,7 @@ export default function OperationsPage() {
                                 y={dot.y}
                                 r={5}
                                 fill={dot.mode === "sensor_conflict" ? "#f87171" : "#fbbf24"}
-                                stroke="#17111f"
+                                stroke="hsl(var(--muted))"
                                 strokeWidth={1.5}
                               />
                             ))}
@@ -630,7 +630,7 @@ export default function OperationsPage() {
               )}
               {canAdmin && simulateOpen && (
                 <div className="mt-3 rounded-xl border border-amber-200/20 bg-amber-200/[0.05] p-3" role="group" aria-label="Simulation mode">
-                  <p className="text-xs font-semibold text-amber-100">Choose the mismatch to inject</p>
+                  <p className="text-xs font-semibold text-amber-200">Choose the mismatch to inject</p>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     {(["missed_detections", "sensor_conflict"] as const).map((mode) => (
                       <button
@@ -638,7 +638,7 @@ export default function OperationsPage() {
                         type="button"
                         onClick={() => setSimulateMode(mode)}
                         aria-pressed={simulateMode === mode}
-                        className={`min-h-9 rounded-lg border px-3 text-xs font-medium transition-colors ${simulateMode === mode ? "border-amber-300/35 bg-amber-300/10 text-amber-100" : "border-violet-100/10 bg-violet-100/[0.025] text-violet-100/60 hover:bg-violet-100/[0.06]"}`}
+                        className={`min-h-9 rounded-lg border px-3 text-xs font-medium transition-colors ${simulateMode === mode ? "border-amber-300/35 bg-amber-300/10 text-amber-200" : "border-violet-200/10 bg-violet-200/[0.025] text-violet-200/60 hover:bg-violet-200/[0.06]"}`}
                         data-testid={`button-gate-mode-${mode}`}
                       >
                         {mode.replaceAll("_", " ")}
@@ -648,20 +648,20 @@ export default function OperationsPage() {
                       {gateSimulateMutation.isPending ? <LoaderCircle size={15} className="animate-spin" /> : <FlaskConical size={15} />}Inject demo data
                     </button>
                   </div>
-                  <p className="mt-2 text-[11px] leading-relaxed text-amber-100/60">Injects synthetic sensor events for demonstration. Alerts created this way are tagged DEMO until they are resolved.</p>
+                  <p className="mt-2 text-[11px] leading-relaxed text-amber-200/60">Injects synthetic sensor events for demonstration. Alerts created this way are tagged DEMO until they are resolved.</p>
                 </div>
               )}
-              <div className="mt-4 border-t border-violet-100/[0.08] pt-4">
+              <div className="mt-4 border-t border-violet-200/[0.08] pt-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-xs font-semibold text-violet-50">Recent alerts</p>
-                  <span className="text-[10px] text-violet-100/40">unresolved first · showing {gateAlertRows.length}</span>
+                  <p className="text-xs font-semibold text-foreground">Recent alerts</p>
+                  <span className="text-[10px] text-violet-200/40">unresolved first · showing {gateAlertRows.length}</span>
                 </div>
                 {gateAlertsQuery.isLoading ? <div className="mt-2 space-y-2"><Skeleton className="h-12" /><Skeleton className="h-12" /></div> :
                   gateAlertsQuery.isError ? <div className="mt-2"><ErrorNotice message="Gate alerts could not be loaded." onRetry={() => void gateAlertsQuery.refetch()} /></div> :
                     gateAlertRows.length === 0 ? (
                       <div className="mt-2 rounded-xl border border-dashed border-violet-200/15 px-4 py-6 text-center">
                         <ShieldCheck size={20} className="mx-auto text-emerald-200/65" />
-                        <p className="mt-2 text-sm font-medium text-violet-50">No gate alerts</p>
+                        <p className="mt-2 text-sm font-medium text-foreground">No gate alerts</p>
                         <p className={`mt-1 ${quiet}`}>Sensor mismatches will appear here as they are detected.</p>
                       </div>
                     ) : (
@@ -706,37 +706,37 @@ export default function OperationsPage() {
             <>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
                 {(["pending", "running", "failed", "done"] as const).map((status) => (
-                  <div key={status} className={`rounded-xl border px-3 py-2.5 ${status === "failed" && (jobsQuery.data?.counts.failed ?? 0) > 0 ? "border-rose-300/15 bg-rose-300/[0.05]" : "border-violet-100/[0.08] bg-violet-100/[0.025]"}`}>
-                    <p className="text-[11px] capitalize text-violet-100/50">{status}</p>
-                    <p className="mt-1 font-mono text-xl font-semibold tabular-nums text-violet-50" data-testid={`count-jobs-${status}`}>{jobsQuery.data?.counts[status] ?? 0}</p>
+                  <div key={status} className={`rounded-xl border px-3 py-2.5 ${status === "failed" && (jobsQuery.data?.counts.failed ?? 0) > 0 ? "border-rose-300/15 bg-rose-300/[0.05]" : "border-violet-200/[0.08] bg-violet-200/[0.025]"}`}>
+                    <p className="text-[11px] capitalize text-violet-200/50">{status}</p>
+                    <p className="mt-1 font-mono text-xl font-semibold tabular-nums text-foreground" data-testid={`count-jobs-${status}`}>{jobsQuery.data?.counts[status] ?? 0}</p>
                   </div>
                 ))}
               </div>
               {failedJobs.length > 0 && (
                 <div className="mt-4 space-y-2">
-                  <p className="text-xs font-semibold text-rose-200">Failed jobs · retry individually</p>
+                  <p className="text-xs font-semibold text-rose-300">Failed jobs · retry individually</p>
                   {failedJobs.slice(0, 3).map((job) => (
-                    <div key={job.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-rose-200/10 bg-rose-200/[0.035] px-3 py-2.5">
+                    <div key={job.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-rose-300/10 bg-rose-300/[0.035] px-3 py-2.5">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-violet-50" title={job.type}>{job.type} <span className="font-mono text-xs text-violet-100/40">#{job.id}</span></p>
-                        <p className="mt-0.5 truncate text-xs text-rose-100/60" title={job.error || "No error detail returned"}>{job.error || "No error detail returned"} · {job.attempts} attempts</p>
+                        <p className="truncate text-sm font-medium text-foreground" title={job.type}>{job.type} <span className="font-mono text-xs text-violet-200/40">#{job.id}</span></p>
+                        <p className="mt-0.5 truncate text-xs text-rose-300/60" title={job.error || "No error detail returned"}>{job.error || "No error detail returned"} · {job.attempts} attempts</p>
                       </div>
                       <button type="button" onClick={() => retryJob(job.id)} disabled={retryMutation.isPending} className={actionClass} data-testid={`button-retry-job-${job.id}`}><RotateCcw size={14} />Retry</button>
                     </div>
                   ))}
                 </div>
               )}
-              <div className="mt-4 overflow-x-auto rounded-xl border border-violet-100/[0.08]" role="region" aria-label="Recent jobs table" tabIndex={0}>
+              <div className="mt-4 overflow-x-auto rounded-xl border border-violet-200/[0.08]" role="region" aria-label="Recent jobs table" tabIndex={0}>
                 <div className="min-w-[480px]">
-                  <div className="grid grid-cols-[1.2fr_0.8fr_auto] gap-2 border-b border-violet-100/[0.08] bg-violet-100/[0.025] px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-violet-100/40">
+                  <div className="grid grid-cols-[1.2fr_0.8fr_auto] gap-2 border-b border-violet-200/[0.08] bg-violet-200/[0.025] px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-violet-200/40">
                     <span>Job</span><span>Worker</span><span>Status</span>
                   </div>
-                  {recentJobs.length === 0 ? <p className="px-3 py-6 text-center text-xs text-violet-100/45">No jobs have been reported.</p> :
+                  {recentJobs.length === 0 ? <p className="px-3 py-6 text-center text-xs text-violet-200/45">No jobs have been reported.</p> :
                     recentJobs.map((job) => (
-                      <div key={job.id} data-testid={`row-job-${job.id}`} className="grid grid-cols-[1.2fr_0.8fr_auto] items-center gap-2 border-b border-violet-100/[0.05] px-3 py-2.5 last:border-0">
-                        <div className="min-w-0"><p className="truncate text-xs font-medium text-violet-50" title={job.type}>{job.type} <span className="font-mono text-[10px] text-violet-100/40">#{job.id}</span></p><p className="truncate text-[10px] text-violet-100/40">{formatTime(job.createdAt)}</p></div>
-                        <span className="truncate text-xs text-violet-100/55" title={job.worker || "—"}>{job.worker || "—"}</span>
-                        <span className={`rounded-md px-2 py-1 text-[10px] font-medium capitalize ${job.status === "failed" ? "bg-rose-300/10 text-rose-200" : job.status === "done" ? "bg-emerald-300/10 text-emerald-200" : "bg-violet-300/10 text-violet-100/70"}`}>{job.status}</span>
+                      <div key={job.id} data-testid={`row-job-${job.id}`} className="grid grid-cols-[1.2fr_0.8fr_auto] items-center gap-2 border-b border-violet-200/[0.05] px-3 py-2.5 last:border-0">
+                        <div className="min-w-0"><p className="truncate text-xs font-medium text-foreground" title={job.type}>{job.type} <span className="font-mono text-[10px] text-violet-200/40">#{job.id}</span></p><p className="truncate text-[10px] text-violet-200/40">{formatTime(job.createdAt)}</p></div>
+                        <span className="truncate text-xs text-violet-200/55" title={job.worker || "—"}>{job.worker || "—"}</span>
+                        <span className={`rounded-md px-2 py-1 text-[10px] font-medium capitalize ${job.status === "failed" ? "bg-rose-300/10 text-rose-300" : job.status === "done" ? "bg-emerald-300/10 text-emerald-200" : "bg-violet-300/10 text-violet-200/70"}`}>{job.status}</span>
                       </div>
                     ))}
                 </div>
@@ -752,31 +752,31 @@ export default function OperationsPage() {
             <ConsoleAction icon={Fingerprint} title="Camera status" action="camera-status" disabled={actionMutation.isPending} onRun={requestAction} />
             <ConsoleAction icon={ChevronRight} title="Recent logs" action="recent-logs" disabled={actionMutation.isPending} onRun={requestAction} />
           </div>
-          {actionFeedback && <p className="mt-3 rounded-lg bg-violet-300/[0.06] px-3 py-2 text-xs text-violet-100/70" role="status">{actionFeedback}</p>}
-          {actionMutation.isError && <p className="mt-2 text-xs text-rose-200">Action request failed. Try again when the device is reachable.</p>}
-          <div className="mt-4 rounded-xl border border-violet-100/[0.08] bg-[#110d18] p-3.5">
-            <p className="flex items-center gap-2 text-xs font-semibold text-violet-50"><Activity size={14} className="text-violet-300" />Recent log request</p>
+          {actionFeedback && <p className="mt-3 rounded-lg bg-violet-300/[0.06] px-3 py-2 text-xs text-violet-200/70" role="status">{actionFeedback}</p>}
+          {actionMutation.isError && <p className="mt-2 text-xs text-rose-300">Action request failed. Try again when the device is reachable.</p>}
+          <div className="mt-4 rounded-xl border border-violet-200/[0.08] bg-muted p-3.5">
+            <p className="flex items-center gap-2 text-xs font-semibold text-foreground"><Activity size={14} className="text-violet-300" />Recent log request</p>
             {recentLogJob ? (
               <div className="mt-2">
-                <p className="text-[11px] text-violet-100/45">Job #{recentLogJob.id} · {recentLogJob.status} · {formatTime(recentLogJob.completedAt || recentLogJob.createdAt)}</p>
-                {recentLogJob.status === "failed" && <p className="mt-1 text-xs text-rose-200">{recentLogJob.error || "Log request failed."}</p>}
-                {recentLogJob.result && <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/20 p-2.5 font-mono text-[10px] leading-relaxed text-violet-100/65">{JSON.stringify(recentLogJob.result, null, 2)}</pre>}
+                <p className="text-[11px] text-violet-200/45">Job #{recentLogJob.id} · {recentLogJob.status} · {formatTime(recentLogJob.completedAt || recentLogJob.createdAt)}</p>
+                {recentLogJob.status === "failed" && <p className="mt-1 text-xs text-rose-300">{recentLogJob.error || "Log request failed."}</p>}
+                {recentLogJob.result && <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-black/20 p-2.5 font-mono text-[10px] leading-relaxed text-violet-200/65">{JSON.stringify(recentLogJob.result, null, 2)}</pre>}
               </div>
-            ) : <p className="mt-2 text-xs text-violet-100/45">No completed recent-log request is available.</p>}
+            ) : <p className="mt-2 text-xs text-violet-200/45">No completed recent-log request is available.</p>}
           </div>
-          <div className="mt-4 border-t border-violet-100/[0.08] pt-4">
+          <div className="mt-4 border-t border-violet-200/[0.08] pt-4">
             <div className="flex items-start gap-2.5">
-              <LockKeyhole size={16} className="mt-0.5 shrink-0 text-rose-200" />
+              <LockKeyhole size={16} className="mt-0.5 shrink-0 text-rose-300" />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-violet-50">Revoke device session</p>
-                <p className="mt-1 text-xs leading-relaxed text-violet-100/50">Immediately revoke the Pi credential and cancel active jobs. Pairing will be required again.</p>
+                <p className="text-sm font-semibold text-foreground">Revoke device session</p>
+                <p className="mt-1 text-xs leading-relaxed text-violet-200/50">Immediately revoke the Pi credential and cancel active jobs. Pairing will be required again.</p>
               </div>
             </div>
             <button type="button" onClick={confirmKillSessions} disabled={killMutation.isPending} className={`${dangerAction} mt-3 w-full`} data-testid="button-kill-sessions">
               {killMutation.isPending ? <LoaderCircle size={15} className="animate-spin" /> : <ShieldAlert size={15} />}
               Revoke sessions and cancel work
             </button>
-            {killMutation.isError && <p className="mt-2 text-xs text-rose-200">Session revocation failed. No success was reported.</p>}
+            {killMutation.isError && <p className="mt-2 text-xs text-rose-300">Session revocation failed. No success was reported.</p>}
           </div>
         </article>
       </section>
@@ -785,8 +785,8 @@ export default function OperationsPage() {
         <article className={`${panel} p-5 sm:p-6`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <SectionHeading eyebrow="Human review" title="Uncertain face matches" detail="Approve or reject low-confidence gate-camera matches." />
-            <div className="rounded-lg border border-amber-200/15 bg-amber-200/[0.05] px-3 py-2 text-xs text-amber-100/75">
-              <span className="font-mono text-base font-semibold text-amber-100">{reviewsQuery.data?.filter((review) => review.status === "pending").length ?? "—"}</span>
+            <div className="rounded-lg border border-amber-200/15 bg-amber-200/[0.05] px-3 py-2 text-xs text-amber-200/75">
+              <span className="font-mono text-base font-semibold text-amber-200">{reviewsQuery.data?.filter((review) => review.status === "pending").length ?? "—"}</span>
               <span className="ml-2">pending</span>
             </div>
           </div>
@@ -795,34 +795,34 @@ export default function OperationsPage() {
               pendingReviews.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-violet-200/15 px-4 py-8 text-center">
                   <ShieldCheck size={22} className="mx-auto text-emerald-200/65" />
-                  <p className="mt-2 text-sm font-medium text-violet-50">Review queue is clear</p>
+                  <p className="mt-2 text-sm font-medium text-foreground">Review queue is clear</p>
                   <p className={`mt-1 ${quiet}`}>New uncertain matches will appear here.</p>
                 </div>
               ) : (
                 <>
-                  <label htmlFor="review-note" className="mb-2 block text-xs font-medium text-violet-100/55">Decision note <span className="font-normal">(optional, applies to next decision)</span></label>
-                  <input id="review-note" data-testid="input-review-note" value={decisionNote} onChange={(event) => setDecisionNote(event.target.value)} maxLength={300} placeholder="Add context for the audit record" className="mb-3 min-h-10 w-full rounded-lg border border-violet-200/15 bg-[#110d18] px-3 text-sm text-violet-50 outline-none placeholder:text-violet-100/30 focus:border-violet-300/45" />
+                  <label htmlFor="review-note" className="mb-2 block text-xs font-medium text-violet-200/55">Decision note <span className="font-normal">(optional, applies to next decision)</span></label>
+                  <input id="review-note" data-testid="input-review-note" value={decisionNote} onChange={(event) => setDecisionNote(event.target.value)} maxLength={300} placeholder="Add context for the audit record" className="mb-3 min-h-10 w-full rounded-lg border border-violet-200/15 bg-muted px-3 text-sm text-foreground outline-none placeholder:text-violet-200/30 focus:border-violet-300/45" />
                   <div className="space-y-2">
                     {pendingReviews.map((review) => (
-                      <div key={review.id} className="rounded-xl border border-violet-100/[0.09] bg-violet-100/[0.025] p-3.5" data-testid={`card-review-${review.id}`}>
+                      <div key={review.id} className="rounded-xl border border-violet-200/[0.09] bg-violet-200/[0.025] p-3.5" data-testid={`card-review-${review.id}`}>
                         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
-                              <p className="text-sm font-semibold text-violet-50">{review.studentName || "Unidentified student"}</p>
-                              <span className={`rounded-md px-2 py-0.5 font-mono text-[11px] ${review.confidence < 0.7 ? "bg-rose-300/10 text-rose-200" : "bg-amber-200/10 text-amber-100"}`}>{(review.confidence * 100).toFixed(1)}% confidence</span>
+                              <p className="text-sm font-semibold text-foreground">{review.studentName || "Unidentified student"}</p>
+                              <span className={`rounded-md px-2 py-0.5 font-mono text-[11px] ${review.confidence < 0.7 ? "bg-rose-300/10 text-rose-300" : "bg-amber-200/10 text-amber-200"}`}>{(review.confidence * 100).toFixed(1)}% confidence</span>
                             </div>
-                            <p className="mt-1 text-xs text-violet-100/50">{review.classroomName || "Classroom not assigned"} · {review.source.replaceAll("-", " ")} · {formatTime(review.createdAt)}</p>
-                            <p className="mt-1 font-mono text-[10px] text-violet-100/35">Student record {review.studentId ?? "not matched"} · Review #{review.id}</p>
+                            <p className="mt-1 text-xs text-violet-200/50">{review.classroomName || "Classroom not assigned"} · {review.source.replaceAll("-", " ")} · {formatTime(review.createdAt)}</p>
+                            <p className="mt-1 font-mono text-[10px] text-violet-200/35">Student record {review.studentId ?? "not matched"} · Review #{review.id}</p>
                           </div>
                           <div className="flex shrink-0 gap-2">
-                            <button type="button" onClick={() => decideReview(review.id, "approve")} disabled={decisionMutation.isPending} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-emerald-300/15 px-3 text-xs font-semibold text-emerald-100 hover:bg-emerald-300/25 disabled:opacity-45" data-testid={`button-approve-review-${review.id}`}><Check size={14} />Approve</button>
-                            <button type="button" onClick={() => decideReview(review.id, "reject")} disabled={decisionMutation.isPending} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-rose-300/10 px-3 text-xs font-semibold text-rose-100 hover:bg-rose-300/20 disabled:opacity-45" data-testid={`button-reject-review-${review.id}`}><XCircle size={14} />Reject</button>
+                            <button type="button" onClick={() => decideReview(review.id, "approve")} disabled={decisionMutation.isPending} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-emerald-300/15 px-3 text-xs font-semibold text-emerald-200 hover:bg-emerald-300/25 disabled:opacity-45" data-testid={`button-approve-review-${review.id}`}><Check size={14} />Approve</button>
+                            <button type="button" onClick={() => decideReview(review.id, "reject")} disabled={decisionMutation.isPending} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-rose-300/10 px-3 text-xs font-semibold text-rose-300 hover:bg-rose-300/20 disabled:opacity-45" data-testid={`button-reject-review-${review.id}`}><XCircle size={14} />Reject</button>
                           </div>
                         </div>
                       </div>
                     ))}
                   </div>
-                  {decisionMutation.isError && <p className="mt-2 text-xs text-rose-200">Could not save this decision. It remains in the review queue.</p>}
+                  {decisionMutation.isError && <p className="mt-2 text-xs text-rose-300">Could not save this decision. It remains in the review queue.</p>}
                 </>
               )}
         </article>
@@ -836,70 +836,70 @@ export default function OperationsPage() {
               <form onSubmit={saveSettings} className="space-y-5">
                 <div>
                   <div className="mb-2 flex items-center justify-between gap-2">
-                    <label htmlFor="confidence-threshold" className="text-xs font-semibold text-violet-100/75">Confidence threshold</label>
-                    <span className="font-mono text-sm font-semibold text-violet-50">{threshold ? `${(Number(threshold) * 100).toFixed(0)}%` : "—"}</span>
+                    <label htmlFor="confidence-threshold" className="text-xs font-semibold text-violet-200/75">Confidence threshold</label>
+                    <span className="font-mono text-sm font-semibold text-foreground">{threshold ? `${(Number(threshold) * 100).toFixed(0)}%` : "—"}</span>
                   </div>
                   <input id="confidence-threshold" data-testid="input-confidence-threshold" type="range" min="0.1" max="0.99" step="0.01" value={threshold || settingsQuery.data?.confidenceThreshold || 0.1} onChange={(event) => setThreshold(event.target.value)} className="w-full accent-violet-300" />
-                  <div className="mt-1 flex justify-between text-[10px] text-violet-100/35"><span>10% · more reviews</span><span>99% · fewer matches</span></div>
+                  <div className="mt-1 flex justify-between text-[10px] text-violet-200/35"><span>10% · more reviews</span><span>99% · fewer matches</span></div>
                 </div>
                 <div>
-                  <label htmlFor="retention-days" className="mb-2 block text-xs font-semibold text-violet-100/75">Rejected review retention</label>
+                  <label htmlFor="retention-days" className="mb-2 block text-xs font-semibold text-violet-200/75">Rejected review retention</label>
                   <div className="flex items-center gap-2">
-                    <input id="retention-days" data-testid="input-review-retention" type="number" min={1} max={365} step={1} value={retention} onChange={(event) => setRetention(event.target.value)} className="min-h-10 w-28 rounded-lg border border-violet-200/15 bg-[#110d18] px-3 font-mono text-sm text-violet-50 outline-none focus:border-violet-300/45" />
-                    <span className="text-xs text-violet-100/50">days</span>
+                    <input id="retention-days" data-testid="input-review-retention" type="number" min={1} max={365} step={1} value={retention} onChange={(event) => setRetention(event.target.value)} className="min-h-10 w-28 rounded-lg border border-violet-200/15 bg-muted px-3 font-mono text-sm text-foreground outline-none focus:border-violet-300/45" />
+                    <span className="text-xs text-violet-200/50">days</span>
                   </div>
-                  <p className="mt-1.5 text-[11px] text-violet-100/40">Allowed range: 1 to 365 days.</p>
+                  <p className="mt-1.5 text-[11px] text-violet-200/40">Allowed range: 1 to 365 days.</p>
                 </div>
-                <div className="border-t border-violet-100/[0.08] pt-4">
-                  <p className="text-xs font-semibold text-violet-100/75">Attendance time rules</p>
+                <div className="border-t border-violet-200/[0.08] pt-4">
+                  <p className="text-xs font-semibold text-violet-200/75">Attendance time rules</p>
                   <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
-                      <label htmlFor="entrance-time" className="mb-1.5 block text-[11px] text-violet-100/55">Entrance time (present until)</label>
+                      <label htmlFor="entrance-time" className="mb-1.5 block text-[11px] text-violet-200/55">Entrance time (present until)</label>
                       <input id="entrance-time" data-testid="input-entrance-time" type="time" value={entranceTime} onChange={(event) => setEntranceTime(event.target.value)} className={`${inputClass} font-mono`} />
                     </div>
                     <div>
-                      <label htmlFor="late-cutoff-time" className="mb-1.5 block text-[11px] text-violet-100/55">Late cutoff (late until)</label>
+                      <label htmlFor="late-cutoff-time" className="mb-1.5 block text-[11px] text-violet-200/55">Late cutoff (late until)</label>
                       <input id="late-cutoff-time" data-testid="input-late-cutoff-time" type="time" value={lateCutoffTime} onChange={(event) => setLateCutoffTime(event.target.value)} className={`${inputClass} font-mono`} />
                     </div>
                     <div>
-                      <label htmlFor="absence-cutoff-time" className="mb-1.5 block text-[11px] text-violet-100/55">Absence cutoff (absent sweep unlocks)</label>
+                      <label htmlFor="absence-cutoff-time" className="mb-1.5 block text-[11px] text-violet-200/55">Absence cutoff (absent sweep unlocks)</label>
                       <input id="absence-cutoff-time" data-testid="input-absence-cutoff-time" type="time" value={absenceCutoffTime} onChange={(event) => setAbsenceCutoffTime(event.target.value)} className={`${inputClass} font-mono`} />
                     </div>
                     <div>
-                      <label htmlFor="attendance-timezone" className="mb-1.5 block text-[11px] text-violet-100/55">Timezone (IANA)</label>
+                      <label htmlFor="attendance-timezone" className="mb-1.5 block text-[11px] text-violet-200/55">Timezone (IANA)</label>
                       <input id="attendance-timezone" data-testid="input-attendance-timezone" type="text" value={attendanceTimezone} onChange={(event) => setAttendanceTimezone(event.target.value)} maxLength={64} placeholder="Africa/Addis_Ababa" className={inputClass} />
                     </div>
                   </div>
-                  <p className="mt-2 text-[11px] leading-relaxed text-violet-100/40">Arrivals at or before the entrance time are marked present; later arrivals are marked late. Both arrival statuses trigger the matching parent SMS. Students with no attendance record are only marked absent once the absence cutoff time unlocks the sweep.</p>
+                  <p className="mt-2 text-[11px] leading-relaxed text-violet-200/40">Arrivals at or before the entrance time are marked present; later arrivals are marked late. Both arrival statuses trigger the matching parent SMS. Students with no attendance record are only marked absent once the absence cutoff time unlocks the sweep.</p>
                 </div>
-                <div className="border-t border-violet-100/[0.08] pt-4">
-                  <p className="text-xs font-semibold text-violet-100/75">Gate integrity</p>
+                <div className="border-t border-violet-200/[0.08] pt-4">
+                  <p className="text-xs font-semibold text-violet-200/75">Gate integrity</p>
                   <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
-                      <label htmlFor="gate-discrepancy-pct" className="mb-1.5 block text-[11px] text-violet-100/55">Discrepancy threshold %</label>
+                      <label htmlFor="gate-discrepancy-pct" className="mb-1.5 block text-[11px] text-violet-200/55">Discrepancy threshold %</label>
                       <input id="gate-discrepancy-pct" data-testid="input-gate-discrepancy-pct" type="number" min={1} max={100} step={1} value={gateDiscrepancy} onChange={(event) => setGateDiscrepancy(event.target.value)} className={`${inputClass} font-mono`} />
                     </div>
                     <div>
-                      <label htmlFor="gate-window-seconds" className="mb-1.5 block text-[11px] text-violet-100/55">Window seconds</label>
+                      <label htmlFor="gate-window-seconds" className="mb-1.5 block text-[11px] text-violet-200/55">Window seconds</label>
                       <input id="gate-window-seconds" data-testid="input-gate-window-seconds" type="number" min={15} max={300} step={1} value={gateWindow} onChange={(event) => setGateWindow(event.target.value)} className={`${inputClass} font-mono`} />
                     </div>
                     <div>
-                      <label htmlFor="gate-active-from" className="mb-1.5 block text-[11px] text-violet-100/55">Gate active from</label>
+                      <label htmlFor="gate-active-from" className="mb-1.5 block text-[11px] text-violet-200/55">Gate active from</label>
                       <input id="gate-active-from" data-testid="input-gate-active-from" type="time" value={gateActiveFrom} onChange={(event) => setGateActiveFrom(event.target.value)} className={`${inputClass} font-mono`} />
                     </div>
                     <div>
-                      <label htmlFor="gate-active-to" className="mb-1.5 block text-[11px] text-violet-100/55">Gate active to</label>
+                      <label htmlFor="gate-active-to" className="mb-1.5 block text-[11px] text-violet-200/55">Gate active to</label>
                       <input id="gate-active-to" data-testid="input-gate-active-to" type="time" value={gateActiveTo} onChange={(event) => setGateActiveTo(event.target.value)} className={`${inputClass} font-mono`} />
                     </div>
                   </div>
-                  <p className="mt-2 text-[11px] leading-relaxed text-violet-100/40">Discrepancy threshold: 1–100%. Window seconds: 15–300. Outside the active hours the gate is not expected to report and no alerts are raised.</p>
+                  <p className="mt-2 text-[11px] leading-relaxed text-violet-200/40">Discrepancy threshold: 1–100%. Window seconds: 15–300. Outside the active hours the gate is not expected to report and no alerts are raised.</p>
                 </div>
                 <button type="submit" className={accentAction} disabled={settingsMutation.isPending || !settingsQuery.data || !canAdmin}>
                   {settingsMutation.isPending ? <LoaderCircle size={15} className="animate-spin" /> : <Check size={15} />}Save policy
                 </button>
-                {!canAdmin && <p className="text-[10px] text-violet-100/40">Read-only: only super admins and admins can change these settings.</p>}
-                {settingsQuery.data?.updatedAt && <p className="text-[10px] text-violet-100/35">Last updated {formatTime(settingsQuery.data.updatedAt)}</p>}
-                {settingsMutation.isError && <p className="text-xs text-rose-200">Settings update failed. Current server values are unchanged.</p>}
+                {!canAdmin && <p className="text-[10px] text-violet-200/40">Read-only: only super admins and admins can change these settings.</p>}
+                {settingsQuery.data?.updatedAt && <p className="text-[10px] text-violet-200/35">Last updated {formatTime(settingsQuery.data.updatedAt)}</p>}
+                {settingsMutation.isError && <p className="text-xs text-rose-300">Settings update failed. Current server values are unchanged.</p>}
               </form>}
         </article>
       </section>
@@ -912,18 +912,18 @@ export default function OperationsPage() {
               heatmapQuery.data?.length ? (
                 <div className="overflow-x-auto" role="region" aria-label="Confidence heatmap table" tabIndex={0}>
                   <div className="min-w-[520px]">
-                    <div className="grid grid-cols-[1.2fr_1fr_0.8fr_1fr] gap-2 border-b border-violet-100/[0.08] pb-2 text-[10px] font-semibold uppercase tracking-wider text-violet-100/40">
+                    <div className="grid grid-cols-[1.2fr_1fr_0.8fr_1fr] gap-2 border-b border-violet-200/[0.08] pb-2 text-[10px] font-semibold uppercase tracking-wider text-violet-200/40">
                       <span>Date</span><span>Classroom</span><span>Matches</span><span>Low confidence</span>
                     </div>
-                    <div className="divide-y divide-violet-100/[0.06]">
+                    <div className="divide-y divide-violet-200/[0.06]">
                       {heatmapQuery.data.slice(0, 14).map((point, index) => {
                         const rate = Math.max(0, Math.min(1, point.lowConfidenceRate));
-                        const color = rate >= 0.45 ? "bg-rose-300/30 text-rose-100" : rate >= 0.2 ? "bg-amber-200/20 text-amber-100" : "bg-emerald-300/15 text-emerald-100";
+                        const color = rate >= 0.45 ? "bg-rose-300/30 text-rose-300" : rate >= 0.2 ? "bg-amber-200/20 text-amber-200" : "bg-emerald-300/15 text-emerald-200";
                         return (
                           <div key={`${point.day}-${point.classroomId ?? index}-${index}`} className="grid grid-cols-[1.2fr_1fr_0.8fr_1fr] items-center gap-2 py-2.5 text-xs">
-                            <span className="text-violet-100/70">{formatTime(point.day)}</span>
-                            <span className="truncate text-violet-100/65" title={point.classroomName || "Unassigned"}>{point.classroomName || "Unassigned"}</span>
-                            <span className="font-mono text-violet-100/60">{point.lowConfidenceMatches}/{point.totalMatches}</span>
+                            <span className="text-violet-200/70">{formatTime(point.day)}</span>
+                            <span className="truncate text-violet-200/65" title={point.classroomName || "Unassigned"}>{point.classroomName || "Unassigned"}</span>
+                            <span className="font-mono text-violet-200/60">{point.lowConfidenceMatches}/{point.totalMatches}</span>
                             <span className={`inline-flex w-fit min-w-16 items-center justify-center rounded-md px-2 py-1 font-mono text-[11px] ${color}`}>{(rate * 100).toFixed(1)}%</span>
                           </div>
                         );
@@ -934,7 +934,7 @@ export default function OperationsPage() {
               ) : (
                 <div className="rounded-xl border border-dashed border-violet-200/15 p-6 text-center">
                   <Activity size={20} className="mx-auto text-violet-200/45" />
-                  <p className="mt-2 text-sm text-violet-50">No confidence history yet</p>
+                  <p className="mt-2 text-sm text-foreground">No confidence history yet</p>
                   <p className={`mt-1 ${quiet}`}>Heatmap cells appear after face-match activity.</p>
                 </div>
               )}
@@ -949,15 +949,15 @@ export default function OperationsPage() {
                   {(["auto", "on", "off"] as const).map((mode) => {
                     const selected = settingsQuery.data?.fanMode === mode;
                     return (
-                      <button key={mode} type="button" onClick={() => setFan(mode)} disabled={fanMutation.isPending || !piQuery.data?.online} aria-pressed={selected} className={`min-h-16 rounded-xl border px-3 text-left transition-colors disabled:opacity-45 ${selected ? "border-violet-300/35 bg-violet-300/10" : "border-violet-100/10 bg-violet-100/[0.025] hover:bg-violet-100/[0.06]"}`} data-testid={`button-fan-${mode}`}>
-                        <span className="block text-sm font-semibold capitalize text-violet-50">{mode}</span>
-                        <span className="mt-1 block text-[10px] text-violet-100/45">{selected ? "Current policy" : mode === "auto" ? "Temperature managed" : mode === "on" ? "Force cooling" : "Fan disabled"}</span>
+                      <button key={mode} type="button" onClick={() => setFan(mode)} disabled={fanMutation.isPending || !piQuery.data?.online} aria-pressed={selected} className={`min-h-16 rounded-xl border px-3 text-left transition-colors disabled:opacity-45 ${selected ? "border-violet-300/35 bg-violet-300/10" : "border-violet-200/10 bg-violet-200/[0.025] hover:bg-violet-200/[0.06]"}`} data-testid={`button-fan-${mode}`}>
+                        <span className="block text-sm font-semibold capitalize text-foreground">{mode}</span>
+                        <span className="mt-1 block text-[10px] text-violet-200/45">{selected ? "Current policy" : mode === "auto" ? "Temperature managed" : mode === "on" ? "Force cooling" : "Fan disabled"}</span>
                       </button>
                     );
                   })}
                 </div>
-                <p className="mt-3 flex items-start gap-2 text-[11px] leading-relaxed text-violet-100/45"><AlertCircle size={13} className="mt-0.5 shrink-0" />Unavailable while the device is offline. Fan changes are not applied until the Pi confirms the queued action.</p>
-                {fanMutation.isError && <p className="mt-2 text-xs text-rose-200">Fan override could not be queued.</p>}
+                <p className="mt-3 flex items-start gap-2 text-[11px] leading-relaxed text-violet-200/45"><AlertCircle size={13} className="mt-0.5 shrink-0" />Unavailable while the device is offline. Fan changes are not applied until the Pi confirms the queued action.</p>
+                {fanMutation.isError && <p className="mt-2 text-xs text-rose-300">Fan override could not be queued.</p>}
               </>}
         </article>
       </section>
@@ -975,30 +975,30 @@ export default function OperationsPage() {
               auditQuery.data?.length ? (
                 <div className="max-h-[420px] space-y-2 overflow-auto pr-1">
                   {auditQuery.data.map((event) => (
-                    <div key={event.id} className="grid grid-cols-[1fr_auto] gap-2 rounded-lg border border-violet-100/[0.08] bg-violet-100/[0.025] px-3 py-2.5 sm:grid-cols-[1fr_0.8fr_0.8fr_auto] sm:items-center">
+                    <div key={event.id} className="grid grid-cols-[1fr_auto] gap-2 rounded-lg border border-violet-200/[0.08] bg-violet-200/[0.025] px-3 py-2.5 sm:grid-cols-[1fr_0.8fr_0.8fr_auto] sm:items-center">
                       <div className="min-w-0">
-                        <p className="truncate text-xs font-semibold text-violet-50" title={event.action.replaceAll(".", " ")}>{event.action.replaceAll(".", " ")}</p>
-                        <p className="mt-0.5 truncate text-[10px] text-violet-100/40" title={event.targetType}>{event.targetType}{event.targetId == null ? "" : ` · ${event.targetId}`}</p>
+                        <p className="truncate text-xs font-semibold text-foreground" title={event.action.replaceAll(".", " ")}>{event.action.replaceAll(".", " ")}</p>
+                        <p className="mt-0.5 truncate text-[10px] text-violet-200/40" title={event.targetType}>{event.targetType}{event.targetId == null ? "" : ` · ${event.targetId}`}</p>
                       </div>
-                      <span className="truncate text-[11px] text-violet-100/55" title={event.actorName || "System"}>{event.actorName || "System"}</span>
-                      <span className="truncate text-[10px] text-violet-100/40">{formatTime(event.createdAt)}</span>
-                      <span className="font-mono text-[10px] text-violet-100/35">#{event.id}</span>
+                      <span className="truncate text-[11px] text-violet-200/55" title={event.actorName || "System"}>{event.actorName || "System"}</span>
+                      <span className="truncate text-[10px] text-violet-200/40">{formatTime(event.createdAt)}</span>
+                      <span className="font-mono text-[10px] text-violet-200/35">#{event.id}</span>
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="rounded-xl border border-dashed border-violet-200/15 p-6 text-center">
                   <ScrollText size={20} className="mx-auto text-violet-200/45" />
-                  <p className="mt-2 text-sm text-violet-50">No audit events yet</p>
+                  <p className="mt-2 text-sm text-foreground">No audit events yet</p>
                 </div>
               )}
         </article>
 
         <article className={`${panel} p-5 sm:p-6`}>
           <SectionHeading eyebrow="Data control" title="Attendance records" detail="Review biometric data retention or clear records by source." />
-          <div className="mb-4 rounded-xl border border-violet-100/[0.08] bg-violet-100/[0.025] p-3">
-            <p className="flex items-center gap-2 text-xs font-semibold text-violet-50"><ShieldCheck size={14} className="text-violet-300" />Face data handling</p>
-            <p className="mt-1.5 text-[11px] leading-relaxed text-violet-100/50">Face descriptors are removed when a review is decided. Rejected review metadata is purged after {settingsQuery.data?.reviewRetentionDays ?? "—"} days. Raw camera images are not uploaded.</p>
+          <div className="mb-4 rounded-xl border border-violet-200/[0.08] bg-violet-200/[0.025] p-3">
+            <p className="flex items-center gap-2 text-xs font-semibold text-foreground"><ShieldCheck size={14} className="text-violet-300" />Face data handling</p>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-violet-200/50">Face descriptors are removed when a review is decided. Rejected review metadata is purged after {settingsQuery.data?.reviewRetentionDays ?? "—"} days. Raw camera images are not uploaded.</p>
           </div>
           <div className="space-y-3">
             <ClearRecordControl
@@ -1022,12 +1022,12 @@ export default function OperationsPage() {
           </div>
           {manualClearPreview.isError && <ErrorNotice message="Manual attendance count unavailable." onRetry={() => void manualClearPreview.refetch()} />}
           {automatedClearPreview.isError && <ErrorNotice message="Automated attendance count unavailable." onRetry={() => void automatedClearPreview.refetch()} />}
-          {clearRecordsMutation.isError && <p className="mt-3 text-xs text-rose-200">Nothing was reported as cleared. Refresh the count and try again.</p>}
-          <p className="mt-3 text-[10px] leading-relaxed text-violet-100/35">Clearing is permanent. The app shows the current row count and asks for confirmation before deleting. Audit history is retained.</p>
+          {clearRecordsMutation.isError && <p className="mt-3 text-xs text-rose-300">Nothing was reported as cleared. Refresh the count and try again.</p>}
+          <p className="mt-3 text-[10px] leading-relaxed text-violet-200/35">Clearing is permanent. The app shows the current row count and asks for confirmation before deleting. Audit history is retained.</p>
         </article>
       </section>
 
-      <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-violet-100/[0.07] pt-3 text-[10px] text-violet-100/35">
+      <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-violet-200/[0.07] pt-3 text-[10px] text-violet-200/35">
         <span className="flex items-center gap-1.5"><ShieldCheck size={12} />Operator actions are restricted to approved device operations.</span>
         <span>Heartbeat timestamp: {formatTime(device?.lastSeenAt)}</span>
       </footer>
@@ -1037,10 +1037,10 @@ export default function OperationsPage() {
 
 function Metric({ icon: Icon, title, value, sub }: { icon: typeof Activity; title: string; value: string; sub?: string }) {
   return (
-    <div className="gx-stat min-h-[76px] rounded-xl border border-violet-100/[0.08] bg-violet-100/[0.025] p-3" data-testid={`metric-${title.toLowerCase().replaceAll(" ", "-")}`}>
-      <p className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-violet-100/40"><Icon size={12} />{title}</p>
-      <p className="mt-2 truncate text-sm font-semibold text-violet-50" title={value}>{value}</p>
-      {sub && <p className="mt-0.5 truncate text-[10px] text-violet-100/40" title={sub}>{sub}</p>}
+    <div className="gx-stat min-h-[76px] rounded-xl border border-violet-200/[0.08] bg-violet-200/[0.025] p-3" data-testid={`metric-${title.toLowerCase().replaceAll(" ", "-")}`}>
+      <p className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-violet-200/40"><Icon size={12} />{title}</p>
+      <p className="mt-2 truncate text-sm font-semibold text-foreground" title={value}>{value}</p>
+      {sub && <p className="mt-0.5 truncate text-[10px] text-violet-200/40" title={sub}>{sub}</p>}
     </div>
   );
 }
@@ -1055,10 +1055,10 @@ function ClearRecordControl({ title, detail, count, loading, disabled, onRefresh
   onClear: () => void;
 }) {
   return (
-    <div className="gx-glow-hover flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200/10 bg-rose-200/[0.025] p-3">
+    <div className="gx-glow-hover flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-300/10 bg-rose-300/[0.025] p-3">
       <div className="min-w-0">
-        <p className="text-xs font-semibold text-violet-50">{title}</p>
-        <p className="mt-0.5 text-[10px] text-violet-100/45">{detail} · {loading ? "Counting…" : `${count ?? "—"} records`}</p>
+        <p className="text-xs font-semibold text-foreground">{title}</p>
+        <p className="mt-0.5 text-[10px] text-violet-200/45">{detail} · {loading ? "Counting…" : `${count ?? "—"} records`}</p>
       </div>
       <div className="flex shrink-0 gap-2">
         <button type="button" className={actionClass} onClick={onRefresh} aria-label={`Refresh ${title} count`} disabled={loading || disabled}><RefreshCw size={13} /></button>
@@ -1078,13 +1078,13 @@ function ConsoleAction({ icon: Icon, title, action, disabled, onRun }: {
   onRun: (action: "worker-status" | "restart-worker" | "camera-status" | "recent-logs") => void;
 }) {
   return (
-    <button type="button" onClick={() => onRun(action)} disabled={disabled} className="gx-glow-hover group flex min-h-[66px] items-center gap-3 rounded-xl border border-violet-100/[0.09] bg-violet-100/[0.025] p-3 text-left transition-colors hover:border-violet-200/20 hover:bg-violet-100/[0.06] disabled:pointer-events-none disabled:opacity-45" data-testid={`button-console-${action}`}>
+    <button type="button" onClick={() => onRun(action)} disabled={disabled} className="gx-glow-hover group flex min-h-[66px] items-center gap-3 rounded-xl border border-violet-200/[0.09] bg-violet-200/[0.025] p-3 text-left transition-colors hover:border-violet-200/20 hover:bg-violet-200/[0.06] disabled:pointer-events-none disabled:opacity-45" data-testid={`button-console-${action}`}>
       <span className="gx-accent-grad flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white shadow-[0_0_14px_rgba(139,92,246,0.35)]"><Icon size={16} /></span>
       <span className="min-w-0 flex-1">
-        <span className="block text-xs font-semibold text-violet-50">{title}</span>
-        <span className="mt-0.5 block text-[10px] text-violet-100/40">{action === "restart-worker" ? "Service restart" : `Queue ${action.replaceAll("-", " ")}`}</span>
+        <span className="block text-xs font-semibold text-foreground">{title}</span>
+        <span className="mt-0.5 block text-[10px] text-violet-200/40">{action === "restart-worker" ? "Service restart" : `Queue ${action.replaceAll("-", " ")}`}</span>
       </span>
-      {disabled ? <LoaderCircle size={14} className="animate-spin text-violet-100/40" /> : <ChevronRight size={14} className="text-violet-100/35 transition-transform group-hover:translate-x-0.5" />}
+      {disabled ? <LoaderCircle size={14} className="animate-spin text-violet-200/40" /> : <ChevronRight size={14} className="text-violet-200/35 transition-transform group-hover:translate-x-0.5" />}
     </button>
   );
 }
@@ -1099,13 +1099,13 @@ function GateVerdictBadge({ verdict }: { verdict: GateVerdict }) {
   }
   if (verdict === "sensor_conflict") {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-300/20 bg-amber-300/10 px-2.5 py-1 text-xs font-medium text-amber-100" data-testid="gate-verdict">
+      <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-300/20 bg-amber-300/10 px-2.5 py-1 text-xs font-medium text-amber-200" data-testid="gate-verdict">
         <TriangleAlert size={14} />Sensor conflict
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-md border border-rose-300/20 bg-rose-300/10 px-2.5 py-1 text-xs font-medium text-rose-200" data-testid="gate-verdict">
+    <span className="inline-flex items-center gap-1.5 rounded-md border border-rose-300/20 bg-rose-300/10 px-2.5 py-1 text-xs font-medium text-rose-300" data-testid="gate-verdict">
       <ShieldX size={14} />Possible missed detections
     </span>
   );
@@ -1120,10 +1120,10 @@ function GateCounter({ icon: Icon, title, value, sub, tone }: {
 }) {
   const toneClass = tone === "violet" ? "text-violet-300" : tone === "emerald" ? "text-emerald-300" : "text-cyan-300";
   return (
-    <div className="gx-stat min-h-[92px] rounded-xl border border-violet-100/[0.08] bg-violet-100/[0.025] p-3" data-testid={`metric-gate-${title.toLowerCase().replaceAll(" ", "-")}`}>
-      <p className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-violet-100/40"><Icon size={12} className={toneClass} />{title}</p>
-      <p className="mt-1.5 font-mono text-2xl font-semibold tabular-nums text-violet-50">{value}</p>
-      <p className="mt-0.5 truncate text-[10px] text-violet-100/40" title={sub}>{sub}</p>
+    <div className="gx-stat min-h-[92px] rounded-xl border border-violet-200/[0.08] bg-violet-200/[0.025] p-3" data-testid={`metric-gate-${title.toLowerCase().replaceAll(" ", "-")}`}>
+      <p className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-violet-200/40"><Icon size={12} className={toneClass} />{title}</p>
+      <p className="mt-1.5 font-mono text-2xl font-semibold tabular-nums text-foreground">{value}</p>
+      <p className="mt-0.5 truncate text-[10px] text-violet-200/40" title={sub}>{sub}</p>
     </div>
   );
 }
@@ -1133,11 +1133,11 @@ function GateAlertItem({ alert, onOpen }: { alert: GateAlertRow; onOpen: () => v
     <button
       type="button"
       onClick={onOpen}
-      className={`flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-left transition-colors hover:bg-violet-100/[0.05] ${alert.resolved ? "border-violet-100/[0.06] bg-violet-100/[0.015] opacity-70" : "border-violet-100/[0.09] bg-violet-100/[0.025]"}`}
+      className={`flex w-full flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-left transition-colors hover:bg-violet-200/[0.05] ${alert.resolved ? "border-violet-200/[0.06] bg-violet-200/[0.015] opacity-70" : "border-violet-200/[0.09] bg-violet-200/[0.025]"}`}
       data-testid={`row-gate-alert-${alert.id}`}
     >
       <span className="flex min-w-0 flex-wrap items-center gap-2">
-        <span className={`rounded-md px-2 py-0.5 text-[10px] font-medium ${alert.alertType === "missed_detections" ? "bg-rose-300/10 text-rose-200" : "bg-amber-200/10 text-amber-100"}`}>
+        <span className={`rounded-md px-2 py-0.5 text-[10px] font-medium ${alert.alertType === "missed_detections" ? "bg-rose-300/10 text-rose-300" : "bg-amber-200/10 text-amber-200"}`}>
           {alert.alertType.replaceAll("_", " ")}
         </span>
         {alert.simulated && (
@@ -1145,14 +1145,14 @@ function GateAlertItem({ alert, onOpen }: { alert: GateAlertRow; onOpen: () => v
             <FlaskConical size={10} />Demo
           </span>
         )}
-        <span className="font-mono text-xs text-violet-100/70">{clockLabel(alert.windowStart, true)} – {clockLabel(alert.windowEnd, true)}</span>
+        <span className="font-mono text-xs text-violet-200/70">{clockLabel(alert.windowStart, true)} – {clockLabel(alert.windowEnd, true)}</span>
       </span>
       <span className="flex items-center gap-3">
-        <span className="font-mono text-[11px] text-violet-100/55">camera {alert.cameraCount} · ultrasonic {alert.ultrasonicCount} · IR {alert.irCount}</span>
+        <span className="font-mono text-[11px] text-violet-200/55">camera {alert.cameraCount} · ultrasonic {alert.ultrasonicCount} · IR {alert.irCount}</span>
         {alert.resolved ? (
           <span className="inline-flex items-center gap-1 text-[10px] text-emerald-200/75"><Check size={12} />resolved</span>
         ) : (
-          <ChevronRight size={14} className="text-violet-100/35" />
+          <ChevronRight size={14} className="text-violet-200/35" />
         )}
       </span>
     </button>
@@ -1178,12 +1178,12 @@ function GateAlertDialog({ open, detail, loading, error, onRetry, canAdmin, note
   );
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
-      <DialogContent className="max-h-[85vh] w-[calc(100vw-2rem)] max-w-lg overflow-y-auto border-violet-200/15 bg-[#191323] text-violet-50 sm:rounded-2xl">
+      <DialogContent className="max-h-[85vh] w-[calc(100vw-2rem)] max-w-lg overflow-y-auto border-violet-200/15 bg-popover text-popover-foreground sm:rounded-2xl">
         <DialogHeader>
-          <DialogTitle className="text-violet-50" data-testid="gate-alert-dialog-title">
+          <DialogTitle className="text-foreground" data-testid="gate-alert-dialog-title">
             {detail ? `Window ${clockLabel(detail.windowStart, true)} – ${clockLabel(detail.windowEnd, true)}` : "Gate alert"}
           </DialogTitle>
-          <DialogDescription className="text-violet-100/55">
+          <DialogDescription className="text-violet-200/55">
             {detail ? `${detail.alertType.replaceAll("_", " ")} on gate ${detail.gateId}${detail.simulated ? " · simulated demo data" : ""}` : "Sensor events recorded for this window."}
           </DialogDescription>
         </DialogHeader>
@@ -1194,35 +1194,35 @@ function GateAlertDialog({ open, detail, loading, error, onRetry, canAdmin, note
             <div className="mt-1 space-y-4">
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <div className="rounded-lg border border-violet-200/15 bg-violet-200/[0.06] px-2.5 py-2 text-center">
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-violet-100/45">Camera</p>
-                  <p className="mt-0.5 font-mono text-lg font-semibold text-violet-50">{detail.cameraCount}</p>
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-violet-200/45">Camera</p>
+                  <p className="mt-0.5 font-mono text-lg font-semibold text-foreground">{detail.cameraCount}</p>
                 </div>
                 <div className="rounded-lg border border-emerald-300/15 bg-emerald-300/[0.05] px-2.5 py-2 text-center">
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-emerald-100/60">Ultrasonic</p>
-                  <p className="mt-0.5 font-mono text-lg font-semibold text-emerald-100">{detail.ultrasonicCount}</p>
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-emerald-200/60">Ultrasonic</p>
+                  <p className="mt-0.5 font-mono text-lg font-semibold text-emerald-200">{detail.ultrasonicCount}</p>
                 </div>
                 <div className="rounded-lg border border-cyan-300/15 bg-cyan-300/[0.05] px-2.5 py-2 text-center">
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-cyan-100/60">IR beam</p>
-                  <p className="mt-0.5 font-mono text-lg font-semibold text-cyan-100">{detail.irCount}</p>
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-cyan-300/60">IR beam</p>
+                  <p className="mt-0.5 font-mono text-lg font-semibold text-cyan-300">{detail.irCount}</p>
                 </div>
               </div>
               <div>
-                <p className="mb-2 text-xs font-semibold text-violet-100/75">Sensor event timeline</p>
+                <p className="mb-2 text-xs font-semibold text-violet-200/75">Sensor event timeline</p>
                 {events.length === 0 ? (
-                  <p className="rounded-lg border border-dashed border-violet-200/15 px-3 py-4 text-center text-xs text-violet-100/45">No sensor triggers were recorded in this window.</p>
+                  <p className="rounded-lg border border-dashed border-violet-200/15 px-3 py-4 text-center text-xs text-violet-200/45">No sensor triggers were recorded in this window.</p>
                 ) : (
                   <div className="max-h-52 space-y-2 overflow-auto pr-1">
                     {events.map((event) => (
                       <div
                         key={event.id}
-                        className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 ${event.simulated ? "border-dashed border-amber-300/25 bg-amber-300/[0.05]" : "border-violet-100/[0.08] bg-violet-100/[0.025]"}`}
+                        className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 ${event.simulated ? "border-dashed border-amber-300/25 bg-amber-300/[0.05]" : "border-violet-200/[0.08] bg-violet-200/[0.025]"}`}
                         data-testid={`gate-event-${event.id}`}
                       >
                         <span className="flex min-w-0 flex-wrap items-center gap-2.5">
                           <span className={`h-1.5 w-1.5 rounded-full ${event.sensor === "ultrasonic" ? "bg-emerald-300" : "bg-cyan-300"}`} />
-                          <span className="font-mono text-xs text-violet-100/80">{clockLabel(event.occurredAt, true)}</span>
-                          <span className="text-xs text-violet-100/65">{event.sensor === "ultrasonic" ? "Ultrasonic" : "IR beam"}</span>
-                          {event.piDeviceId && <span className="truncate font-mono text-[10px] text-violet-100/35" title={event.piDeviceId}>{event.piDeviceId}</span>}
+                          <span className="font-mono text-xs text-violet-200/80">{clockLabel(event.occurredAt, true)}</span>
+                          <span className="text-xs text-violet-200/65">{event.sensor === "ultrasonic" ? "Ultrasonic" : "IR beam"}</span>
+                          {event.piDeviceId && <span className="truncate font-mono text-[10px] text-violet-200/35" title={event.piDeviceId}>{event.piDeviceId}</span>}
                         </span>
                         {event.simulated && (
                           <span className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-300/25 bg-amber-300/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-200">
@@ -1233,16 +1233,16 @@ function GateAlertDialog({ open, detail, loading, error, onRetry, canAdmin, note
                     ))}
                   </div>
                 )}
-                <p className="mt-1.5 text-[10px] text-violet-100/40">Camera-matched faces are summarized above; only ultrasonic and IR hardware events appear in the timeline.</p>
+                <p className="mt-1.5 text-[10px] text-violet-200/40">Camera-matched faces are summarized above; only ultrasonic and IR hardware events appear in the timeline.</p>
               </div>
-              <p className="rounded-lg bg-violet-300/[0.06] px-3 py-2 text-xs leading-relaxed text-violet-100/70" data-testid="gate-alert-summary">{summarizeGateWindow(detail.cameraCount, events)}</p>
+              <p className="rounded-lg bg-violet-300/[0.06] px-3 py-2 text-xs leading-relaxed text-violet-200/70" data-testid="gate-alert-summary">{summarizeGateWindow(detail.cameraCount, events)}</p>
               {detail.resolved ? (
                 <p className="flex flex-wrap items-center gap-1.5 text-xs text-emerald-200/80">
                   <CheckCircle2 size={14} />Resolved{detail.resolvedAt ? ` ${formatTime(detail.resolvedAt)}` : ""}{detail.resolveNote ? ` · ${detail.resolveNote}` : ""}
                 </p>
               ) : canAdmin ? (
-                <div className="space-y-2 border-t border-violet-100/[0.08] pt-3">
-                  <label htmlFor="gate-resolve-note" className="block text-xs font-medium text-violet-100/70">Resolution note <span className="font-normal">(optional)</span></label>
+                <div className="space-y-2 border-t border-violet-200/[0.08] pt-3">
+                  <label htmlFor="gate-resolve-note" className="block text-xs font-medium text-violet-200/70">Resolution note <span className="font-normal">(optional)</span></label>
                   <input id="gate-resolve-note" data-testid="input-gate-resolve-note" value={note} onChange={(event) => onNoteChange(event.target.value)} maxLength={300} placeholder="Context saved with the resolution" className={inputClass} />
                   <button type="button" className={accentAction} onClick={onResolve} disabled={resolving} data-testid="button-gate-resolve">
                     {resolving ? <LoaderCircle size={15} className="animate-spin" /> : <Check size={15} />}Mark resolved

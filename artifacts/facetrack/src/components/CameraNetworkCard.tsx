@@ -33,15 +33,15 @@ import { useToast } from "@/hooks/use-toast";
 type DeviceCommand = Parameters<typeof api.deviceCommand>[1];
 type QualityChoice = "auto" | "low" | "balanced" | "hd";
 
-const cardCls = "overflow-hidden rounded-xl border border-violet-200/10 bg-[#150d20] text-violet-50 shadow-none";
+const cardCls = "overflow-hidden rounded-xl border border-violet-200/10 bg-card text-foreground shadow-none";
 const btnBase =
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-violet-200/15 bg-violet-200/[0.06] px-3.5 text-sm font-medium text-violet-50 transition-colors hover:bg-violet-200/[0.12] disabled:pointer-events-none disabled:opacity-45";
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-violet-200/15 bg-violet-200/[0.06] px-3.5 text-sm font-medium text-foreground transition-colors hover:bg-violet-200/[0.12] disabled:pointer-events-none disabled:opacity-45";
 const accentBtn =
   "gx-btn-accent gx-gradient-pan gx-focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold text-white transition-all disabled:pointer-events-none disabled:opacity-45";
 const dangerBtn =
   "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-rose-300/20 bg-rose-400/10 px-3.5 text-sm font-semibold text-rose-200 transition-colors hover:bg-rose-400/15 disabled:pointer-events-none disabled:opacity-45";
 const infoLabel = "text-[10px] font-semibold uppercase tracking-widest text-violet-200/45";
-const infoValue = "truncate text-xs font-medium text-violet-100/85";
+const infoValue = "truncate text-xs font-medium text-foreground/85";
 
 /** Pulsing status dot — same pattern as SmsLogsPage, re-implemented locally. */
 function PulsingDot({ cls }: { cls: string }) {
@@ -272,8 +272,8 @@ function PairDialog({
       aria-pressed={deviceType === value}
       className={`inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors ${
         deviceType === value
-          ? "border-violet-300/45 bg-violet-300/15 text-violet-50"
-          : "border-violet-200/15 bg-transparent text-violet-100/60 hover:bg-violet-200/[0.06]"
+          ? "border-violet-300/45 bg-violet-300/15 text-foreground"
+          : "border-violet-200/15 bg-transparent text-foreground/60 hover:bg-violet-200/[0.06]"
       }`}
     >
       <Icon size={15} aria-hidden="true" />
@@ -289,7 +289,7 @@ function PairDialog({
       className={`inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors ${
         mode === value
           ? "border-emerald-300/40 bg-emerald-300/10 text-emerald-100"
-          : "border-violet-200/15 bg-transparent text-violet-100/60 hover:bg-violet-200/[0.06]"
+          : "border-violet-200/15 bg-transparent text-foreground/60 hover:bg-violet-200/[0.06]"
       }`}
     >
       <Icon size={15} aria-hidden="true" />
@@ -299,10 +299,10 @@ function PairDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[88vh] overflow-y-auto border-violet-200/15 bg-[#170f24] text-violet-50 sm:max-w-md">
+      <DialogContent className="max-h-[88vh] overflow-y-auto border-violet-200/15 bg-popover text-foreground sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{repairTarget ? `Re-pair ${repairTarget.name}` : "Pair a new camera"}</DialogTitle>
-          <DialogDescription className="text-violet-100/60">
+          <DialogDescription className="text-foreground/60">
             {repairTarget
               ? "A fresh one-time code revokes the old session. The device must scan it to reconnect."
               : "The code works once, for one device, and expires in 15 minutes."}
@@ -312,7 +312,7 @@ function PairDialog({
         {!pairing ? (
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <label htmlFor="pair-device-name" className="block text-xs font-medium text-violet-100/75">
+              <label htmlFor="pair-device-name" className="block text-xs font-medium text-foreground/75">
                 Device name
               </label>
               <input
@@ -321,17 +321,17 @@ function PairDialog({
                 onChange={(e) => setName(e.target.value)}
                 maxLength={80}
                 placeholder="e.g. North gate phone"
-                className="min-h-11 w-full rounded-lg border border-violet-200/15 bg-[#110d18] px-3 text-sm text-violet-50 outline-none placeholder:text-violet-100/30 focus:border-violet-300/45 focus:ring-2 focus:ring-violet-300/15"
+                className="min-h-11 w-full rounded-lg border border-violet-200/15 bg-muted px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground/70 focus:border-violet-300/45 focus:ring-2 focus:ring-violet-300/15"
               />
             </div>
 
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-violet-100/75">Assign to gate (optional)</label>
+              <label className="block text-xs font-medium text-foreground/75">Assign to gate (optional)</label>
               <Select value={gateId} onValueChange={setGateId}>
-                <SelectTrigger className="min-h-11 w-full border-violet-200/15 bg-[#110d18] text-violet-50 focus:ring-violet-300/15">
+                <SelectTrigger className="min-h-11 w-full border-violet-200/15 bg-muted text-foreground focus:ring-violet-300/15">
                   <SelectValue placeholder="Choose a gate" />
                 </SelectTrigger>
-                <SelectContent className="border-violet-200/15 bg-[#1a1128] text-violet-50">
+                <SelectContent className="border-violet-200/15 bg-popover text-foreground">
                   <SelectItem value="none">Unassigned</SelectItem>
                   {gates.map((gate) => (
                     <SelectItem key={gate.gateId} value={gate.gateId}>
@@ -344,7 +344,7 @@ function PairDialog({
 
             {!repairTarget && (
               <div className="space-y-1.5">
-                <span className="block text-xs font-medium text-violet-100/75">Device type</span>
+                <span className="block text-xs font-medium text-foreground/75">Device type</span>
                 <div className="flex gap-2">
                   {deviceTypeOption("phone", "Phone", Smartphone)}
                   {deviceTypeOption("pi", "Pi", Cpu)}
@@ -353,7 +353,7 @@ function PairDialog({
             )}
 
             <div className="space-y-1.5">
-              <span className="block text-xs font-medium text-violet-100/75">Recognition mode</span>
+              <span className="block text-xs font-medium text-foreground/75">Recognition mode</span>
               <div className="flex gap-2">
                 {modeOption("face", "Face", ScanFace)}
                 {modeOption("qr", "QR", QrCode)}
@@ -380,7 +380,7 @@ function PairDialog({
           <div className="space-y-4 text-center" role="status">
             <CheckCircle2 size={44} className="mx-auto text-emerald-300" aria-hidden="true" />
             <p className="text-base font-semibold text-emerald-100">Paired — first heartbeat received</p>
-            <p className="break-all font-mono text-xs text-violet-100/50">{pairing.deviceId}</p>
+            <p className="break-all font-mono text-xs text-foreground/50">{pairing.deviceId}</p>
             <button type="button" onClick={() => onOpenChange(false)} className={`${btnBase} w-full`}>
               Done
             </button>
@@ -390,21 +390,21 @@ function PairDialog({
             <div className="mx-auto w-fit rounded-xl bg-white p-3 shadow-lg" aria-label="Pairing QR code">
               <QRCodeSVG value={pairingHref || pairing.token} size={200} level="M" marginSize={2} />
             </div>
-            <p className="text-center text-xs text-violet-100/55">
-              Scan with the phone's <span className="font-semibold text-violet-100/80">regular camera app</span> —
+            <p className="text-center text-xs text-foreground/55">
+              Scan with the phone's <span className="font-semibold text-foreground/80">regular camera app</span> —
               it opens <span className="font-mono">/camera-node</span> and pairs automatically.
             </p>
 
-            <div className="rounded-lg border border-violet-200/15 bg-[#110d18] p-3">
+            <div className="rounded-lg border border-violet-200/15 bg-muted p-3">
               <p className={infoLabel}>Pairing code</p>
               <div className="mt-1.5 flex items-center justify-between gap-2">
-                <code className="min-w-0 flex-1 break-all font-mono text-xs leading-relaxed text-violet-100/85">
+                <code className="min-w-0 flex-1 break-all font-mono text-xs leading-relaxed text-foreground/85">
                   {pairing.token}
                 </code>
                 <button
                   type="button"
                   onClick={() => void copyToken()}
-                  className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg border border-violet-200/15 bg-violet-200/[0.06] text-violet-100/75 transition-colors hover:bg-violet-200/[0.12]"
+                  className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg border border-violet-200/15 bg-violet-200/[0.06] text-foreground/75 transition-colors hover:bg-violet-200/[0.12]"
                   aria-label="Copy pairing code"
                 >
                   {copied ? <Check size={15} className="text-emerald-300" aria-hidden="true" /> : <Copy size={15} aria-hidden="true" />}
@@ -416,7 +416,7 @@ function PairDialog({
               <button
                 type="button"
                 onClick={() => void copyLink()}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-violet-200/15 bg-violet-200/[0.06] px-3 text-xs font-medium text-violet-100/85 transition-colors hover:bg-violet-200/[0.12]"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-violet-200/15 bg-violet-200/[0.06] px-3 text-xs font-medium text-foreground/85 transition-colors hover:bg-violet-200/[0.12]"
               >
                 {copiedLink ? <Check size={14} className="text-emerald-300" aria-hidden="true" /> : <Link2 size={14} aria-hidden="true" />}
                 {copiedLink ? "Link copied" : "Copy pairing link"}
@@ -425,7 +425,7 @@ function PairDialog({
                 href="/camera-node"
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-violet-200/15 bg-violet-200/[0.06] px-3 text-xs font-medium text-violet-100/85 transition-colors hover:bg-violet-200/[0.12]"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-violet-200/15 bg-violet-200/[0.06] px-3 text-xs font-medium text-foreground/85 transition-colors hover:bg-violet-200/[0.12]"
               >
                 <ExternalLink size={14} aria-hidden="true" />
                 Open camera node
@@ -433,13 +433,13 @@ function PairDialog({
             </div>
 
             <div className="flex items-center justify-between gap-2 text-sm">
-              <span className="inline-flex items-center gap-1.5 text-violet-100/75">
+              <span className="inline-flex items-center gap-1.5 text-foreground/75">
                 <Timer size={14} className="text-violet-200/60" aria-hidden="true" />
                 Expires in
               </span>
               <span
                 className={`font-mono text-base font-semibold tabular-nums ${
-                  secondsLeft !== null && secondsLeft <= 60 ? "text-rose-200" : "text-violet-50"
+                  secondsLeft !== null && secondsLeft <= 60 ? "text-rose-200" : "text-foreground"
                 }`}
                 role="timer"
                 aria-live="off"
@@ -454,14 +454,14 @@ function PairDialog({
               </p>
             )}
 
-            <ol className="space-y-1.5 rounded-lg border border-violet-200/10 bg-violet-200/[0.03] p-3 text-xs leading-relaxed text-violet-100/70">
+            <ol className="space-y-1.5 rounded-lg border border-violet-200/10 bg-violet-200/[0.03] p-3 text-xs leading-relaxed text-foreground/70">
               <li>1. Easiest: point the phone's camera app at the QR above — the pairing page opens already connected</li>
               <li>2. Or open <span className="font-mono text-violet-200">/camera-node</span> on the phone, then scan this QR in-app or paste the code</li>
               <li>3. Keep this dialog open until the first heartbeat lands</li>
             </ol>
 
             <div className="flex items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-2 text-xs text-violet-100/55">
+              <span className="inline-flex items-center gap-2 text-xs text-foreground/55">
                 <PulsingDot cls="bg-violet-300" />
                 Polling for first heartbeat every 3s
               </span>
@@ -476,8 +476,8 @@ function PairDialog({
                 Fresh token
               </button>
             </div>
-            <p className="text-center text-[11px] leading-relaxed text-violet-100/45">
-              Heads up: pressing <span className="font-semibold text-violet-100/75">Fresh token</span> (or generating a
+            <p className="text-center text-[11px] leading-relaxed text-foreground/45">
+              Heads up: pressing <span className="font-semibold text-foreground/75">Fresh token</span> (or generating a
               code again later) instantly retires every older code — the phone must use the latest one.
             </p>
           </div>
@@ -533,23 +533,23 @@ function DeviceCard({
               <span className="text-[11px] font-medium">no frame yet</span>
             </div>
           )}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-[#150d20] to-transparent" aria-hidden="true" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-card to-transparent" aria-hidden="true" />
         </div>
 
         <div className="space-y-3 p-4">
           {/* Title + badges */}
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-violet-50" title={device.name}>
+              <p className="truncate text-sm font-semibold text-foreground" title={device.name}>
                 {device.name}
               </p>
-              <p className="mt-0.5 flex items-center gap-1.5 text-xs text-violet-100/60">
+              <p className="mt-0.5 flex items-center gap-1.5 text-xs text-foreground/60">
                 <PulsingDot cls={meta.dot} />
-                <span className={device.online ? "" : "text-violet-100/60"}>{meta.label}</span>
+                <span className={device.online ? "" : "text-foreground/60"}>{meta.label}</span>
               </p>
             </div>
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-              <span className="inline-flex items-center gap-1 rounded-md border border-violet-200/15 bg-violet-200/[0.06] px-2 py-1 text-[10px] font-medium text-violet-100/80">
+              <span className="inline-flex items-center gap-1 rounded-md border border-violet-200/15 bg-violet-200/[0.06] px-2 py-1 text-[10px] font-medium text-foreground/80">
                 {device.deviceType === "phone" ? <Smartphone size={11} aria-hidden="true" /> : <Cpu size={11} aria-hidden="true" />}
                 {device.deviceType === "phone" ? "Phone" : "Pi"}
               </span>
@@ -606,14 +606,14 @@ function DeviceCard({
               </span>
             )}
             {device.healthStatus === "unknown" && device.online && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-slate-400/20 bg-slate-400/10 px-2 py-0.5 text-[10px] font-medium text-slate-300">
+              <span className="inline-flex items-center gap-1 rounded-full border border-foreground/20 bg-foreground/10 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
                 Health unknown
               </span>
             )}
           </div>
 
           {/* Actions */}
-          <div className="space-y-2 border-t border-violet-100/[0.08] pt-3">
+          <div className="space-y-2 border-t border-foreground/10 pt-3">
             <div className="flex gap-2">
               <Tip hint={device.online ? null : "Device is offline — connect it before sending commands"}>
                 <button
@@ -648,12 +648,12 @@ function DeviceCard({
                 disabled={busy}
               >
                 <SelectTrigger
-                  className="min-h-11 min-w-0 flex-1 border-violet-200/15 bg-violet-200/[0.04] text-xs text-violet-50 focus:ring-violet-300/15"
+                  className="min-h-11 min-w-0 flex-1 border-violet-200/15 bg-violet-200/[0.04] text-xs text-foreground focus:ring-violet-300/15"
                   aria-label={`Stream quality for ${device.name}`}
                 >
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="border-violet-200/15 bg-[#1a1128] text-violet-50">
+                <SelectContent className="border-violet-200/15 bg-popover text-foreground">
                   <SelectItem value="auto">Auto (server default)</SelectItem>
                   <SelectItem value="low">Low</SelectItem>
                   <SelectItem value="balanced">Balanced</SelectItem>
@@ -668,15 +668,15 @@ function DeviceCard({
                       <X size={14} aria-hidden="true" />
                     </button>
                   </AlertDialogTrigger>
-                  <AlertDialogContent className="border-violet-200/15 bg-[#170f24] text-violet-50">
+                  <AlertDialogContent className="border-violet-200/15 bg-popover text-foreground">
                     <AlertDialogHeader>
                       <AlertDialogTitle>Disconnect {device.name}?</AlertDialogTitle>
-                      <AlertDialogDescription className="text-violet-100/65">
+                      <AlertDialogDescription className="text-foreground/65">
                         The device session is revoked immediately. To stream again it must re-pair with a fresh one-time code.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                      <AlertDialogCancel className="min-h-11 border-violet-200/15 bg-transparent text-violet-100/75 hover:bg-violet-200/[0.08]">
+                      <AlertDialogCancel className="min-h-11 border-violet-200/15 bg-transparent text-foreground/75 hover:bg-violet-200/[0.08]">
                         Cancel
                       </AlertDialogCancel>
                       <AlertDialogAction
@@ -838,9 +838,9 @@ export function CameraNetworkCard() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-violet-200/55">Camera fleet</p>
-            <h2 className="mt-1 text-lg font-semibold tracking-[-0.02em] text-violet-50">
+            <h2 className="mt-1 text-lg font-semibold tracking-[-0.02em] text-foreground">
               Camera Network
-              <span className="ml-2 text-sm font-normal text-violet-100/50">
+              <span className="ml-2 text-sm font-normal text-foreground/50">
                 {devicesQuery.isLoading ? "loading…" : `${devices.length} device${devices.length === 1 ? "" : "s"}`}
               </span>
             </h2>
@@ -850,7 +850,7 @@ export function CameraNetworkCard() {
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
                   {onlineCount} online
                 </span>
-                <span className={`${chipCls} border-slate-400/20 bg-slate-400/[0.08] text-slate-300`}>
+                <span className={`${chipCls} border-foreground/20 bg-foreground/[0.08] text-muted-foreground`}>
                   <span className="h-1.5 w-1.5 rounded-full bg-slate-400" aria-hidden="true" />
                   {offlineCount} offline
                 </span>
@@ -904,9 +904,9 @@ export function CameraNetworkCard() {
                   </p>
                   <ul className="mt-2 space-y-1">
                     {blindSpots.map((d) => (
-                      <li key={d.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-violet-100/75">
-                        <span className="font-medium text-violet-50">{d.name}</span>
-                        <span className="text-violet-100/45">·</span>
+                      <li key={d.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-foreground/75">
+                        <span className="font-medium text-foreground">{d.name}</span>
+                        <span className="text-foreground/45">·</span>
                         <span>Gate {d.gateName ?? d.assignedGateId}</span>
                         <span
                           className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${
@@ -927,7 +927,7 @@ export function CameraNetworkCard() {
               <button
                 type="button"
                 onClick={() => setDismissedKey(blindSpotKey)}
-                className="shrink-0 rounded-md p-1.5 text-violet-100/50 transition-colors hover:bg-violet-200/[0.08] hover:text-violet-50"
+                className="shrink-0 rounded-md p-1.5 text-foreground/50 transition-colors hover:bg-violet-200/[0.08] hover:text-foreground"
                 aria-label="Dismiss blind-spot alert until device state changes"
               >
                 <X size={16} aria-hidden="true" />
@@ -966,8 +966,8 @@ export function CameraNetworkCard() {
         ) : devices.length === 0 ? (
           <div className="mt-4 flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-violet-200/15 p-10 text-center">
             <Camera size={26} className="text-violet-200/45" aria-hidden="true" />
-            <p className="text-sm font-medium text-violet-50">No camera devices yet — pair the first one</p>
-            <p className="text-xs text-violet-100/55">
+            <p className="text-sm font-medium text-foreground">No camera devices yet — pair the first one</p>
+            <p className="text-xs text-foreground/55">
               Phones scan the pairing code at /camera-node; Pis pick it up on their next boot.
             </p>
           </div>
@@ -985,10 +985,10 @@ export function CameraNetworkCard() {
                   <span className="text-[11px] font-semibold uppercase tracking-[0.15em] text-violet-200/55">
                     {group.label}
                   </span>
-                  <span className="rounded-md bg-violet-200/[0.07] px-1.5 py-0.5 text-[10px] font-medium text-violet-100/55">
+                  <span className="rounded-md bg-violet-200/[0.07] px-1.5 py-0.5 text-[10px] font-medium text-foreground/55">
                     {group.items.length}
                   </span>
-                  <span className="h-px flex-1 bg-violet-100/[0.08]" aria-hidden="true" />
+                  <span className="h-px flex-1 bg-foreground/10" aria-hidden="true" />
                 </div>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                   {group.items.map((device, i) => (
@@ -1013,12 +1013,12 @@ export function CameraNetworkCard() {
 
         {/* Reliability — Phase 4.5 uptime trail */}
         {!devicesQuery.isLoading && !devicesQuery.isError && devices.length > 0 && (
-          <Collapsible defaultOpen className="mt-6 border-t border-violet-100/[0.08] pt-4">
+          <Collapsible defaultOpen className="mt-6 border-t border-foreground/10 pt-4">
             <CollapsibleTrigger className="group inline-flex min-h-11 w-full items-center justify-between gap-2 rounded-lg px-1 text-left transition-colors hover:bg-violet-200/[0.04]">
-              <span className="inline-flex items-center gap-2 text-sm font-semibold text-violet-50">
+              <span className="inline-flex items-center gap-2 text-sm font-semibold text-foreground">
                 <Timer size={15} className="text-violet-200/60" aria-hidden="true" />
                 Uptime — last 7 days
-                <span className="text-xs font-normal text-violet-100/45">heartbeat-derived</span>
+                <span className="text-xs font-normal text-foreground/45">heartbeat-derived</span>
               </span>
               <span className="flex items-center gap-2">
                 {uptimeQuery.isFetching && (
@@ -1047,7 +1047,7 @@ export function CameraNetworkCard() {
                 ) : uptimeQuery.isLoading ? (
                   [1, 2, 3].map((item) => <Skeleton key={item} className="h-9 rounded-lg bg-violet-200/[0.04]" />)
                 ) : (uptimeQuery.data?.length ?? 0) === 0 ? (
-                  <p className="rounded-lg border border-dashed border-violet-200/10 px-3 py-3 text-center text-xs text-violet-100/50">
+                  <p className="rounded-lg border border-dashed border-violet-200/10 px-3 py-3 text-center text-xs text-foreground/50">
                     No uptime data yet — heartbeats build the 7-day trail automatically.
                   </p>
                 ) : (
@@ -1062,9 +1062,9 @@ export function CameraNetworkCard() {
                     return (
                       <div
                         key={report.deviceId}
-                        className="flex items-center gap-3 rounded-lg border border-violet-100/[0.08] bg-violet-100/[0.02] px-3 py-2"
+                        className="flex items-center gap-3 rounded-lg border border-foreground/10 bg-foreground/5 px-3 py-2"
                       >
-                        <span className="min-w-0 flex-1 truncate text-xs font-medium text-violet-100/85" title={report.deviceName}>
+                        <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground/85" title={report.deviceName}>
                           {report.deviceName}
                         </span>
                         <div className="flex h-7 flex-1 items-end gap-1 sm:flex-none sm:w-56" aria-hidden="true">

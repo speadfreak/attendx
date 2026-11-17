@@ -75,9 +75,9 @@ function StatCard({
       />
       <div className="relative z-10 flex items-start justify-between">
         <div>
-          <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">{title}</p>
-          <p className="counter-num text-3xl text-white leading-none mb-2 gx-gradient-text">{value}</p>
-          {sub && <div className="text-[11px] text-white/40">{sub}</div>}
+          <p className="text-[10px] uppercase tracking-widest text-foreground/40 mb-2">{title}</p>
+          <p className="counter-num text-3xl text-foreground leading-none mb-2 gx-gradient-text">{value}</p>
+          {sub && <div className="text-[11px] text-foreground/40">{sub}</div>}
         </div>
         <div
           className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
@@ -98,7 +98,7 @@ function StatCard({
 function ActivityRow({ log, isNew }: { log: any; isNew?: boolean }) {
   return (
     <div
-      className={`flex items-center justify-between py-2.5 border-b border-white/5 last:border-0 ${isNew ? "gx-slide-in" : ""}`}
+      className={`flex items-center justify-between py-2.5 border-b border-foreground/10 last:border-0 ${isNew ? "gx-slide-in" : ""}`}
     >
       <div className="flex items-center gap-3 min-w-0">
         <div
@@ -108,8 +108,8 @@ function ActivityRow({ log, isNew }: { log: any; isNew?: boolean }) {
           {log.studentName?.charAt(0) || "?"}
         </div>
         <div className="min-w-0">
-          <p className="text-xs font-medium text-white/80 truncate">{log.studentName}</p>
-          <p className="text-[10px] text-white/30">
+          <p className="text-xs font-medium text-foreground/80 truncate">{log.studentName}</p>
+          <p className="text-[10px] text-foreground/30">
             {format(new Date(log.markedAt), "h:mm a")} · {log.classroomName || "—"}
           </p>
         </div>
@@ -149,7 +149,7 @@ function OccupancyCard() {
             <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-60 animate-ping" />
             <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400" />
           </span>
-          <h3 className="text-sm font-semibold text-white/70 uppercase tracking-widest">In the building now</h3>
+          <h3 className="text-sm font-semibold text-foreground/70 uppercase tracking-widest">In the building now</h3>
         </div>
         <span className="counter-num text-2xl gx-gradient-text-green">{occupancy?.count ?? "—"}</span>
       </div>
@@ -169,11 +169,11 @@ function OccupancyCard() {
       ) : (
         <div className="max-h-52 overflow-y-auto pr-1 space-y-1.5">
           {occupancy.people.map((p) => (
-            <div key={p.studentId} className="flex items-center gap-2.5 py-1.5 px-2 rounded-lg bg-white/[0.02] border border-white/5">
+            <div key={p.studentId} className="flex items-center gap-2.5 py-1.5 px-2 rounded-lg bg-foreground/5 border border-foreground/10">
               <StatusDot tone={p.status === "late" ? "amber" : "green"} pulse />
               <div className="min-w-0 flex-1">
-                <p className="text-xs text-white/75 truncate">{p.studentName}</p>
-                <p className="text-[9px] text-white/25">{p.classroomName || "—"} · since {format(new Date(p.since), "HH:mm")}</p>
+                <p className="text-xs text-foreground/75 truncate">{p.studentName}</p>
+                <p className="text-[9px] text-foreground/25">{p.classroomName || "—"} · since {format(new Date(p.since), "HH:mm")}</p>
               </div>
               <button
                 onClick={() => checkOut(p.studentId, p.studentName)}
@@ -187,7 +187,7 @@ function OccupancyCard() {
         </div>
       )}
       {!!occupancy?.checkedOut && (
-        <p className="text-[10px] text-white/25 mt-3 flex items-center gap-1">
+        <p className="text-[10px] text-foreground/25 mt-3 flex items-center gap-1">
           <Wifi size={10} /> {occupancy.checkedOut} checked out today
         </p>
       )}
@@ -223,18 +223,18 @@ function TrendChart({
                 <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(155,91,255,0.08)" vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
             <XAxis
-              dataKey="date" stroke="rgba(255,255,255,0.2)" tick={{ fontSize: 10 }}
+              dataKey="date" stroke="hsl(var(--border))" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
               tickFormatter={(v) => { try { return format(new Date(v), "MMM d"); } catch { return v; } }}
             />
-            <YAxis stroke="rgba(255,255,255,0.2)" tick={{ fontSize: 10 }} />
+            <YAxis stroke="hsl(var(--border))" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
             <Tooltip
-              contentStyle={{ backgroundColor: "#0d0515", borderColor: "rgba(155,91,255,0.25)", borderRadius: 10 }}
-              itemStyle={{ color: "#e2d9f3", fontSize: 11 }}
+              contentStyle={{ backgroundColor: "hsl(var(--popover))", borderColor: "hsl(var(--popover-border))", borderRadius: 10 }}
+              itemStyle={{ color: "hsl(var(--popover-foreground))", fontSize: 11 }}
               labelFormatter={(v) => { try { return format(new Date(v), "MMM d, yyyy"); } catch { return v; } }}
             />
-            <Legend wrapperStyle={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }} />
+            <Legend wrapperStyle={{ fontSize: 11, color: "hsl(var(--muted-foreground))" }} />
             <Area type="monotone" dataKey="present" name="Present" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#gPresent)" />
             <Area type="monotone" dataKey="late" name="Late" stroke="#f59e0b" strokeWidth={2} fillOpacity={1} fill="url(#gLate)" />
             <Area type="monotone" dataKey="absent" name="Absent" stroke="#ef4444" strokeWidth={2} fillOpacity={1} fill="url(#gAbsent)" />
@@ -339,7 +339,7 @@ export default function DashboardPage() {
           <GlowCard variant="gradient" className="lg:col-span-2 p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold uppercase tracking-widest gx-gradient-text">ATTENDANCE TREND</h3>
-              <div className="flex items-center gap-1 p-1 rounded-lg bg-black/30 border border-white/5">
+              <div className="flex items-center gap-1 p-1 rounded-lg bg-muted border border-foreground/10">
                 {(["today", "week", "month"] as const).map((r) => (
                   <button
                     key={r}
@@ -347,7 +347,7 @@ export default function DashboardPage() {
                     className={`px-2.5 py-1 rounded-md text-[10px] uppercase font-semibold tracking-wider transition-all ${
                       trendRange === r
                         ? "gx-nav-pill text-purple-200"
-                        : "text-white/35 hover:text-white/60"
+                        : "text-foreground/35 hover:text-foreground/60"
                     }`}
                   >
                     {r}
@@ -412,15 +412,15 @@ export default function DashboardPage() {
               <div className="h-52 sm:h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={classroomStats} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(155,91,255,0.08)" vertical={false} />
-                    <XAxis dataKey="classroomName" stroke="rgba(255,255,255,0.2)" tick={{ fontSize: 10 }} />
-                    <YAxis stroke="rgba(255,255,255,0.2)" tick={{ fontSize: 10 }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                    <XAxis dataKey="classroomName" stroke="hsl(var(--border))" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
+                    <YAxis stroke="hsl(var(--border))" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
                     <Tooltip
-                      contentStyle={{ backgroundColor: "#0d0515", borderColor: "rgba(155,91,255,0.25)", borderRadius: 10 }}
-                      itemStyle={{ color: "#e2d9f3", fontSize: 11 }}
+                      contentStyle={{ backgroundColor: "hsl(var(--popover))", borderColor: "hsl(var(--popover-border))", borderRadius: 10 }}
+                      itemStyle={{ color: "hsl(var(--popover-foreground))", fontSize: 11 }}
                       cursor={{ fill: "rgba(155,91,255,0.05)" }}
                     />
-                    <Legend wrapperStyle={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }} />
+                    <Legend wrapperStyle={{ fontSize: 11, color: "hsl(var(--muted-foreground))" }} />
                     <Bar dataKey="presentCount" name="Present" stackId="a" fill="#10b981" radius={[0, 0, 4, 4]} />
                     <Bar dataKey="absentCount" name="Absent" stackId="a" fill="#ef4444" radius={[4, 4, 0, 0]} />
                   </BarChart>
@@ -450,8 +450,8 @@ export default function DashboardPage() {
                   <Icon size={15} style={{ color: `rgb(${item.color})` }} />
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-widest text-white/30">{item.label}</p>
-                  <p className="text-xs font-semibold text-white/70 mt-0.5">{item.value}</p>
+                  <p className="text-[10px] uppercase tracking-widest text-foreground/30">{item.label}</p>
+                  <p className="text-xs font-semibold text-foreground/70 mt-0.5">{item.value}</p>
                 </div>
                 <div className="ml-auto">
                   <StatusDot tone={statusToneFor(item.value)} pulse />

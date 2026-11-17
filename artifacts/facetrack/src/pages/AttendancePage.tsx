@@ -437,7 +437,7 @@ export default function AttendancePage() {
     if (modelStatus === "ready") return <span className="text-[10px] st-green flex items-center gap-1"><Brain className="w-3 h-3" /> AI READY</span>;
     if (modelStatus === "loading") return <span className="text-[10px] st-amber flex items-center gap-1 animate-pulse"><Loader2 className="w-3 h-3 animate-spin" /> LOADING AI…</span>;
     if (modelStatus === "error") return <span className="text-[10px] st-red flex items-center gap-1"><XCircle className="w-3 h-3" /> AI ERROR</span>;
-    return <span className="text-[10px] text-white/40 flex items-center gap-1"><Brain className="w-3 h-3" /> AI IDLE</span>;
+    return <span className="text-[10px] text-foreground/40 flex items-center gap-1"><Brain className="w-3 h-3" /> AI IDLE</span>;
   };
 
   return (
@@ -452,7 +452,7 @@ export default function AttendancePage() {
             <select
               value={selectedClassroomId}
               onChange={(e) => setSelectedClassroomId(e.target.value)}
-              className="w-full bg-black/40 border border-purple-500/15 rounded-lg px-3 py-2 text-sm text-white/70 focus:outline-none focus:border-purple-500/45"
+              className="w-full bg-muted border border-purple-500/15 rounded-lg px-3 py-2 text-sm text-foreground/70 focus:outline-none focus:border-purple-500/45"
             >
               <option value="all">All Classrooms</option>
               {classrooms?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -474,7 +474,7 @@ export default function AttendancePage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* LEFT: tabs + camera grid */}
           <div className="lg:col-span-8 flex flex-col gap-3">
-            <div className="flex items-center gap-1 p-1 rounded-xl bg-black/30 border border-white/5 w-fit">
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-foreground/5 border border-foreground/10 w-fit">
               {([
                 { id: "face", label: "Face", icon: ScanFace },
                 { id: "qr", label: "QR", icon: QrCode },
@@ -484,16 +484,16 @@ export default function AttendancePage() {
                   key={t.id}
                   onClick={() => setTab(t.id)}
                   className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all ${
-                    tab === t.id ? "gx-nav-pill text-purple-200" : "text-white/40 hover:text-white/70"
+                    tab === t.id ? "gx-nav-pill text-purple-200" : "text-foreground/40 hover:text-foreground/70"
                   }`}
                 >
                   <t.icon size={13} /> {t.label}
                 </button>
               ))}
-              <div className="ml-2 px-3 py-1.5 rounded-lg bg-black/40 border border-white/5 flex items-center gap-2">
+              <div className="ml-2 px-3 py-1.5 rounded-lg bg-muted border border-foreground/10 flex items-center gap-2">
                 <Activity size={11} className="text-emerald-400" />
                 <span className="text-[10px] font-mono text-emerald-300">{totalFps.toFixed(1)} FPS</span>
-                <span className="text-[10px] font-mono text-white/30">· {totalFrames} frames</span>
+                <span className="text-[10px] font-mono text-foreground/30">· {totalFrames} frames</span>
               </div>
             </div>
 
@@ -503,7 +503,7 @@ export default function AttendancePage() {
                 {/* camera controls */}
                 <GlowCard variant="gradient" className="p-3 flex flex-wrap items-center gap-2">
                   <Layers size={13} className="text-purple-400" />
-                  <span className="text-[10px] uppercase tracking-widest text-white/35">cameras</span>
+                  <span className="text-[10px] uppercase tracking-widest text-foreground/35">cameras</span>
                   <button
                     onClick={() => toggleCam("default")}
                     className={`st-badge ${activeCams.includes("default") ? "st-badge-purple" : "st-badge-slate"}`}
@@ -584,10 +584,10 @@ export default function AttendancePage() {
 
                 {modelStatus === "loading" && (
                   <GlowCard className="gx-empty-tint px-4 py-3">
-                    <div className="w-full bg-white/5 rounded-full h-1 overflow-hidden">
+                    <div className="w-full bg-muted rounded-full h-1 overflow-hidden">
                       <div className="h-full bg-purple-500 animate-pulse rounded-full w-3/4" />
                     </div>
-                    <p className="text-[10px] text-white/40 mt-2 text-center">Loading AI face recognition models…</p>
+                    <p className="text-[10px] text-foreground/40 mt-2 text-center">Loading AI face recognition models…</p>
                   </GlowCard>
                 )}
 
@@ -606,8 +606,8 @@ export default function AttendancePage() {
                     >
                       {scanResult.alreadyMarked || scanResult.sentToReview ? <Clock className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" /> : scanResult.studentId ? <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" /> : <XCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-400" />}
                       <div>
-                        <p className="font-semibold leading-tight text-white/85">{scanResult.studentName ?? (scanResult.error ?? "Not recognized")}</p>
-                        <p className="text-xs text-white/50 mt-0.5">
+                        <p className="font-semibold leading-tight text-foreground/85">{scanResult.studentName ?? (scanResult.error ?? "Not recognized")}</p>
+                        <p className="text-xs text-foreground/50 mt-0.5">
                           {scanResult.sentToReview ? "Ambiguous match — awaiting admin review." : scanResult.message ?? (scanResult.alreadyMarked ? "Already marked today." : "")}
                         </p>
                         {scanResult.confidence != null && (
@@ -619,7 +619,7 @@ export default function AttendancePage() {
                           </div>
                         )}
                         {scanResult.candidates && scanResult.candidates.length > 0 && (
-                          <p className="text-[10px] text-white/35 mt-1">
+                          <p className="text-[10px] text-foreground/35 mt-1">
                             top candidates: {scanResult.candidates.map((c) => `${c.name} (${(c.confidence * 100).toFixed(0)}%)`).join(" · ")}
                           </p>
                         )}
@@ -634,7 +634,7 @@ export default function AttendancePage() {
             {tab === "qr" && (
               <GlowCard variant="gradient" className="p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm text-white/70 flex items-center gap-2">
+                  <span className="text-sm text-foreground/70 flex items-center gap-2">
                     <QrCode size={15} className="text-cyan-400" /> Live QR scanning
                   </span>
                   {!qrScanning && (
@@ -650,7 +650,7 @@ export default function AttendancePage() {
                       value={qrCode}
                       onChange={(e) => setQrCode(e.target.value)}
                       placeholder="…or paste badge token (AXQR1.…)"
-                      className="flex-1 bg-black/40 border border-cyan-500/15 rounded-lg px-3 py-2 text-xs font-mono text-white/80 focus:outline-none focus:border-cyan-500/45"
+                      className="flex-1 bg-muted border border-cyan-500/15 rounded-lg px-3 py-2 text-xs font-mono text-foreground/80 focus:outline-none focus:border-cyan-500/45"
                     />
                     <button
                       className="st-badge st-badge-purple px-4"
@@ -683,21 +683,21 @@ export default function AttendancePage() {
             {/* ── MANUAL TAB ── */}
             {tab === "manual" && (
               <GlowCard variant="gradient" className="p-5">
-                <span className="text-sm text-white/70 flex items-center gap-2 mb-4">
+                <span className="text-sm text-foreground/70 flex items-center gap-2 mb-4">
                   <Keyboard size={15} className="text-purple-400" /> Manual entry
                 </span>
                 <form onSubmit={handleManualSubmit} className="space-y-4">
                   <div className="space-y-2">
-                    <label className="text-xs text-white/50">Student system ID</label>
+                    <label className="text-xs text-foreground/50">Student system ID</label>
                     <Input
                       placeholder="e.g. 1"
                       value={manualStudentId}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setManualStudentId(e.target.value)}
-                      className="bg-black/30 border-purple-500/15 text-white/80"
+                      className="bg-muted border-purple-500/15 text-foreground/80"
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs text-white/50">Status</label>
+                    <label className="text-xs text-foreground/50">Status</label>
                     <div className="flex gap-2">
                       {(["present", "late", "absent"] as const).map((s) => (
                         <button
@@ -732,7 +732,7 @@ export default function AttendancePage() {
                   <StatusDot tone="green" pulse />
                   <span className="text-sm font-semibold uppercase tracking-widest gx-gradient-text">TODAY'S STREAM</span>
                 </div>
-                <Badge variant="outline" className="font-mono text-xs text-white/40 border-white/10">
+                <Badge variant="outline" className="font-mono text-xs text-foreground/40 border-foreground/10">
                   {todayAttendance?.length ?? 0} REC
                 </Badge>
               </div>
@@ -762,21 +762,21 @@ export default function AttendancePage() {
                         initial={{ opacity: 0, x: -8 }}
                         animate={{ opacity: 1, x: 0 }}
                         key={log.id}
-                        className="flex items-center justify-between p-2.5 rounded-lg border border-white/5 bg-white/[0.02] hover:bg-purple-500/5 transition-colors"
+                        className="flex items-center justify-between p-2.5 rounded-lg border border-foreground/10 bg-foreground/5 hover:bg-purple-500/5 transition-colors"
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
                           <div className="w-8 h-8 rounded-full bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-xs font-bold text-purple-300 shrink-0">
                             {log.studentName.charAt(0)}
                           </div>
                           <div className="min-w-0">
-                            <p className="font-medium text-xs text-white/80 truncate">{log.studentName}</p>
-                            <p className="text-[10px] text-white/30 truncate">{log.classroomName || "Unassigned"}</p>
+                            <p className="font-medium text-xs text-foreground/80 truncate">{log.studentName}</p>
+                            <p className="text-[10px] text-foreground/30 truncate">{log.classroomName || "Unassigned"}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0 ml-1">
                           <div className="flex flex-col items-end gap-0.5">
                             <StatusBadge value={log.status} />
-                            <p className="text-[9px] text-white/30 font-mono">{format(new Date(log.markedAt), "HH:mm:ss")}</p>
+                            <p className="text-[9px] text-foreground/30 font-mono">{format(new Date(log.markedAt), "HH:mm:ss")}</p>
                           </div>
                           <StatusBadge value={log.method} />
                         </div>

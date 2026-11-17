@@ -296,7 +296,7 @@ export default function ReportsPage() {
         </div>
 
         {/* tabs */}
-        <div className="flex items-center gap-1 p-1 rounded-xl bg-black/30 border border-white/5 w-fit">
+        <div className="flex items-center gap-1 p-1 rounded-xl bg-muted border border-foreground/10 w-fit">
           {([
             { id: "records", label: "Daily records", icon: FileText },
             { id: "heatmap", label: "Confidence heatmap", icon: Flame },
@@ -306,7 +306,7 @@ export default function ReportsPage() {
               key={t.id}
               onClick={() => setTab(t.id)}
               className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-all ${
-                tab === t.id ? "gx-nav-pill text-purple-200" : "text-white/40 hover:text-white/70"
+                tab === t.id ? "gx-nav-pill text-purple-200" : "text-foreground/40 hover:text-foreground/70"
               }`}
             >
               <t.icon size={13} /> {t.label}
@@ -317,7 +317,7 @@ export default function ReportsPage() {
         {/* filters */}
         <GlowCard variant="gradient" className="p-4">
           <div className="flex flex-col sm:flex-row gap-4 items-end sm:items-center">
-            <div className="flex items-center gap-2 text-white/40">
+            <div className="flex items-center gap-2 text-foreground/40">
               <Filter className="w-4 h-4" />
               <span className="text-sm font-medium">Filters:</span>
             </div>
@@ -327,13 +327,13 @@ export default function ReportsPage() {
                   type="date"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className="bg-black/40 border border-purple-500/15 rounded-lg px-3 py-2 text-sm text-white/70 [color-scheme:dark]"
+                  className="bg-muted border border-purple-500/15 rounded-lg px-3 py-2 text-sm text-foreground/70"
                 />
               )}
               <select
                 value={classroomId}
                 onChange={(e) => setClassroomId(e.target.value)}
-                className="bg-black/40 border border-purple-500/15 rounded-lg px-3 py-2 text-sm text-white/70"
+                className="bg-muted border border-purple-500/15 rounded-lg px-3 py-2 text-sm text-foreground/70"
               >
                 <option value="all">All Classrooms</option>
                 {classrooms?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -342,7 +342,7 @@ export default function ReportsPage() {
                 <select
                   value={heatmapDays}
                   onChange={(e) => setHeatmapDays(Number(e.target.value))}
-                  className="bg-black/40 border border-purple-500/15 rounded-lg px-3 py-2 text-sm text-white/70"
+                  className="bg-muted border border-purple-500/15 rounded-lg px-3 py-2 text-sm text-foreground/70"
                 >
                   <option value={14}>Last 14 days</option>
                   <option value={28}>Last 28 days</option>
@@ -353,7 +353,7 @@ export default function ReportsPage() {
                 <select
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
-                  className="bg-black/40 border border-purple-500/15 rounded-lg px-3 py-2 text-sm text-white/70"
+                  className="bg-muted border border-purple-500/15 rounded-lg px-3 py-2 text-sm text-foreground/70"
                 >
                   <option value="all">All Statuses</option>
                   <option value="present">Present</option>
@@ -368,16 +368,16 @@ export default function ReportsPage() {
         {/* ── RECORDS TAB ── */}
         {tab === "records" && (
           <GlowCard variant="gradient">
-            <div className="grid grid-cols-4 border-b border-white/5">
+            <div className="grid grid-cols-4 border-b border-foreground/10">
               {[
                 { label: "Present", value: presentCount, cls: "text-emerald-400" },
                 { label: "Late", value: lateCount, cls: "text-amber-400" },
                 { label: "Absent", value: absentCount, cls: "text-red-400" },
-                { label: "Total Logs", value: records?.length || 0, cls: "text-white/70" },
+                { label: "Total Logs", value: records?.length || 0, cls: "text-foreground/70" },
               ].map((s) => (
-                <div key={s.label} className="p-4 text-center border-r border-white/5 last:border-0">
+                <div key={s.label} className="p-4 text-center border-r border-foreground/10 last:border-0">
                   <p className={`text-2xl font-bold counter-num ${s.cls}`}>{s.value}</p>
-                  <p className="text-[10px] text-white/30 uppercase font-medium mt-1 tracking-widest">{s.label}</p>
+                  <p className="text-[10px] text-foreground/30 uppercase font-medium mt-1 tracking-widest">{s.label}</p>
                 </div>
               ))}
             </div>
@@ -398,8 +398,8 @@ export default function ReportsPage() {
                 <GlowEmpty icon={<FileText size={24} />} title="No attendance records for these filters" />
               ) : (
                 <table className="w-full text-sm">
-                  <thead className="sticky top-0 bg-[#120826]/95 backdrop-blur">
-                    <tr className="gx-table-head text-left text-[10px] uppercase tracking-widest text-white/35">
+                  <thead className="sticky top-0 bg-card/95 backdrop-blur">
+                    <tr className="gx-table-head text-left text-[10px] uppercase tracking-widest text-foreground/35">
                       <th className="px-4 py-3">Student</th>
                       <th className="px-4 py-3">Classroom</th>
                       <th className="px-4 py-3">Status</th>
@@ -409,12 +409,12 @@ export default function ReportsPage() {
                   </thead>
                   <tbody>
                     {records.map((record) => (
-                      <tr key={record.id} className="border-t border-white/5 hover:bg-purple-500/5">
-                        <td className="px-4 py-2.5 text-white/80">{record.studentName}</td>
-                        <td className="px-4 py-2.5 text-white/40">{record.classroomName || "Unassigned"}</td>
+                      <tr key={record.id} className="border-t border-foreground/10 hover:bg-purple-500/5">
+                        <td className="px-4 py-2.5 text-foreground/80">{record.studentName}</td>
+                        <td className="px-4 py-2.5 text-foreground/40">{record.classroomName || "Unassigned"}</td>
                         <td className="px-4 py-2.5"><StatusBadge value={record.status} /></td>
                         <td className="px-4 py-2.5"><StatusBadge value={record.method} /></td>
-                        <td className="px-4 py-2.5 text-white/40 font-mono text-xs">{format(new Date(record.markedAt), "h:mm a")}</td>
+                        <td className="px-4 py-2.5 text-foreground/40 font-mono text-xs">{format(new Date(record.markedAt), "h:mm a")}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -430,7 +430,7 @@ export default function ReportsPage() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-sm font-semibold uppercase tracking-widest gx-gradient-text">ATTENDANCE CONFIDENCE HEATMAP</h3>
-                <p className="text-[10px] text-white/30 mt-1">Per-student drill-down · green = clean matches, amber = low-confidence zone</p>
+                <p className="text-[10px] text-foreground/30 mt-1">Per-student drill-down · green = clean matches, amber = low-confidence zone</p>
               </div>
             </div>
             {heatmapLoading ? (
@@ -447,7 +447,7 @@ export default function ReportsPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="text-left text-[9px] uppercase tracking-widest text-white/30 border-b border-white/5">
+                    <tr className="text-left text-[9px] uppercase tracking-widest text-foreground/30 border-b border-foreground/10">
                       <th className="px-3 py-2">Student</th>
                       <th className="px-3 py-2">Daily strip</th>
                       <th className="px-3 py-2 text-center">Present</th>
@@ -459,20 +459,20 @@ export default function ReportsPage() {
                   </thead>
                   <tbody>
                     {heatmap.rows.map((row) => (
-                      <tr key={row.studentId} className="border-b border-white/5 hover:bg-purple-500/5">
-                        <td className="px-3 py-2 text-white/80 whitespace-nowrap">{row.studentName}</td>
+                      <tr key={row.studentId} className="border-b border-foreground/10 hover:bg-purple-500/5">
+                        <td className="px-3 py-2 text-foreground/80 whitespace-nowrap">{row.studentName}</td>
                         <td className="px-3 py-2"><MiniStatusStrip days={row.days} window={heatmapGrid} /></td>
                         <td className="px-3 py-2 text-center text-emerald-400 font-mono">{row.presentCount}</td>
                         <td className="px-3 py-2 text-center text-amber-400 font-mono">{row.lateCount}</td>
                         <td className="px-3 py-2 text-center text-red-400 font-mono">{row.absentCount}</td>
-                        <td className="px-3 py-2 text-center text-white/60 font-mono">{row.attendanceRate != null ? `${Math.round(row.attendanceRate * 100)}%` : "—"}</td>
+                        <td className="px-3 py-2 text-center text-foreground/60 font-mono">{row.attendanceRate != null ? `${Math.round(row.attendanceRate * 100)}%` : "—"}</td>
                         <td className="px-3 py-2 text-center">
                           {row.avgConfidence != null ? (
                             <span className={`st-badge ${row.avgConfidence >= 0.72 ? "st-badge-green" : "st-badge-amber"}`}>
                               {(row.avgConfidence * 100).toFixed(0)}%
                             </span>
                           ) : (
-                            <span className="text-white/20">—</span>
+                            <span className="text-foreground/20">—</span>
                           )}
                         </td>
                       </tr>
@@ -514,11 +514,11 @@ export default function ReportsPage() {
                           <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
                         </linearGradient>
                       </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(155,91,255,0.08)" vertical={false} />
-                      <XAxis dataKey="day" stroke="rgba(255,255,255,0.2)" tick={{ fontSize: 10 }} />
-                      <YAxis stroke="rgba(255,255,255,0.2)" tick={{ fontSize: 10 }} />
-                      <Tooltip contentStyle={{ backgroundColor: "#0d0515", borderColor: "rgba(155,91,255,0.25)", borderRadius: 10 }} itemStyle={{ color: "#e2d9f3", fontSize: 11 }} />
-                      <Legend wrapperStyle={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                      <XAxis dataKey="day" stroke="hsl(var(--border))" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
+                      <YAxis stroke="hsl(var(--border))" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
+                      <Tooltip contentStyle={{ backgroundColor: "hsl(var(--popover))", borderColor: "hsl(var(--popover-border))", borderRadius: 10 }} itemStyle={{ color: "hsl(var(--popover-foreground))", fontSize: 11 }} />
+                      <Legend wrapperStyle={{ fontSize: 11, color: "hsl(var(--muted-foreground))" }} />
                       <Area type="monotone" dataKey="present" stroke="#10b981" strokeWidth={2} fill="url(#igPresent)" />
                       <Area type="monotone" dataKey="late" stroke="#f59e0b" strokeWidth={2} fill="url(#igLate)" />
                     </AreaChart>
@@ -541,9 +541,9 @@ export default function ReportsPage() {
                       <div key={method}>
                         <div className="flex items-center justify-between text-xs mb-1">
                           <StatusBadge value={method} />
-                          <span className="text-white/40 font-mono">{count} · {pct}%</span>
+                          <span className="text-foreground/40 font-mono">{count} · {pct}%</span>
                         </div>
-                        <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                        <div className="h-1.5 rounded-full bg-foreground/5 overflow-hidden">
                           <div
                             className="h-full rounded-full"
                             style={{
@@ -556,7 +556,7 @@ export default function ReportsPage() {
                       </div>
                     );
                   })}
-                  <div className="flex items-center gap-2 pt-2 text-[11px] text-white/40">
+                  <div className="flex items-center gap-2 pt-2 text-[11px] text-foreground/40">
                     <StatusDot tone="green" pulse />
                     {summary.uniqueStudents} of {summary.totalStudents} students recorded in the last 7 days
                   </div>
@@ -574,8 +574,8 @@ export default function ReportsPage() {
                 <div className="space-y-2">
                   {summary.classrooms.map((c) => (
                     <div key={String(c.classroomId)} className="flex items-center gap-3">
-                      <span className="text-xs text-white/70 w-28 truncate">{c.classroomName}</span>
-                      <div className="flex-1 h-2 rounded-full bg-white/5 overflow-hidden">
+                      <span className="text-xs text-foreground/70 w-28 truncate">{c.classroomName}</span>
+                      <div className="flex-1 h-2 rounded-full bg-foreground/5 overflow-hidden">
                         <div
                           className="h-full rounded-full"
                           style={{
@@ -584,7 +584,7 @@ export default function ReportsPage() {
                           }}
                         />
                       </div>
-                      <span className="text-xs font-mono text-white/50 w-10 text-right">{Math.round(c.rate * 100)}%</span>
+                      <span className="text-xs font-mono text-foreground/50 w-10 text-right">{Math.round(c.rate * 100)}%</span>
                       {c.rate >= 0.8 && <Flame size={12} className="text-amber-400" />}
                     </div>
                   ))}

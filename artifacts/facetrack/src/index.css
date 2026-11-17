@@ -51,41 +51,44 @@
 }
 
 :root {
-  --button-outline: rgba(0,0,0,.10);
-  --badge-outline: rgba(0,0,0,.05);
+  --button-outline: rgba(46, 16, 90, 0.10);
+  --badge-outline: rgba(46, 16, 90, 0.05);
   --opaque-button-border-intensity: -8;
-  --elevate-1: rgba(0,0,0,.03);
-  --elevate-2: rgba(0,0,0,.08);
+  --elevate-1: rgba(88, 28, 135, 0.05);
+  --elevate-2: rgba(88, 28, 135, 0.09);
 
-  --background: 260 20% 98%;
-  --foreground: 272 47% 11%;
-  --border: 270 32% 88%;
+  /* Light theme — "Lavender Command Center in daylight".
+     A soft violet-tinted paper palette; the aurora glow language
+     survives but reads as printed iridescence instead of neon. */
+  --background: 262 35% 97%;
+  --foreground: 270 34% 12%;
+  --border: 267 22% 87%;
   --card: 0 0% 100%;
-  --card-foreground: 272 47% 11%;
-  --card-border: 270 32% 88%;
-  --sidebar: 260 20% 98%;
-  --sidebar-foreground: 272 47% 11%;
-  --sidebar-border: 270 32% 88%;
-  --sidebar-primary: 272 70% 55%;
+  --card-foreground: 270 34% 12%;
+  --card-border: 267 22% 89%;
+  --sidebar: 262 25% 96%;
+  --sidebar-foreground: 270 34% 12%;
+  --sidebar-border: 267 22% 87%;
+  --sidebar-primary: 267 68% 50%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 270 40% 94%;
-  --sidebar-accent-foreground: 272 47% 11%;
-  --sidebar-ring: 272 70% 55%;
+  --sidebar-accent: 266 28% 92%;
+  --sidebar-accent-foreground: 270 34% 12%;
+  --sidebar-ring: 267 68% 50%;
   --popover: 0 0% 100%;
-  --popover-foreground: 272 47% 11%;
-  --popover-border: 270 32% 88%;
-  --primary: 272 70% 55%;
+  --popover-foreground: 270 34% 12%;
+  --popover-border: 267 22% 89%;
+  --primary: 267 68% 50%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 270 40% 94%;
-  --secondary-foreground: 272 47% 11%;
-  --muted: 270 40% 94%;
-  --muted-foreground: 270 16% 47%;
-  --accent: 270 40% 94%;
-  --accent-foreground: 272 47% 11%;
-  --destructive: 0 84% 60%;
+  --secondary: 265 30% 93%;
+  --secondary-foreground: 270 34% 12%;
+  --muted: 265 28% 93%;
+  --muted-foreground: 268 14% 40%;
+  --accent: 266 34% 93%;
+  --accent-foreground: 270 34% 12%;
+  --destructive: 0 72% 46%;
   --destructive-foreground: 0 0% 100%;
-  --input: 270 32% 88%;
-  --ring: 272 70% 55%;
+  --input: 267 22% 85%;
+  --ring: 267 68% 50%;
   --app-font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --app-font-serif: Georgia, ui-serif, serif;
   --app-font-mono: 'Orbitron', ui-monospace, SFMono-Regular, monospace;
@@ -1038,4 +1041,239 @@ tr.gx-table-head,
     rgba(var(--gx-accent-from), 0.30) 82%,
     transparent);
   pointer-events: none;
+}
+
+/* ============================================================
+   ATTENDX DUAL-THEME ENGINE — LIGHT MODE PARITY
+   The app was born dark-native. Instead of touching every
+   surface by hand, the light theme re-skins the entire design
+   system through CSS-variable remaps + targeted class
+   overrides under `html:not(.dark)`:
+
+   1. All gx glow/panel/aurora elevation tokens become paper-
+      friendly (violet shadows instead of black).
+   2. Status inks darken for WCAG AA legibility on white.
+   3. PASTEL ACCENT REMAP — Tailwind emits its palette as CSS
+      vars, so pale "on-dark" accents (violet-200, fuchsia-300,
+      emerald-300 …) are re-pointed at their deep stops in light
+      mode. Every page inherits readable accent ink for free.
+   4. Class-level overrides for hardcoded dark surfaces.
+
+   Dark mode needs NO overrides — every definition above stays.
+   ============================================================ */
+html { color-scheme: light; }
+html.dark { color-scheme: dark; }
+
+html:not(.dark) {
+  /* ── 1. gx elevation tokens → paper-friendly ─────────────── */
+  --gx-card-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.97) 0%, rgba(250, 247, 255, 0.99) 100%);
+  --gx-glow-outer: 0 0 24px rgba(139, 92, 246, 0.07), 0 8px 40px rgba(88, 28, 135, 0.10);
+  --gx-glow-outer-strong: 0 0 28px rgba(139, 92, 246, 0.16), 0 10px 46px rgba(88, 28, 135, 0.17);
+  --gx-glow-border: 1px solid rgba(139, 92, 246, 0.20);
+  --gx-glow-border-strong: 1px solid rgba(139, 92, 246, 0.34);
+  --gx-inner-border: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  --gx-glow-aurora: 0 0 24px rgba(139, 92, 246, 0.12), 0 0 56px rgba(232, 66, 176, 0.08), 0 12px 48px rgba(88, 28, 135, 0.14);
+  --gx-glow-aurora-strong: 0 0 34px rgba(139, 92, 246, 0.20), 0 0 72px rgba(232, 66, 176, 0.12), 0 16px 56px rgba(88, 28, 135, 0.18);
+  --gx-focus-ring: 0 0 0 1px rgba(255, 255, 255, 0.95), 0 0 0 3px rgba(139, 92, 246, 0.42), 0 0 20px rgba(139, 92, 246, 0.22);
+  --gx-aurora-surface: linear-gradient(165deg, rgba(255, 255, 255, 0.95) 0%, rgba(250, 246, 255, 0.98) 100%);
+
+  /* ── 2. status inks → deep, AA-legible on light surfaces ─── */
+  --st-green: 21, 128, 61;
+  --st-amber: 180, 83, 9;
+  --st-red: 201, 37, 37;
+  --st-purple: 122, 58, 237;
+  --st-cyan: 14, 116, 144;
+  --st-slate: 90, 90, 118;
+
+  /* ── 3. pastel accent remap (pale stops → deep stops) ────── */
+  --color-violet-200: var(--color-violet-700);
+  --color-violet-300: var(--color-violet-700);
+  --color-purple-200: var(--color-purple-700);
+  --color-purple-300: var(--color-purple-800);
+  --color-purple-400: var(--color-purple-700);
+  --color-fuchsia-200: var(--color-fuchsia-700);
+  --color-fuchsia-300: var(--color-fuchsia-700);
+  --color-fuchsia-400: var(--color-fuchsia-600);
+  --color-emerald-300: var(--color-emerald-700);
+  --color-emerald-200: var(--color-emerald-700);
+  --color-teal-300: var(--color-teal-700);
+  --color-cyan-300: var(--color-cyan-700);
+  --color-amber-200: var(--color-amber-700);
+  --color-amber-300: var(--color-amber-700);
+  --color-orange-300: var(--color-orange-700);
+  --color-rose-300: var(--color-rose-700);
+  --color-red-300: var(--color-red-700);
+  --color-green-300: var(--color-green-700);
+  --color-lime-300: var(--color-lime-700);
+  --color-yellow-300: var(--color-yellow-700);
+  --color-yellow-200: var(--color-yellow-700);
+}
+
+/* ── 4. class-level light overrides ────────────────────────── */
+html:not(.dark) .glass-panel {
+  background: rgba(255, 255, 255, 0.78);
+  border-color: rgba(139, 92, 246, 0.18);
+  box-shadow: 0 8px 32px rgba(88, 28, 135, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+html:not(.dark) .glow-purple { box-shadow: 0 0 20px rgba(139, 92, 246, 0.16), 0 0 60px rgba(139, 92, 246, 0.08); }
+html:not(.dark) .glow-purple-sm { box-shadow: 0 0 10px rgba(139, 92, 246, 0.20), 0 0 20px rgba(139, 92, 246, 0.10); }
+html:not(.dark) .text-glow { text-shadow: 0 0 16px rgba(139, 92, 246, 0.35); }
+html:not(.dark) .text-glow-sm { text-shadow: 0 0 8px rgba(139, 92, 246, 0.28); }
+html:not(.dark) .particle {
+  background: #7C3AED;
+  box-shadow: 0 0 6px rgba(124, 58, 237, 0.55), 0 0 12px rgba(124, 58, 237, 0.30);
+}
+html:not(.dark) .scanning-line {
+  background: linear-gradient(90deg, transparent, #7C3AED, #A855F7, #7C3AED, transparent);
+  box-shadow: 0 0 12px rgba(124, 58, 237, 0.55), 0 0 30px rgba(124, 58, 237, 0.30);
+}
+html:not(.dark) .scanner-ring {
+  border-color: rgba(124, 58, 237, 0.45);
+  box-shadow: 0 0 25px rgba(124, 58, 237, 0.22), inset 0 0 25px rgba(124, 58, 237, 0.09);
+}
+html:not(.dark) .scanner-ring::before {
+  border-top-color: #7C3AED;
+  border-right-color: rgba(124, 58, 237, 0.32);
+}
+html:not(.dark) .pulse-ring { border-color: #7C3AED; }
+html:not(.dark) .animated-border::after { opacity: 0.45; }
+html:not(.dark) .gx-gradient-text {
+  background: linear-gradient(92deg, #5B21B6 0%, #6D28D9 38%, #9333EA 72%, #C026D3 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+html:not(.dark) .gx-gradient-text-green {
+  background: linear-gradient(92deg, #065F46 0%, #059669 60%, #10B981 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+html:not(.dark) .text-gradient {
+  background: linear-gradient(94deg, #6D28D9 0%, #A21CAF 30%, #E11D48 56%, #B45309 80%, #0F766E 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+html:not(.dark) .gx-accent-text {
+  background: linear-gradient(94deg,
+    color-mix(in oklab, rgb(var(--gx-accent-from)) 78%, #2A1245) 0%,
+    color-mix(in oklab, rgb(var(--gx-accent-from)) 82%, #000) 42%,
+    color-mix(in oklab, rgb(var(--gx-accent-to)) 80%, #000) 82%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+html:not(.dark) .gx-title-gradient {
+  background: linear-gradient(94deg,
+    color-mix(in oklab, rgb(var(--gx-accent-from)) 80%, #2A1245) 0%,
+    color-mix(in oklab, rgb(var(--gx-accent-from)) 84%, #000) 36%,
+    color-mix(in oklab, rgb(var(--gx-accent-mid)) 82%, #000) 62%,
+    color-mix(in oklab, rgb(var(--gx-accent-to)) 80%, #000) 84%,
+    rgb(var(--gx-accent-to)) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+html:not(.dark) .card-gradient-border {
+  --gx-aurora-surface: linear-gradient(165deg, rgba(255, 255, 255, 0.95) 0%, rgba(250, 246, 255, 0.98) 100%);
+}
+html:not(.dark) .gx-panel {
+  background:
+    linear-gradient(165deg, rgba(255, 255, 255, 0.84) 0%, rgba(252, 250, 255, 0.93) 100%) padding-box,
+    linear-gradient(135deg,
+      rgba(var(--gx-accent-from), 0.40),
+      rgba(var(--gx-accent-to), 0.24) 55%,
+      rgba(var(--gx-accent-mid), 0.28)) border-box;
+  box-shadow:
+    0 0 22px rgba(var(--gx-accent-from), 0.07),
+    0 12px 42px rgba(88, 28, 135, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+html:not(.dark) .gx-panel::after { opacity: 0.035; }
+html:not(.dark) .gx-table-head { box-shadow: inset 0 -1px 0 rgba(var(--gx-accent-from), 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.75); }
+html:not(.dark) .gx-table-head th { text-shadow: none; }
+html:not(.dark) .gx-nav-pill { box-shadow: 0 0 16px rgba(var(--gx-accent-from), 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.85); }
+html:not(.dark) .heatmap-cell { outline: 1px solid rgba(88, 28, 135, 0.07); }
+html:not(.dark) .heatmap-cell:hover { outline: 1px solid rgba(124, 58, 237, 0.65); }
+html:not(.dark) .hm-empty { background: rgba(139, 92, 246, 0.12); }
+html:not(.dark) .gx-mesh::before,
+html:not(.dark) .gx-mesh::after { opacity: 0.10; }
+html:not(.dark) .gx-aurora-blob-1 { background: radial-gradient(circle at 35% 35%, rgba(155, 91, 255, 0.16), transparent 62%); }
+html:not(.dark) .gx-aurora-blob-2 { background: radial-gradient(circle at 60% 40%, rgba(232, 66, 176, 0.11), transparent 62%); }
+html:not(.dark) .gx-aurora-blob-3 { background: radial-gradient(circle at 50% 60%, rgba(45, 212, 191, 0.09), transparent 62%); }
+html:not(.dark) .gx-aurora-page::before { background: radial-gradient(circle at 35% 35%, rgba(var(--gx-accent-from), 0.07), transparent 62%); }
+html:not(.dark) .gx-aurora-page::after { background: radial-gradient(circle at 55% 45%, rgba(var(--gx-accent-to), 0.05), transparent 62%); }
+html:not(.dark) .gx-btn-accent {
+  box-shadow:
+    0 0 18px rgba(var(--gx-accent-from), 0.22),
+    0 8px 26px rgba(var(--gx-accent-to), 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+html:not(.dark) .gx-glow-hover:hover {
+  box-shadow:
+    0 0 20px rgba(var(--gx-accent-from), 0.10),
+    0 0 46px rgba(var(--gx-accent-to), 0.06),
+    0 12px 40px rgba(88, 28, 135, 0.11);
+}
+html:not(.dark) .gx-kiosk-glow {
+  animation-name: gx-kiosk-glow-light;
+}
+@keyframes gx-kiosk-glow-light {
+  0%, 100% { box-shadow: 0 0 30px rgba(139, 92, 246, 0.12), 0 0 80px rgba(139, 92, 246, 0.06); }
+  50%      { box-shadow: 0 0 44px rgba(139, 92, 246, 0.22), 0 0 120px rgba(139, 92, 246, 0.10); }
+}
+html:not(.dark) .stat-card-accent::before,
+html:not(.dark) .gx-card-accent::before {
+  background: linear-gradient(180deg, #7C3AED, #A855F7, transparent);
+}
+
+/* ── scrollbars + selection in daylight ───────────────────── */
+html:not(.dark) ::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.55); }
+html:not(.dark) ::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(139, 92, 246, 0.35), rgba(232, 66, 176, 0.28));
+  background-clip: padding-box;
+}
+html:not(.dark) ::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(139, 92, 246, 0.55), rgba(232, 66, 176, 0.45));
+  background-clip: padding-box;
+}
+html:not(.dark) { scrollbar-color: rgba(139, 92, 246, 0.35) rgba(255, 255, 255, 0.7); }
+html:not(.dark) ::selection { background: rgba(139, 92, 246, 0.22); color: hsl(270 34% 12%); }
+
+/* ============================================================
+   THEME SWITCH ANIMATION
+   ThemeProvider briefly mounts `theme-anim` on <html> so the
+   palette cross-fades instead of snapping. Reduced-motion users
+   get an instant switch.
+   ============================================================ */
+html.theme-anim,
+html.theme-anim *,
+html.theme-anim *::before,
+html.theme-anim *::after {
+  transition:
+    background-color 240ms ease,
+    background 240ms ease,
+    border-color 240ms ease,
+    color 180ms ease,
+    fill 180ms ease,
+    stroke 180ms ease,
+    box-shadow 240ms ease,
+    text-shadow 240ms ease,
+    outline-color 240ms ease,
+    scrollbar-color 240ms ease !important;
+  transition-delay: 0ms !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  html.theme-anim,
+  html.theme-anim *,
+  html.theme-anim *::before,
+  html.theme-anim *::after {
+    transition: none !important;
+  }
 }

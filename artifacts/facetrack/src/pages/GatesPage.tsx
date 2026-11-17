@@ -303,18 +303,18 @@ export default function GatesPage() {
                       <div
                         className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
                         style={{
-                          background: geoOn ? "rgba(16,185,129,0.10)" : "rgba(255,255,255,0.04)",
-                          border: `1px solid ${geoOn ? "rgba(16,185,129,0.25)" : "rgba(255,255,255,0.08)"}`,
+                          background: geoOn ? "rgba(16,185,129,0.10)" : "color-mix(in oklab, hsl(var(--foreground)) 5%, transparent)",
+                          border: `1px solid ${geoOn ? "rgba(16,185,129,0.25)" : "color-mix(in oklab, hsl(var(--foreground)) 10%, transparent)"}`,
                         }}
                       >
                         {geoOn ? (
                           <Radar size={17} className="text-emerald-400" />
                         ) : (
-                          <MapPinOff size={17} className="text-white/30" />
+                          <MapPinOff size={17} className="text-foreground/30" />
                         )}
                       </div>
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold text-white/85 truncate">{gate.name}</p>
+                        <p className="text-sm font-semibold text-foreground/85 truncate">{gate.name}</p>
                         <span className="st-badge st-badge-purple font-mono mt-1">{gate.gateId}</span>
                       </div>
                     </div>
@@ -325,25 +325,25 @@ export default function GatesPage() {
 
                   {/* geofence details */}
                   <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
-                    <div className="rounded-lg bg-black/30 border border-white/5 px-3 py-2">
-                      <p className="text-[9px] uppercase tracking-widest text-white/30 mb-0.5">Latitude</p>
-                      <p className="font-mono text-white/70">
+                    <div className="rounded-lg bg-muted border border-foreground/10 px-3 py-2">
+                      <p className="text-[9px] uppercase tracking-widest text-foreground/30 mb-0.5">Latitude</p>
+                      <p className="font-mono text-foreground/70">
                         {gate.latitude == null ? "—" : gate.latitude.toFixed(4)}
                       </p>
                     </div>
-                    <div className="rounded-lg bg-black/30 border border-white/5 px-3 py-2">
-                      <p className="text-[9px] uppercase tracking-widest text-white/30 mb-0.5">Longitude</p>
-                      <p className="font-mono text-white/70">
+                    <div className="rounded-lg bg-muted border border-foreground/10 px-3 py-2">
+                      <p className="text-[9px] uppercase tracking-widest text-foreground/30 mb-0.5">Longitude</p>
+                      <p className="font-mono text-foreground/70">
                         {gate.longitude == null ? "—" : gate.longitude.toFixed(4)}
                       </p>
                     </div>
-                    <div className="rounded-lg bg-black/30 border border-white/5 px-3 py-2">
-                      <p className="text-[9px] uppercase tracking-widest text-white/30 mb-0.5">Radius</p>
-                      <p className="font-mono text-white/70">{gate.geofenceRadiusM} m</p>
+                    <div className="rounded-lg bg-muted border border-foreground/10 px-3 py-2">
+                      <p className="text-[9px] uppercase tracking-widest text-foreground/30 mb-0.5">Radius</p>
+                      <p className="font-mono text-foreground/70">{gate.geofenceRadiusM} m</p>
                     </div>
-                    <div className="rounded-lg bg-black/30 border border-white/5 px-3 py-2">
-                      <p className="text-[9px] uppercase tracking-widest text-white/30 mb-0.5">Terminals</p>
-                      <p className="font-mono text-white/70">{gate.terminalIds.length}</p>
+                    <div className="rounded-lg bg-muted border border-foreground/10 px-3 py-2">
+                      <p className="text-[9px] uppercase tracking-widest text-foreground/30 mb-0.5">Terminals</p>
+                      <p className="font-mono text-foreground/70">{gate.terminalIds.length}</p>
                     </div>
                   </div>
 
@@ -358,7 +358,7 @@ export default function GatesPage() {
                   )}
 
                   <div className="flex items-center justify-between gap-2 mt-4">
-                    <p className="text-[10px] text-white/30">updated {relTime(gate.updatedAt)}</p>
+                    <p className="text-[10px] text-foreground/30">updated {relTime(gate.updatedAt)}</p>
                     <div className="flex gap-2">
                       <Button
                         variant="ghost"
@@ -387,7 +387,7 @@ export default function GatesPage() {
       <Dialog open={editorOpen} onOpenChange={(o) => { if (!o) setEditorOpen(false); }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-white/90">
+            <DialogTitle className="text-foreground">
               {editing ? "Edit gate" : "Add gate"}
             </DialogTitle>
             <DialogDescription>
@@ -399,34 +399,34 @@ export default function GatesPage() {
 
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="gate-id" className="text-xs text-white/60">Gate id</Label>
+              <Label htmlFor="gate-id" className="text-xs text-foreground/60">Gate id</Label>
               <Input
                 id="gate-id"
                 value={form.gateId}
                 onChange={(e) => setField("gateId", e.target.value)}
                 disabled={!!editing}
                 placeholder="main-gate"
-                className="font-mono text-xs bg-black/30 border-white/10 h-11"
+                className="font-mono text-xs bg-muted border-foreground/10 h-11"
               />
               {errors.gateId && <p className="text-[10px] text-red-400">{errors.gateId}</p>}
-              {editing && <p className="text-[10px] text-white/25">Gate id can't be changed after creation.</p>}
+              {editing && <p className="text-[10px] text-foreground/25">Gate id can't be changed after creation.</p>}
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="gate-name" className="text-xs text-white/60">Name</Label>
+              <Label htmlFor="gate-name" className="text-xs text-foreground/60">Name</Label>
               <Input
                 id="gate-name"
                 value={form.name}
                 onChange={(e) => setField("name", e.target.value)}
                 placeholder="Main entrance"
-                className="text-xs bg-black/30 border-white/10 h-11"
+                className="text-xs bg-muted border-foreground/10 h-11"
               />
               {errors.name && <p className="text-[10px] text-red-400">{errors.name}</p>}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="gate-lat" className="text-xs text-white/60">Latitude</Label>
+                <Label htmlFor="gate-lat" className="text-xs text-foreground/60">Latitude</Label>
                 <Input
                   id="gate-lat"
                   type="number"
@@ -435,12 +435,12 @@ export default function GatesPage() {
                   value={form.latText}
                   onChange={(e) => setField("latText", e.target.value)}
                   placeholder="9.0330"
-                  className="font-mono text-xs bg-black/30 border-white/10 h-11"
+                  className="font-mono text-xs bg-muted border-foreground/10 h-11"
                 />
                 {errors.lat && <p className="text-[10px] text-red-400">{errors.lat}</p>}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="gate-lng" className="text-xs text-white/60">Longitude</Label>
+                <Label htmlFor="gate-lng" className="text-xs text-foreground/60">Longitude</Label>
                 <Input
                   id="gate-lng"
                   type="number"
@@ -449,7 +449,7 @@ export default function GatesPage() {
                   value={form.lngText}
                   onChange={(e) => setField("lngText", e.target.value)}
                   placeholder="38.7500"
-                  className="font-mono text-xs bg-black/30 border-white/10 h-11"
+                  className="font-mono text-xs bg-muted border-foreground/10 h-11"
                 />
                 {errors.lng && <p className="text-[10px] text-red-400">{errors.lng}</p>}
               </div>
@@ -481,7 +481,7 @@ export default function GatesPage() {
 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <Label htmlFor="gate-radius-num" className="text-xs text-white/60">Geofence radius</Label>
+                <Label htmlFor="gate-radius-num" className="text-xs text-foreground/60">Geofence radius</Label>
                 <div className="flex items-center gap-1">
                   <Input
                     id="gate-radius-num"
@@ -490,9 +490,9 @@ export default function GatesPage() {
                     max={RADIUS_MAX}
                     value={form.radius}
                     onChange={(e) => setField("radius", Number(e.target.value))}
-                    className="w-24 h-9 font-mono text-xs bg-black/30 border-white/10"
+                    className="w-24 h-9 font-mono text-xs bg-muted border-foreground/10"
                   />
-                  <span className="text-xs text-white/40">m</span>
+                  <span className="text-xs text-foreground/40">m</span>
                 </div>
               </div>
               <Slider
@@ -503,7 +503,7 @@ export default function GatesPage() {
                 onValueChange={(v) => setField("radius", v[0] ?? form.radius)}
                 aria-label="Geofence radius in meters"
               />
-              <p className="text-[10px] text-white/25">
+              <p className="text-[10px] text-foreground/25">
                 Allowed distance from the gate center ({RADIUS_MIN}–{RADIUS_MAX} m). GPS accuracy adds a small buffer
                 server-side. New gates default to 150 m.
               </p>
@@ -511,15 +511,15 @@ export default function GatesPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="gate-terminals" className="text-xs text-white/60">Terminal ids (comma-separated)</Label>
+              <Label htmlFor="gate-terminals" className="text-xs text-foreground/60">Terminal ids (comma-separated)</Label>
               <Input
                 id="gate-terminals"
                 value={form.terminalsText}
                 onChange={(e) => setField("terminalsText", e.target.value)}
                 placeholder="door-1, door-2"
-                className="font-mono text-xs bg-black/30 border-white/10 h-11"
+                className="font-mono text-xs bg-muted border-foreground/10 h-11"
               />
-              <p className="text-[10px] text-white/25">
+              <p className="text-[10px] text-foreground/25">
                 Kiosks at this gate — scans signed by these terminals are geofence-checked.
               </p>
               {errors.terminals && <p className="text-[10px] text-red-400">{errors.terminals}</p>}
@@ -537,7 +537,7 @@ export default function GatesPage() {
               variant="ghost"
               onClick={() => setEditorOpen(false)}
               disabled={saving}
-              className="min-h-11 text-white/50 hover:text-white/85"
+              className="min-h-11 text-foreground/50 hover:text-foreground/85"
             >
               Cancel
             </Button>
@@ -556,11 +556,11 @@ export default function GatesPage() {
       <Dialog open={!!deleteTarget} onOpenChange={(o) => { if (!o) setDeleteTarget(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-white/90">
+            <DialogTitle className="flex items-center gap-2 text-foreground">
               <Trash2 size={15} className="text-red-400" /> Delete gate
             </DialogTitle>
             <DialogDescription>
-              Remove <span className="font-mono text-white/70">{deleteTarget?.gateId}</span> from the registry?
+              Remove <span className="font-mono text-foreground/70">{deleteTarget?.gateId}</span> from the registry?
               Its terminals will no longer inherit a geofence, and GPS checks for those scans will be skipped
               until the terminals are linked to another gate.
             </DialogDescription>
@@ -570,7 +570,7 @@ export default function GatesPage() {
               variant="ghost"
               onClick={() => setDeleteTarget(null)}
               disabled={deleting}
-              className="min-h-11 text-white/50 hover:text-white/85"
+              className="min-h-11 text-foreground/50 hover:text-foreground/85"
             >
               Cancel
             </Button>

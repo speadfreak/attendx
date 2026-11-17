@@ -142,19 +142,19 @@ function SeatingEditor({ classroom, onClose }: { classroom: Classroom; onClose: 
         ) : (
           <div className="space-y-4 pt-2">
             {/* size controls */}
-            <div className="flex items-center gap-3 text-xs text-white/50">
+            <div className="flex items-center gap-3 text-xs text-foreground/50">
               <span>Grid size:</span>
-              <select value={rows} onChange={(e) => setRows(Number(e.target.value))} className="bg-black/40 border border-purple-500/15 rounded px-2 py-1 text-white/70">
+              <select value={rows} onChange={(e) => setRows(Number(e.target.value))} className="bg-muted border border-purple-500/15 rounded px-2 py-1 text-foreground/70">
                 {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n} rows</option>)}
               </select>
-              <select value={cols} onChange={(e) => setCols(Number(e.target.value))} className="bg-black/40 border border-purple-500/15 rounded px-2 py-1 text-white/70">
+              <select value={cols} onChange={(e) => setCols(Number(e.target.value))} className="bg-muted border border-purple-500/15 rounded px-2 py-1 text-foreground/70">
                 {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n} cols</option>)}
               </select>
-              <span className="ml-auto text-white/30">{seats.length} seats · {seats.filter((s) => s.studentId).length} assigned</span>
+              <span className="ml-auto text-foreground/30">{seats.length} seats · {seats.filter((s) => s.studentId).length} assigned</span>
             </div>
 
             {/* grid */}
-            <div className="rounded-xl border border-white/8 p-3 bg-black/20 overflow-x-auto">
+            <div className="rounded-xl border border-foreground/10 p-3 bg-muted overflow-x-auto">
               <div className="inline-grid gap-1.5" style={{ gridTemplateColumns: `repeat(${cols}, minmax(72px, 1fr))` }}>
                 {Array.from({ length: rows }).flatMap((_, r) =>
                   Array.from({ length: cols }).map((__, c) => {
@@ -187,19 +187,19 @@ function SeatingEditor({ classroom, onClose }: { classroom: Classroom; onClose: 
                             className={`group relative rounded-lg p-1.5 text-[10px] cursor-grab active:cursor-grabbing transition-colors ${
                               seat.studentId
                                 ? "bg-purple-500/15 border border-purple-500/30 hover:bg-purple-500/25"
-                                : "bg-white/[0.03] border border-white/10 hover:border-purple-500/30"
+                                : "bg-foreground/5 border border-foreground/10 hover:border-purple-500/30"
                             }`}
                           >
                             <div className="flex items-center justify-between">
-                              <span className="font-mono text-white/30">{seat.seatLabel}</span>
-                              <GripVertical size={9} className="text-white/20" />
+                              <span className="font-mono text-foreground/30">{seat.seatLabel}</span>
+                              <GripVertical size={9} className="text-foreground/20" />
                             </div>
-                            <p className={`truncate ${seat.studentId ? "text-purple-200" : "text-white/25"}`}>
+                            <p className={`truncate ${seat.studentId ? "text-purple-200" : "text-foreground/25"}`}>
                               {seat.studentName ?? "empty"}
                             </p>
                             {seat.studentId && (
                               <button
-                                className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 text-white/40 hover:text-red-400"
+                                className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 text-foreground/40 hover:text-red-400"
                                 onClick={() => assignStudent(seats.indexOf(seat), null)}
                                 title="Unassign"
                               >
@@ -225,7 +225,7 @@ function SeatingEditor({ classroom, onClose }: { classroom: Classroom; onClose: 
                                 setDragging(null);
                               }
                             }}
-                            className="h-[52px] w-full rounded-lg border border-dashed border-white/10 text-white/20 hover:border-purple-500/40 hover:text-purple-400 text-[10px] transition-colors"
+                            className="h-[52px] w-full rounded-lg border border-dashed border-foreground/10 text-foreground/20 hover:border-purple-500/40 hover:text-purple-400 text-[10px] transition-colors"
                           >
                             + seat
                           </button>
@@ -238,11 +238,11 @@ function SeatingEditor({ classroom, onClose }: { classroom: Classroom; onClose: 
             </div>
 
             {/* unassigned students */}
-            <div className="rounded-xl border border-white/8 p-3 bg-black/20">
-              <p className="text-[10px] uppercase tracking-widest text-white/35 mb-2">Unassigned students — drag onto a seat</p>
+            <div className="rounded-xl border border-foreground/10 p-3 bg-muted">
+              <p className="text-[10px] uppercase tracking-widest text-foreground/35 mb-2">Unassigned students — drag onto a seat</p>
               <div className="flex flex-wrap gap-1.5">
                 {unassigned.length === 0 ? (
-                  <span className="text-[11px] text-white/25 italic">Everyone has a seat.</span>
+                  <span className="text-[11px] text-foreground/25 italic">Everyone has a seat.</span>
                 ) : (
                   unassigned.map((s) => (
                     <div
@@ -259,7 +259,7 @@ function SeatingEditor({ classroom, onClose }: { classroom: Classroom; onClose: 
             </div>
 
             <div className="flex justify-between items-center pt-1">
-              <p className="text-[10px] text-white/30 flex items-center gap-1">
+              <p className="text-[10px] text-foreground/30 flex items-center gap-1">
                 <MapPin size={10} className="text-cyan-400" /> Seats feed the review-queue tie-breaker hint.
               </p>
               <div className="flex gap-2">
@@ -367,21 +367,21 @@ export default function ClassroomsPage() {
                       <School size={17} className="text-purple-400" />
                     </div>
                     <div>
-                      <p className="text-sm font-semibold text-white/85">{c.name}</p>
-                      <p className="text-[10px] text-white/30">
+                      <p className="text-sm font-semibold text-foreground/85">{c.name}</p>
+                      <p className="text-[10px] text-foreground/30">
                         {c.teacherName ? `Homeroom: ${c.teacherName}` : "No homeroom teacher"}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
-                    <button className="p-1.5 rounded-md text-white/35 hover:text-cyan-300 hover:bg-cyan-500/10" title="Seating map" onClick={() => setSeatingFor(c as Classroom)}>
+                    <button className="p-1.5 rounded-md text-foreground/35 hover:text-cyan-300 hover:bg-cyan-500/10" title="Seating map" onClick={() => setSeatingFor(c as Classroom)}>
                       <Grid3X3 size={14} />
                     </button>
-                    <button className="p-1.5 rounded-md text-white/35 hover:text-purple-300 hover:bg-purple-500/10" onClick={() => openEdit(c as Classroom)}>
+                    <button className="p-1.5 rounded-md text-foreground/35 hover:text-purple-300 hover:bg-purple-500/10" onClick={() => openEdit(c as Classroom)}>
                       <Pencil size={13} />
                     </button>
                     <button
-                      className="p-1.5 rounded-md text-white/35 hover:text-red-400 hover:bg-red-500/10"
+                      className="p-1.5 rounded-md text-foreground/35 hover:text-red-400 hover:bg-red-500/10"
                       onClick={() => {
                         if (confirm(`Delete ${c.name}?`)) {
                           deleteClassroom.mutate(
@@ -398,7 +398,7 @@ export default function ClassroomsPage() {
                     </button>
                   </div>
                 </div>
-                {c.description && <p className="text-xs text-white/40 mt-3">{c.description}</p>}
+                {c.description && <p className="text-xs text-foreground/40 mt-3">{c.description}</p>}
                 <div className="flex items-center gap-2 mt-4">
                   <StatusBadge value="operational" label={`${c.studentCount} students`} tone="green" />
                   <StatusBadge value="valid" label="zone monitored" tone="purple" />
@@ -418,15 +418,15 @@ export default function ClassroomsPage() {
               <form onSubmit={submit} className="space-y-4 pt-2">
                 <div className="space-y-2">
                   <Label>Classroom name</Label>
-                  <Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="e.g. Grade 4A" className="bg-black/30 border-purple-500/15 text-white/85" />
+                  <Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="e.g. Grade 4A" className="bg-muted border-purple-500/15 text-foreground/85" />
                 </div>
                 <div className="space-y-2">
                   <Label>Homeroom teacher (can issue QR badges)</Label>
-                  <Input value={teacherName} onChange={(e) => setTeacherName(e.target.value)} placeholder="e.g. Ms. Hanna" className="bg-black/30 border-purple-500/15 text-white/85" />
+                  <Input value={teacherName} onChange={(e) => setTeacherName(e.target.value)} placeholder="e.g. Ms. Hanna" className="bg-muted border-purple-500/15 text-foreground/85" />
                 </div>
                 <div className="space-y-2">
                   <Label>Description (optional)</Label>
-                  <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Main building, second floor" className="bg-black/30 border-purple-500/15 text-white/85" />
+                  <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Main building, second floor" className="bg-muted border-purple-500/15 text-foreground/85" />
                 </div>
                 <div className="flex justify-end gap-2">
                   <button type="button" className="st-badge st-badge-slate px-3 py-1.5" onClick={() => setShowAdd(false)}>Cancel</button>

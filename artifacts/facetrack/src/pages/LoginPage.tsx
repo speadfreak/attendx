@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { AuroraBackground, GradientButton, GradientCard } from "@/components/gx/Primitives";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { BellRing, Lock, Mail, MapPin, RefreshCw, ScanFace, ShieldCheck, WifiOff, Zap } from "lucide-react";
 import {
   motion,
@@ -126,7 +127,11 @@ export default function LoginPage() {
   const busy = loginMutation.isPending || signingIn;
 
   return (
-    <main className="relative isolate min-h-screen w-full overflow-x-clip bg-[#070310] text-white">
+    <main className="relative isolate min-h-screen w-full overflow-x-clip bg-background text-foreground">
+      {/* Theme switch — always reachable, even before signing in */}
+      <div className="fixed right-4 top-4 z-50">
+        <ThemeToggle />
+      </div>
       {/* ── Aurora wash + texture layers ─────────────────────── */}
       <AuroraBackground />
       <div
@@ -165,7 +170,7 @@ export default function LoginPage() {
             Every arrival, <span className="text-gradient">beautifully tracked.</span>
           </motion.h1>
 
-          <motion.p variants={item} className="max-w-md text-sm leading-relaxed text-white/45">
+          <motion.p variants={item} className="max-w-md text-sm leading-relaxed text-foreground/45">
             AttendX pairs real-time computer vision with QR identity, SMS escalation
             and live analytics — so administrators see every classroom at a glance.
           </motion.p>
@@ -184,7 +189,7 @@ export default function LoginPage() {
                 className="gx-hero-mask h-[42vh] w-full select-none object-cover object-top xl:h-[48vh]"
                 draggable={false}
               />
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#070310] via-[#070310]/10 to-transparent" />
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/15 to-transparent" />
               <div
                 className="pointer-events-none absolute inset-0"
                 style={{
@@ -198,7 +203,7 @@ export default function LoginPage() {
               <div className="absolute bottom-4 left-5 right-5 flex items-end justify-between gap-4">
                 <div>
                   <p className="counter-num text-lg font-bold tracking-wide text-white">AttendX Command Center</p>
-                  <p className="mt-0.5 text-[11px] uppercase tracking-[0.18em] text-white/40">
+                  <p className="mt-0.5 text-[11px] uppercase tracking-[0.18em] text-white/55">
                     Real-time recognition · Addis Ababa
                   </p>
                 </div>
@@ -218,8 +223,8 @@ export default function LoginPage() {
                   <feature.icon className="h-5 w-5" aria-hidden="true" />
                 </span>
                 <span>
-                  <span className="block text-sm font-semibold text-white/85">{feature.title}</span>
-                  <span className="mt-0.5 block text-xs leading-relaxed text-white/40">{feature.desc}</span>
+                  <span className="block text-sm font-semibold text-foreground/85">{feature.title}</span>
+                  <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">{feature.desc}</span>
                 </span>
               </motion.li>
             ))}
@@ -243,7 +248,7 @@ export default function LoginPage() {
             </motion.div>
 
             <motion.div variants={heroItem} className="mb-7 text-center">
-              <h2 className="counter-num text-5xl font-black tracking-[0.05em] text-white">
+              <h2 className="counter-num text-5xl font-black tracking-[0.05em] text-foreground">
                 ATTEND<span className="text-gradient">X</span>
               </h2>
               <p className="mt-2 text-[10px] uppercase tracking-[0.3em] text-violet-200/60">
@@ -273,7 +278,7 @@ export default function LoginPage() {
                     className="backdrop-blur-xl"
                     style={{
                       boxShadow:
-                        "var(--gx-glow-aurora-strong), inset 0 1px 0 rgba(255,255,255,0.08), 0 34px 90px -18px rgba(0,0,0,0.62)",
+                        "var(--gx-glow-aurora-strong), inset 0 1px 0 rgba(255,255,255,0.08), 0 34px 90px -18px rgba(88,28,135,0.35)",
                     }}
                   >
                     <form onSubmit={handleSubmit} className="space-y-5 p-7 sm:p-8" aria-busy={busy}>
@@ -290,7 +295,7 @@ export default function LoginPage() {
                             placeholder="you@school.edu"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            className="gx-focus-ring h-11 rounded-xl border-white/10 bg-white/[0.06] pl-10 text-white placeholder:text-white/25 transition-colors duration-200 hover:border-white/20 focus-visible:border-fuchsia-400/50 focus-visible:bg-white/[0.09] focus-visible:ring-0"
+                            className="gx-focus-ring h-11 rounded-xl border-foreground/10 bg-foreground/[0.04] pl-10 text-foreground placeholder:text-muted-foreground/70 transition-colors duration-200 hover:border-foreground/20 focus-visible:border-fuchsia-400/50 focus-visible:bg-foreground/[0.07] focus-visible:ring-0"
                           />
                         </div>
                       </div>
@@ -307,7 +312,7 @@ export default function LoginPage() {
                             autoComplete="current-password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            className="gx-focus-ring h-11 rounded-xl border-white/10 bg-white/[0.06] pl-10 text-white placeholder:text-white/25 transition-colors duration-200 hover:border-white/20 focus-visible:border-fuchsia-400/50 focus-visible:bg-white/[0.09] focus-visible:ring-0"
+                            className="gx-focus-ring h-11 rounded-xl border-foreground/10 bg-foreground/[0.04] pl-10 text-foreground placeholder:text-muted-foreground/70 transition-colors duration-200 hover:border-foreground/20 focus-visible:border-fuchsia-400/50 focus-visible:bg-foreground/[0.07] focus-visible:ring-0"
                           />
                         </div>
                       </div>
@@ -324,7 +329,7 @@ export default function LoginPage() {
                     </form>
 
                     {/* Trust strip — compact capability chips (decorative) */}
-                    <div className="border-t border-white/[0.06] px-6 py-4 sm:px-8">
+                    <div className="border-t border-foreground/10 px-6 py-4 sm:px-8">
                       <ul
                         className="flex flex-wrap items-center justify-center gap-2"
                         aria-label="Platform capabilities"
@@ -347,7 +352,7 @@ export default function LoginPage() {
               </motion.div>
             </motion.div>
 
-            <motion.p variants={item} className="mt-7 text-center text-[10px] uppercase tracking-[0.22em] text-white/25">
+            <motion.p variants={item} className="mt-7 text-center text-[10px] uppercase tracking-[0.22em] text-foreground/35">
               Developed by Joseph James · Addis Ababa, Ethiopia
             </motion.p>
           </motion.div>

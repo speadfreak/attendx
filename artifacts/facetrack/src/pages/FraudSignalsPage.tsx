@@ -81,7 +81,7 @@ const STATUS_META: Record<FraudSignalStatus, { label: string; chip: string }> = 
   open: { label: "Open", chip: "bg-red-500/10 border-red-500/30 text-red-300" },
   acknowledged: { label: "Ack", chip: "bg-amber-500/10 border-amber-500/30 text-amber-300" },
   resolved: { label: "Resolved", chip: "bg-emerald-500/10 border-emerald-500/30 text-emerald-300" },
-  dismissed: { label: "Dismissed", chip: "bg-white/[0.04] border-white/10 text-white/40" },
+  dismissed: { label: "Dismissed", chip: "bg-foreground/[0.04] border-foreground/10 text-foreground/40" },
 };
 
 /** Radix Select can't use empty-string values — "all" is the sentinel. */
@@ -117,10 +117,10 @@ function ScoreBar({ score, severity }: { score: number; severity: FraudSignalSev
   const pct = Math.max(0, Math.min(100, score));
   return (
     <div className="flex items-center gap-2 min-w-0">
-      <div className="h-1.5 flex-1 rounded-full bg-white/[0.06] overflow-hidden" role="presentation">
+      <div className="h-1.5 flex-1 rounded-full bg-muted overflow-hidden" role="presentation">
         <div className={`h-full rounded-full ${SEVERITY_META[severity].bar}`} style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-[10px] font-mono text-white/40 w-8 text-right shrink-0">{pct}</span>
+      <span className="text-[10px] font-mono text-foreground/40 w-8 text-right shrink-0">{pct}</span>
     </div>
   );
 }
@@ -228,7 +228,7 @@ export default function FraudSignalsPage() {
                 onClick={() => setStatus(active ? ALL : k)}
                 className={`min-h-11 inline-flex items-center gap-2 px-3.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
                   active
-                    ? meta.chip + " ring-1 ring-white/20"
+                    ? meta.chip + " ring-1 ring-foreground/20"
                     : meta.chip + " opacity-80 hover:opacity-100"
                 }`}
               >
@@ -239,7 +239,7 @@ export default function FraudSignalsPage() {
           })}
           {(summary?.openCritical ?? 0) > 0 && (
             <span
-              className="min-h-11 inline-flex items-center gap-2 px-3.5 rounded-xl border border-red-500/50 bg-red-500/20 text-red-200 text-xs font-bold"
+              className="min-h-11 inline-flex items-center gap-2 px-3.5 rounded-xl border border-red-500/50 bg-red-500/20 text-red-300 text-xs font-bold"
               style={{ boxShadow: "0 0 18px rgba(239,68,68,0.25)" }}
             >
               <ShieldAlert size={14} className="animate-pulse" />
@@ -252,7 +252,7 @@ export default function FraudSignalsPage() {
         <GlowCard hover={false} variant="gradient" className="p-3 sm:p-4">
           <div className="flex flex-wrap items-center gap-2">
             <Select value={status} onValueChange={(v) => setStatus(v as FraudSignalStatus | typeof ALL)}>
-              <SelectTrigger className="h-11 w-[150px] text-xs bg-black/30 border-white/10" aria-label="Filter by status">
+              <SelectTrigger className="h-11 w-[150px] text-xs bg-muted border-foreground/10" aria-label="Filter by status">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -264,7 +264,7 @@ export default function FraudSignalsPage() {
             </Select>
 
             <Select value={kind} onValueChange={setKind}>
-              <SelectTrigger className="h-11 w-[180px] text-xs bg-black/30 border-white/10" aria-label="Filter by kind">
+              <SelectTrigger className="h-11 w-[180px] text-xs bg-muted border-foreground/10" aria-label="Filter by kind">
                 <SelectValue placeholder="Kind" />
               </SelectTrigger>
               <SelectContent>
@@ -276,7 +276,7 @@ export default function FraudSignalsPage() {
             </Select>
 
             <Select value={severity} onValueChange={(v) => setSeverity(v as FraudSignalSeverity | typeof ALL)}>
-              <SelectTrigger className="h-11 w-[150px] text-xs bg-black/30 border-white/10" aria-label="Filter by severity">
+              <SelectTrigger className="h-11 w-[150px] text-xs bg-muted border-foreground/10" aria-label="Filter by severity">
                 <SelectValue placeholder="Severity" />
               </SelectTrigger>
               <SelectContent>
@@ -291,12 +291,12 @@ export default function FraudSignalsPage() {
               variant="ghost"
               onClick={resetFilters}
               disabled={!hasFilters}
-              className="h-11 px-3 text-xs text-white/40 hover:text-white/80 hover:bg-white/5"
+              className="h-11 px-3 text-xs text-foreground/40 hover:text-foreground/80 hover:bg-foreground/5"
             >
               <RotateCcw size={13} className="mr-1.5" /> Reset
             </Button>
 
-            <span className="ml-auto text-[10px] font-mono text-white/25 hidden sm:block">
+            <span className="ml-auto text-[10px] font-mono text-foreground/25 hidden sm:block">
               {signals.length} shown
             </span>
           </div>
@@ -353,16 +353,16 @@ export default function FraudSignalsPage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <p className="text-sm font-semibold text-white/85 truncate">
+                        <p className="text-sm font-semibold text-foreground/85 truncate">
                           {s.studentName ?? "Unknown student"}
                         </p>
-                        <span className="text-[11px] text-white/35">{kindMeta.label}</span>
+                        <span className="text-[11px] text-foreground/35">{kindMeta.label}</span>
                         <span className={SEVERITY_META[sev].chip}>{SEVERITY_META[sev].label}</span>
                         {stKey && (
                           <span className={`st-badge ${STATUS_META[stKey].chip}`}>{STATUS_META[stKey].label}</span>
                         )}
                       </div>
-                      <p className="text-[10px] text-white/30 mt-0.5">
+                      <p className="text-[10px] text-foreground/30 mt-0.5">
                         #{s.id} · {relTime(s.createdAt)}
                       </p>
                     </div>
@@ -370,13 +370,13 @@ export default function FraudSignalsPage() {
 
                   {/* detail */}
                   {s.detail && (
-                    <p className="text-xs text-white/50 mt-3 leading-relaxed break-words">{s.detail}</p>
+                    <p className="text-xs text-foreground/50 mt-3 leading-relaxed break-words">{s.detail}</p>
                   )}
 
                   {/* score bar */}
                   <div className="mt-3">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[9px] uppercase tracking-widest text-white/30">Fraud score</span>
+                      <span className="text-[9px] uppercase tracking-widest text-foreground/30">Fraud score</span>
                     </div>
                     <ScoreBar score={s.score} severity={sev} />
                   </div>
@@ -419,14 +419,14 @@ export default function FraudSignalsPage() {
                       <button
                         disabled={listQuery.isFetching}
                         onClick={() => openDecide(s, "dismissed")}
-                        className="min-h-11 flex-1 py-2.5 rounded-lg text-xs font-semibold text-white/60 bg-white/[0.04] border border-white/10 hover:bg-white/10 transition-all disabled:opacity-40"
+                        className="min-h-11 flex-1 py-2.5 rounded-lg text-xs font-semibold text-foreground/60 bg-foreground/[0.04] border border-foreground/10 hover:bg-foreground/10 transition-all disabled:opacity-40"
                       >
                         <EyeOff size={13} className="inline mr-1.5" /> Dismiss
                       </button>
                     </div>
                   ) : (
                     (s.resolvedAt || s.resolveNote) && (
-                      <p className="text-[10px] text-white/30 mt-3">
+                      <p className="text-[10px] text-foreground/30 mt-3">
                         {s.resolveNote ? `Note: ${s.resolveNote} · ` : ""}
                         decided {relTime(s.resolvedAt)}
                       </p>
@@ -443,7 +443,7 @@ export default function FraudSignalsPage() {
                   variant="ghost"
                   onClick={() => void listQuery.fetchNextPage()}
                   disabled={listQuery.isFetchingNextPage}
-                  className="min-h-11 px-6 text-xs text-white/50 hover:text-white/85 hover:bg-white/5 border border-white/10"
+                  className="min-h-11 px-6 text-xs text-foreground/50 hover:text-foreground/85 hover:bg-foreground/5 border border-foreground/10"
                 >
                   {listQuery.isFetchingNextPage ? (
                     "Loading…"
@@ -463,7 +463,7 @@ export default function FraudSignalsPage() {
       <Dialog open={!!decideTarget} onOpenChange={(o) => { if (!o) setDecideTarget(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-white/90">
+            <DialogTitle className="flex items-center gap-2 text-foreground/90">
               <ShieldAlert size={16} className="text-amber-400" />
               {decideTarget?.action === "acknowledged" && "Acknowledge signal"}
               {decideTarget?.action === "resolved" && "Resolve signal"}
@@ -477,7 +477,7 @@ export default function FraudSignalsPage() {
               {decideTarget?.action === "dismissed" &&
                 "Dismiss as a false positive. The dedupe window still applies until it expires."}
               {decideTarget && (
-                <span className="block mt-2 text-white/50">
+                <span className="block mt-2 text-foreground/50">
                   Signal #{decideTarget.signal.id}
                   {decideTarget.signal.studentName ? ` · ${decideTarget.signal.studentName}` : ""}
                   {" · "}
@@ -499,7 +499,7 @@ export default function FraudSignalsPage() {
               variant="ghost"
               onClick={() => setDecideTarget(null)}
               disabled={deciding}
-              className="min-h-11 text-white/50 hover:text-white/85"
+              className="min-h-11 text-foreground/50 hover:text-foreground/85"
             >
               <X size={14} className="mr-1.5" /> Cancel
             </Button>

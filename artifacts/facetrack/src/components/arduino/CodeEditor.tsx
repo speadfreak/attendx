@@ -86,7 +86,7 @@ export function CodeEditor({
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-lg border border-slate-800 bg-slate-950/95 focus-within:border-emerald-500/40",
+        "relative overflow-hidden rounded-lg border border-border bg-slate-950/95 focus-within:border-emerald-500/40",
         className,
       )}
     >

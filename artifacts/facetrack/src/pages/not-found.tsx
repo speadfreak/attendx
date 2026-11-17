@@ -13,7 +13,7 @@ export default function NotFound() {
               <h1 className="gx-title-gradient text-2xl font-bold">404 Page Not Found</h1>
             </div>
 
-            <p className="mt-4 text-sm text-white/50">
+            <p className="mt-4 text-sm text-foreground/50">
               That route drifted off the aurora. Head back to the command center.
             </p>
           </CardContent>
