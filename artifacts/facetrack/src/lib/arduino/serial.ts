@@ -77,19 +77,68 @@ declare global {
 
 /**
  * USB identity → friendly device name (port.getInfo() vendor/product ids are
- * plain numbers; we key on lowercase hex "vendor:product").
+ * plain numbers; we key on lowercase hex "vendor:product"). Exact matches
+ * first, then a vendor fallback — a board we don't know still gets a useful
+ * label instead of "Unknown serial device".
  */
 const USB_DEVICE_NAMES: Record<string, string> = {
+  // Official Arduino boards
+  "2341:0001": "Arduino Uno (ATmega8U2 USB)",
   "2341:0043": "Arduino Uno R3",
-  "2341:0001": "Arduino Uno (ATmega16U2 USB)",
-  "1a86:7523": "Uno clone (CH340)",
-  "2341:005f": "Arduino Mega",
+  "2341:0042": "Arduino Mega 2560 (16U2 USB)",
+  "2341:0010": "Arduino Mega 2560 (old 8U2 USB)",
+  "2341:8036": "Arduino Leonardo",
+  "2341:8037": "Arduino Micro",
+  "2341:005f": "Arduino Mega 2560",
+  "2341:0045": "Arduino Zero",
+  "2341:005e": "Arduino Nano Every",
+  "2341:005a": "Arduino Nano 33 IoT",
+  // Arduino.org era boards
+  "2a03:0043": "Arduino Uno (arduino.org)",
+  // QinHeng CH-series — the clone workhorse
+  "1a86:7523": "Uno/Nano clone (CH340)",
+  "1a86:7522": "Clone board (CH341)",
+  "1a86:5523": "Clone board (CH9102)",
+  "1a86:55d4": "ESP32-C3 clone (CH9102F)",
+  // Silicon Labs CP210x — Nano/ESP32-class clones galore
+  "10c4:ea60": "CP2102 USB-UART (Nano/ESP32-class clone)",
+  "10c4:ea61": "CP2104 USB-UART (ESP32-class clone)",
+  // FTDI — classic Megas, older boards, bare FT232 cables
+  "0403:6001": "FTDI FT232 USB-UART",
+  // Prolific
+  "067b:2303": "PL2303 USB-UART adapter",
+  // Espressif native USB
+  "303a:1001": "ESP32-S2 native USB",
+  "303a:4001": "ESP32-S3 native USB",
+  "303a:0002": "ESP32-C3 native USB",
+  "303a:0009": "ESP32-C6 native USB",
+  // Raspberry Pi
+  "2e8a:0005": "Raspberry Pi Pico (USB-UART)",
+  "2e8a:000a": "Raspberry Pi Pico / RP2040",
+  // PJRC
+  "16c0:0483": "Teensy USB-serial",
+};
+
+const USB_VENDOR_NAMES: Record<number, string> = {
+  0x2341: "Arduino",
+  0x2a03: "Arduino (org)",
+  0x1a86: "QinHeng CH-series",
+  0x10c4: "Silicon Labs CP210x",
+  0x0403: "FTDI FT-series",
+  0x067b: "Prolific PL-series",
+  0x303a: "Espressif ESP32",
+  0x2e8a: "Raspberry Pi Pico",
+  0x239a: "Adafruit",
+  0x1b4f: "SparkFun",
+  0x16c0: "PJRC Teensy",
+  0x0483: "STMicro STM32",
+  0x04b4: "Cypress",
 };
 
 export function describeUsbDevice(info: SerialPortInfo | null): string {
-  if (!info || info.usbVendorId === undefined) return "Unknown serial device";
+  if (!info || info.usbVendorId === undefined) return "Serial port";
   const key = `${info.usbVendorId.toString(16).padStart(4, "0")}:${(info.usbProductId ?? 0).toString(16).padStart(4, "0")}`;
-  return USB_DEVICE_NAMES[key] ?? "Unknown serial device";
+  return USB_DEVICE_NAMES[key] ?? `${USB_VENDOR_NAMES[info.usbVendorId] ?? "Generic USB serial"} (${formatUsbIds(info)})`;
 }
 
 export function formatUsbIds(info: SerialPortInfo | null): string {
@@ -143,16 +192,32 @@ export function raceWithTimeout<T>(promise: Promise<T>, ms: number, label = "tim
 }
 
 /**
- * Open the port-picker dialog. `showAll` skips the vendor filter (Arduino
- * 0x2341 / CH340 0x1a86) so exotic clones can be picked manually.
+ * Open the port-picker dialog — with NO vendor filter, always.
+ *
+ * The picker previously filtered to Arduino 0x2341 / CH340 0x1a86, which is
+ * exactly what produced Chrome's "No compatible devices found" wall for the
+ * half of the board universe on other bridge chips (CP210x 0x10c4, FTDI
+ * 0x0403, Prolific 0x067b, ESP32-native 0x303a, Pico 0x2e8a …). The chooser
+ * now lists every USB serial device and we identify the board after the
+ * grant, from getInfo() + the STK500 signature.
  */
-export async function requestArduinoPort(showAll: boolean): Promise<SerialPort> {
+export async function requestSerialPort(): Promise<SerialPort> {
   if (!navigator.serial) throw new Error("Web Serial is not available in this browser");
-  return showAll
-    ? navigator.serial.requestPort({})
-    : navigator.serial.requestPort({
-        filters: [{ usbVendorId: 0x2341 }, { usbVendorId: 0x1a86 }],
-      });
+  return navigator.serial.requestPort({});
+}
+
+/**
+ * Ports this origin already has access to — no chooser needed. Powers the
+ * one-click "Quick reconnect" chips: after the first grant, Chrome remembers
+ * the device forever and `getPorts()` hands it straight back.
+ */
+export async function listAuthorizedPorts(): Promise<SerialPort[]> {
+  if (!navigator.serial) return [];
+  try {
+    return await navigator.serial.getPorts();
+  } catch {
+    return [];
+  }
 }
 
 /** Close a port, tolerating "already closed" states. */
@@ -211,6 +276,41 @@ export interface ParsedGateEvent {
 const ATX1_RE = /^ATX1\s*,\s*(\{.*\})\s*$/;
 const ERRORISH_RE = /\b(error|err|fail(?:ed)?|timeout|timed out|invalid|bad|denied)\b/i;
 
+/**
+ * Byte-chunk → line splitter shared by the Web Serial monitor and the remote
+ * bridge transport. Runs a persistent TextDecoder with `{ stream: true }` so
+ * multi-byte UTF-8 split across chunks survives, splits on \n (tolerating
+ * \r\n), and flushes pathological newline-less streams at ~2 KB so memory
+ * stays bounded.
+ */
+export class LineBuffer {
+  private buffer = "";
+  private readonly decoder = new TextDecoder("utf-8");
+
+  /** Decode one byte chunk; return every line completed by it. */
+  push(chunk: Uint8Array): string[] {
+    this.buffer += this.decoder.decode(chunk, { stream: true });
+    const lines: string[] = [];
+    let idx = this.buffer.search(/\r?\n/);
+    while (idx >= 0) {
+      lines.push(this.buffer.slice(0, idx));
+      // Skip the terminator itself (\r\n or \n).
+      this.buffer = this.buffer.slice(this.buffer[idx] === "\r" && this.buffer[idx + 1] === "\n" ? idx + 2 : idx + 1);
+      idx = this.buffer.search(/\r?\n/);
+    }
+    if (this.buffer.length > 2048) {
+      lines.push(this.buffer);
+      this.buffer = "";
+    }
+    return lines;
+  }
+
+  /** Text decoded but not yet newline-terminated. */
+  pending(): string {
+    return this.buffer;
+  }
+}
+
 export interface ParsedMonitorLine {
   kind: MonitorLineKind;
   /** Set when the line carries an ingestable sensor event. */
@@ -266,9 +366,8 @@ export class SerialMonitor {
   private port: SerialPort | null = null;
   private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   private keepReading = false;
-  private readonly decoder = new TextDecoder("utf-8");
   private readonly encoder = new TextEncoder();
-  private buffer = "";
+  private readonly lineBuffer = new LineBuffer();
   private nextId = 1;
   running = false;
 
@@ -286,7 +385,6 @@ export class SerialMonitor {
     await closePortQuietly(port); // deterministic base state before open()
     await port.open({ baudRate });
     this.port = port;
-    this.buffer = "";
     this.keepReading = true;
     this.running = true;
     void this.loop(onLine, onFatal);
@@ -325,20 +423,8 @@ export class SerialMonitor {
   }
 
   private consume(chunk: Uint8Array, onLine: (line: MonitorLine) => void): void {
-    this.buffer += this.decoder.decode(chunk, { stream: true });
-    let idx = this.buffer.search(/\r?\n/);
-    while (idx >= 0) {
-      const line = this.buffer.slice(0, idx);
-      // Skip the terminator itself (\r\n or \n).
-      this.buffer = this.buffer.slice(this.buffer[idx] === "\r" && this.buffer[idx + 1] === "\n" ? idx + 2 : idx + 1);
+    for (const line of this.lineBuffer.push(chunk)) {
       onLine(this.makeLine(line));
-      idx = this.buffer.search(/\r?\n/);
-    }
-    // Pathological stream without newlines: flush it as one line so memory
-    // stays bounded at ~2 KB.
-    if (this.buffer.length > 2048) {
-      onLine(this.makeLine(this.buffer));
-      this.buffer = "";
     }
   }
 

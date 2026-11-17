@@ -5,6 +5,7 @@ import {
   Activity,
   Cable,
   Check,
+  ChevronDown,
   CircleCheck,
   Copy,
   Cpu,
@@ -12,22 +13,31 @@ import {
   FileDown,
   FileUp,
   Hammer,
+  History,
   Info,
   Loader2,
+  RefreshCw,
   Save,
   ScanSearch,
+  Server,
   Terminal,
   Trash2,
   TriangleAlert,
   Unplug,
   Upload,
   Usb,
+  Wrench,
   XCircle,
   Zap,
 } from "lucide-react";
 import { SectionTitle, GlowCard, MeshBackground } from "@/components/gx/Primitives";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -49,13 +59,15 @@ import {
   describeUsbDevice,
   formatUsbIds,
   isSerialSupported,
+  listAuthorizedPorts,
   parseMonitorLine,
-  requestArduinoPort,
+  requestSerialPort,
   type MonitorLine,
   type SerialConnectionEvent,
   type SerialPort,
   type SerialPortInfo,
 } from "@/lib/arduino/serial";
+import { BridgeSerialClient, type BridgePortInfo } from "@/lib/arduino/bridge-serial";
 import { validateIntelHexForUno } from "@/lib/arduino/hex";
 import { stk500Flash, stk500Identify } from "@/lib/arduino/stk500";
 import { SKETCHES } from "@/lib/arduino/sketches";
@@ -83,10 +95,16 @@ import { cn } from "@/lib/utils";
  * ARDUINO GATE CONTROLLER STUDIO — Phase 7 IDE edition.
  *
  * A six-panel, IDE-like surface for the attendance gate hardware:
- *   01 Connection       — Web Serial auto-detect + STK500 board/chip identify
+ *   01 Connection       — universal Web Serial picker (NO vendor filter —
+ *                         CP210x/FTDI/PL2303/ESP32/Pico all appear), quick
+ *                         reconnect to already-authorized ports, a "can't
+ *                         connect?" checklist, and the REMOTE SERIAL BRIDGE:
+ *                         the board lives on any Linux/macOS machine and any
+ *                         browser (even Firefox/iPad) drives it over SSE
  *   02 Sketch Lab       — highlighted C++ editor, compile via arduino-cli
  *                         (server endpoint or the operator's local bridge)
  *   03 Firmware flasher — Intel HEX parsing + hand-rolled STK500v1 programmer
+ *                         (direct Web Serial only, by design)
  *   04 Sketch library   — gate-firmware sources with terminal command tables
  *   05 Control terminal — serial REPL (history + macros) → gate ingestion
  *   06 Serial plotter   — live strip-chart of numeric sensor fields
@@ -315,6 +333,17 @@ export default function ArduinoPage() {
   const portRef = useRef<SerialPort | null>(null);
   const monitorRef = useRef<SerialMonitor | null>(null);
 
+  // ── quick reconnect + transport-agnostic bridge state ─────────────────
+  const [quickPorts, setQuickPorts] = useState<SerialPort[]>([]);
+  const [showTrouble, setShowTrouble] = useState(false);
+  const [bridgeOpen, setBridgeOpen] = useState(false);
+  const [bridgeMode, setBridgeMode] = useState(false); // transport = relay, not Web Serial
+  const [bridgePorts, setBridgePorts] = useState<BridgePortInfo[] | null>(null);
+  const [bridgeBusy, setBridgeBusy] = useState<null | "listing" | "opening">(null);
+  const [bridgeNote, setBridgeNote] = useState<string | null>(null);
+  const bridgeRef = useRef<BridgeSerialClient | null>(null);
+  const bridgePathRef = useRef<string | null>(null);
+
   // ── monitor + ingestion state ────────────────────────────────────────────
   const [monitorRunning, setMonitorRunning] = useState(false);
   const [monitorBaud, setMonitorBaud] = useState<number>(9600);
@@ -392,6 +421,15 @@ export default function ArduinoPage() {
     });
   }, []);
 
+  // ── quick reconnect: ports already granted to this origin ────────────
+  const refreshQuickPorts = useCallback(async (): Promise<void> => {
+    setQuickPorts(await listAuthorizedPorts());
+  }, []);
+
+  useEffect(() => {
+    void refreshQuickPorts();
+  }, [refreshQuickPorts]);
+
   // ── compiler probe on mount ──────────────────────────────────────────────
   const runProbe = useCallback(async (): Promise<void> => {
     setProbing(true);
@@ -422,9 +460,10 @@ export default function ArduinoPage() {
     const onConnect = (event: Event) => {
       const port = (event as SerialConnectionEvent).port;
       const info = port.getInfo();
+      void refreshQuickPorts();
       toast({
         title: "Arduino plugged in",
-        description: `${describeUsbDevice(info)} detected — hit Connect to identify it.`,
+        description: `${describeUsbDevice(info)} detected — hit Connect, or tap its Quick reconnect chip.`,
       });
     };
     const onDisconnect = (event: Event) => {
@@ -449,7 +488,7 @@ export default function ArduinoPage() {
       serialApi.removeEventListener("connect", onConnect);
       serialApi.removeEventListener("disconnect", onDisconnect);
     };
-  }, [toast]);
+  }, [refreshQuickPorts, toast]);
 
   // ── built-in hex probe: /firmware/gate-geofence.hex (may 404) ────────────
   useEffect(() => {
@@ -544,6 +583,26 @@ export default function ArduinoPage() {
   }, []);
 
   const startMonitor = useCallback(async (): Promise<void> => {
+    if (bridgeMode) {
+      const client = bridgeRef.current;
+      const path = bridgePathRef.current;
+      if (!client || !path) return;
+      try {
+        setMonitorLines([]);
+        // The bridge client emits MonitorLine already (same LineBuffer +
+        // parseMonitorLine pipeline as SerialMonitor) — feed it straight in.
+        await client.open(path, monitorBaud, handleMonitorLine);
+        setMonitorRunning(true);
+        pushLog(`bridge stream re-attached at ${monitorBaud} baud`);
+      } catch (error) {
+        toast({
+          title: "Bridge stream failed",
+          description: error instanceof Error ? error.message : String(error),
+          variant: "destructive",
+        });
+      }
+      return;
+    }
     const port = portRef.current;
     if (!port) return;
     if (!monitorRef.current) monitorRef.current = new SerialMonitor();
@@ -568,17 +627,39 @@ export default function ArduinoPage() {
         variant: "destructive",
       });
     }
-  }, [handleMonitorLine, monitorBaud, pushLog, toast]);
+  }, [bridgeMode, handleMonitorLine, monitorBaud, pushLog, toast]);
 
   const stopMonitor = useCallback(async (): Promise<void> => {
+    if (bridgeMode) {
+      await bridgeRef.current?.closeStream();
+      setMonitorRunning(false);
+      pushLog("bridge stream stopped (port still open on the bridge machine)");
+      return;
+    }
     await monitorRef.current?.stop();
     setMonitorRunning(false);
     pushLog("serial monitor closed");
-  }, [pushLog]);
+  }, [bridgeMode, pushLog]);
 
   const changeMonitorBaud = useCallback(
     async (baud: number) => {
       setMonitorBaud(baud);
+      if (bridgeMode && bridgeRef.current?.running && bridgePathRef.current) {
+        // The relay baud lives on the bridge machine — reconfigure it live.
+        try {
+          setMonitorLines([]);
+          await bridgeRef.current.open(bridgePathRef.current, baud, handleMonitorLine);
+          pushLog(`bridge port reconfigured to ${baud} baud`);
+        } catch (error) {
+          setMonitorRunning(false);
+          toast({
+            title: "Bridge re-open failed",
+            description: error instanceof Error ? error.message : String(error),
+            variant: "destructive",
+          });
+        }
+        return;
+      }
       if (monitorRef.current?.running && portRef.current) {
         await monitorRef.current.stop();
         setMonitorRunning(false);
@@ -606,12 +687,43 @@ export default function ArduinoPage() {
         }
       }
     },
-    [handleMonitorLine, pushLog, toast],
+    [bridgeMode, handleMonitorLine, pushLog, toast],
   );
 
   // ── control terminal send ────────────────────────────────────────────────
   const handleTerminalSend = useCallback(
     (line: string): void => {
+      if (bridgeMode) {
+        const client = bridgeRef.current;
+        if (!client?.running) {
+          toast({
+            title: "Bridge transport is down",
+            description: "Re-open the bridge port in panel 01, or press Start monitor to re-attach the stream.",
+            variant: "destructive",
+          });
+          return;
+        }
+        const echo: MonitorLine = {
+          id: terminalSeqRef.current++,
+          at: new Date(),
+          text: `> ${line}`,
+          kind: "sent",
+        };
+        setMonitorLines((prev) => {
+          const next = prev.length >= MONITOR_MAX_LINES ? prev.slice(prev.length - (MONITOR_MAX_LINES - 1)) : prev.slice();
+          next.push(echo);
+          return next;
+        });
+        void client
+          .writeText(line)
+          .then(() => pushLog(`sent via bridge: ${line}`))
+          .catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : String(error);
+            pushLog(`send failed: ${message}`, "error");
+            toast({ title: "Send failed", description: message, variant: "destructive" });
+          });
+        return;
+      }
       const monitor = monitorRef.current;
       if (!monitor?.running) {
         toast({
@@ -641,7 +753,7 @@ export default function ArduinoPage() {
           toast({ title: "Send failed", description: message, variant: "destructive" });
         });
     },
-    [pushLog, toast],
+    [bridgeMode, pushLog, toast],
   );
 
   // ── ingestion flush (batch every ~2 s; final flush on toggle-off) ────────
@@ -733,9 +845,14 @@ export default function ArduinoPage() {
       } else {
         toast({
           title: "No bootloader response",
-          description: "Tried 115200 / 57600 / 9600. Press the RESET button on the board and identify again.",
+          description:
+            "Tried 115200 / 57600 / 9600. The monitor is open anyway — sketch chatter may still flow. Press RESET on the board and identify again to enable flashing.",
           variant: "destructive",
         });
+        // The port is fine even when the bootloader is silent (sketch at a
+        // different baud, no bootloader boot). Open the monitor so the user
+        // still sees output instead of a dead panel.
+        void startMonitor();
       }
     } finally {
       setBusy(null);
@@ -743,25 +860,36 @@ export default function ArduinoPage() {
   }, [pushLog, startMonitor, toast]);
 
   const handleConnect = useCallback(
-    async (showAll: boolean): Promise<void> => {
+    async (): Promise<void> => {
       if (!serialSupported || busy || flashing) return;
       setBusy("connecting");
       try {
+        if (bridgeMode) {
+          // Switching transports — tear the relay down first.
+          await bridgeRef.current?.closePort();
+          bridgeRef.current = null;
+          bridgePathRef.current = null;
+          setBridgeMode(false);
+          setBridgePorts(null);
+          setMonitorRunning(false);
+        }
         if (monitorRef.current?.running) await stopMonitor();
-        const port = await requestArduinoPort(showAll);
+        const port = await requestSerialPort();
         portRef.current = port;
         const info = port.getInfo();
         setUsbInfo({ usbVendorId: info.usbVendorId, usbProductId: info.usbProductId });
         setDeviceLabel(describeUsbDevice(info));
         setHasPort(true);
         setFlashResult(null);
+        void refreshQuickPorts();
         await runIdentify();
       } catch (error) {
         const cancelled = error instanceof DOMException && error.name === "NotFoundError";
+        if (cancelled) setShowTrouble(true);
         toast({
-          title: cancelled ? "No port selected" : "Connection failed",
+          title: cancelled ? "Nothing picked — or nothing listed" : "Connection failed",
           description: cancelled
-            ? "The port picker was dismissed — no device was granted access."
+            ? "The picker was dismissed or showed no devices. Work the checklist below — charge-only USB cables and another program holding the port are the usual culprits."
             : error instanceof Error
               ? error.message
               : String(error),
@@ -771,10 +899,58 @@ export default function ArduinoPage() {
         setBusy(null);
       }
     },
-    [busy, flashing, runIdentify, serialSupported, stopMonitor, toast],
+    [bridgeMode, busy, flashing, refreshQuickPorts, runIdentify, serialSupported, stopMonitor, toast],
+  );
+
+  const handleReconnectPort = useCallback(
+    async (port: SerialPort): Promise<void> => {
+      if (busy || flashing) return;
+      try {
+        if (bridgeMode) {
+          await bridgeRef.current?.closePort();
+          bridgeRef.current = null;
+          bridgePathRef.current = null;
+          setBridgeMode(false);
+          setBridgePorts(null);
+          setMonitorRunning(false);
+        }
+        if (monitorRef.current?.running) await stopMonitor();
+        portRef.current = port;
+        const info = port.getInfo();
+        setUsbInfo({ usbVendorId: info.usbVendorId, usbProductId: info.usbProductId });
+        setDeviceLabel(describeUsbDevice(info));
+        setHasPort(true);
+        setFlashResult(null);
+        pushLog(`reconnected to ${describeUsbDevice(info)} — already authorized, no picker needed`, "ok");
+        await runIdentify();
+      } catch (error) {
+        toast({
+          title: "Reconnect failed",
+          description: error instanceof Error ? error.message : String(error),
+          variant: "destructive",
+        });
+      }
+    },
+    [busy, flashing, bridgeMode, pushLog, runIdentify, stopMonitor, toast],
   );
 
   const handleDisconnect = useCallback(async (): Promise<void> => {
+    if (bridgeMode) {
+      await bridgeRef.current?.closePort();
+      bridgeRef.current = null;
+      bridgePathRef.current = null;
+      setBridgeMode(false);
+      setBridgePorts(null);
+      setMonitorRunning(false);
+      setIngestOn(false);
+      await flushIngest(true);
+      setHasPort(false);
+      setBoard(null);
+      setUsbInfo(null);
+      setDeviceLabel(null);
+      pushLog("bridge port released");
+      return;
+    }
     await monitorRef.current?.stop();
     setMonitorRunning(false);
     setIngestOn(false);
@@ -787,7 +963,67 @@ export default function ArduinoPage() {
     setUsbInfo(null);
     setDeviceLabel(null);
     pushLog("port released");
-  }, [flushIngest, pushLog]);
+  }, [bridgeMode, flushIngest, pushLog]);
+
+  // ── remote serial bridge (hardware/arduino-bridge.mjs relay) ──────
+  const handleBridgeList = useCallback(async (): Promise<void> => {
+    const client = bridgeRef.current ?? new BridgeSerialClient(bridgeUrlDraft);
+    bridgeRef.current = client;
+    setBridgeBusy("listing");
+    try {
+      const ports = await client.listPorts();
+      setBridgePorts(ports);
+      setBridgeNote(ports.length === 0 ? "No serial ports visible on the bridge machine — is the board plugged in there?" : null);
+      pushLog(
+        `bridge ${client.url}: ${ports.length} serial port${ports.length === 1 ? "" : "s"} found`,
+        ports.length > 0 ? "ok" : "warn",
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setBridgePorts(null);
+      setBridgeNote(message);
+      pushLog(`bridge list failed: ${message}`, "error");
+    } finally {
+      setBridgeBusy(null);
+    }
+  }, [bridgeUrlDraft, pushLog]);
+
+  const handleBridgeOpen = useCallback(
+    async (port: BridgePortInfo): Promise<void> => {
+      const client = bridgeRef.current;
+      if (!client) return;
+      setBridgeBusy("opening");
+      try {
+        if (monitorRef.current?.running) await stopMonitor();
+        await client.open(port.path, monitorBaud, handleMonitorLine);
+        bridgePathRef.current = port.path;
+        setBridgeMode(true);
+        setHasPort(true);
+        setBoard(null);
+        setUsbInfo(null);
+        setDeviceLabel(`bridge · ${port.path} @ ${monitorBaud}`);
+        setMonitorLines([]);
+        setMonitorRunning(true);
+        setFlashResult(null);
+        pushLog(
+          `bridge serial open: ${port.path} @ ${monitorBaud} — monitor, terminal and ingestion now stream through the relay`,
+          "ok",
+        );
+        toast({
+          title: "Bridge serial open",
+          description: `${port.path} at ${monitorBaud} baud — relayed from ${client.url}. Any browser on the network can do this.`,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setBridgeNote(message);
+        pushLog(`bridge open failed: ${message}`, "error");
+        toast({ title: "Bridge open failed", description: message, variant: "destructive" });
+      } finally {
+        setBridgeBusy(null);
+      }
+    },
+    [handleMonitorLine, monitorBaud, pushLog, stopMonitor, toast],
+  );
 
   // ── flashing ─────────────────────────────────────────────────────────────
   const handleFlash = useCallback(async (): Promise<void> => {
@@ -980,21 +1216,24 @@ export default function ArduinoPage() {
           ? "PORT READY"
           : "NO PORT";
 
-  const flashDisabledReason = !serialSupported
-    ? "Web Serial is unavailable in this browser — flash from Chrome/Edge on desktop."
-    : !board
-      ? "Identify the board first (panel 01) so the flasher knows the sync baud."
-      : !hexMeta
-        ? "Load a .hex image below (compile it in panel 02, drop a file, or use the built-in image)."
-        : null;
+  const flashDisabledReason = bridgeMode
+    ? "Flashing needs the real USB port — the bridge relay can't run STK500v1. Reconnect over direct Web Serial (panel 01)."
+    : !serialSupported
+      ? "Web Serial is unavailable — flash from Chrome/Edge on desktop, or via a machine that has it."
+      : !board
+        ? "Identify the board first (panel 01) so the flasher knows the sync baud."
+        : !hexMeta
+          ? "Load a .hex image below (compile it in panel 02, drop a file, or use the built-in image)."
+          : null;
 
-  const monitorDisabledReason = !serialSupported
-    ? "Web Serial is unavailable in this browser."
-    : !hasPort
-      ? "Connect a port first (panel 01) — the monitor opens the same USB port."
-      : flashing
-        ? "The flasher owns the USB port while flashing."
-        : null;
+  const monitorDisabledReason =
+    !serialSupported && !bridgeMode
+      ? "Web Serial is unavailable here — connect through the Remote Serial Bridge in panel 01 instead."
+      : !hasPort
+        ? "Connect a transport first (panel 01) — the monitor rides whichever one is live."
+        : flashing
+          ? "The flasher owns the USB port while flashing."
+          : null;
 
   const terminalDisabledReason =
     monitorDisabledReason ??
@@ -1022,7 +1261,7 @@ export default function ArduinoPage() {
         >
           <SectionTitle
             className="gx-title-gradient"
-            sub="WEB SERIAL IDE · STK500V1 FLASHER · CONTROL TERMINAL · SENSOR PIPELINE → /API/GATE/SENSOR-EVENTS"
+            sub="WEB SERIAL IDE · UNIVERSAL PICKER · REMOTE BRIDGE RELAY · STK500V1 FLASHER · SENSOR PIPELINE"
           >
             ARDUINO GATE CONTROLLER LAB
           </SectionTitle>
@@ -1047,11 +1286,14 @@ export default function ArduinoPage() {
           >
             <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
             <div className="text-sm">
-              <p className="font-semibold">Web Serial is not available here</p>
+              <p className="font-semibold">Web Serial is not available here — you can still drive the board</p>
               <p className="mt-1 text-amber-200/80">
-                Web Serial needs Chrome/Edge on desktop over HTTPS (or localhost) — Safari/Firefox/mobile can't talk to
-                USB. The lab below still shows everything it would do; plug the board into a Chromium desktop browser
-                to go live.
+                Direct USB needs Chrome/Edge on desktop over HTTPS. For every other browser (and for remote boards),
+                expand <span className="font-semibold">Remote Serial Bridge</span> in panel 01 and run{" "}
+                <code className="rounded bg-slate-950 px-1 py-0.5 font-mono text-amber-300">
+                  node hardware/arduino-bridge.mjs
+                </code>{" "}
+                on the machine holding the board — monitor, terminal and ingestion stream through it just the same.
               </p>
             </div>
           </div>
@@ -1072,20 +1314,24 @@ export default function ArduinoPage() {
                 step="01"
                 icon={Cable}
                 title="CONNECTION"
-                sub="auto-detect + STK500 chip verify"
+                sub="universal picker · quick reconnect · bridge relay · STK500 chip verify"
                 right={<LedDot tone={ledTone} />}
               />
 
               <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                 <Hint
                   wrapperClassName="flex-1"
-                  label={serialSupported ? "Open the browser USB picker filtered to Arduino (0x2341) and CH340 (0x1a86) devices" : "Web Serial unavailable — use Chrome/Edge on desktop"}
+                  label={
+                    serialSupported
+                      ? "Opens the USB picker showing EVERY serial port — no vendor filter, so CP210x / FTDI / PL2303 / ESP32 / Pico boards all appear"
+                      : "Direct USB needs Chrome/Edge on desktop — use the Remote Serial Bridge below instead"
+                  }
                 >
                   <Button
                     size="lg"
                     className="h-12 min-h-11 w-full bg-emerald-500 font-semibold text-slate-950 hover:bg-emerald-400"
                     disabled={!serialSupported || busy !== null || flashing}
-                    onClick={() => void handleConnect(false)}
+                    onClick={() => void handleConnect()}
                     aria-label="Connect Arduino over USB"
                   >
                     {busy === "connecting" ? (
@@ -1097,22 +1343,19 @@ export default function ArduinoPage() {
                   </Button>
                 </Hint>
                 <div className="flex gap-2">
-                  <Hint label="Skip the vendor filter — pick any USB serial device (exotic clones)">
-                    <Button
-                      variant="secondary"
-                      className="min-h-11"
-                      disabled={!serialSupported || busy !== null || flashing}
-                      onClick={() => void handleConnect(true)}
-                      aria-label="Show all USB serial devices in the picker"
-                    >
-                      Show all devices
-                    </Button>
-                  </Hint>
-                  <Hint label={hasPort ? "Re-probe 115200/57600/9600 and read the ATmega signature" : "Grant a port first — identify verifies the actual chip via STK500 READ_SIGN"}>
+                  <Hint
+                    label={
+                      bridgeMode
+                        ? "Identify needs direct USB — the bridge relay can't run STK500"
+                        : hasPort
+                          ? "Re-probe 115200/57600/9600 and read the ATmega signature"
+                          : "Grant a port first — identify verifies the actual chip via STK500 READ_SIGN"
+                    }
+                  >
                     <Button
                       variant="outline"
                       className="min-h-11 border-slate-700"
-                      disabled={!serialSupported || !hasPort || busy !== null || flashing}
+                      disabled={!serialSupported || !hasPort || bridgeMode || busy !== null || flashing}
                       onClick={() => void runIdentify()}
                       aria-label="Identify board and read chip signature"
                     >
@@ -1124,20 +1367,214 @@ export default function ArduinoPage() {
                       Identify
                     </Button>
                   </Hint>
-                  <Hint label={hasPort ? "Release the USB port (stops monitor + ingestion)" : "Nothing to release yet"}>
+                  <Hint
+                    label={hasPort || bridgeMode ? "Release the transport (stops monitor + ingestion)" : "Nothing to release yet"}
+                  >
                     <Button
                       variant="outline"
                       size="icon"
                       className="min-h-11 w-11 border-red-500/30 text-red-300 hover:bg-red-500/10"
                       disabled={!hasPort || busy !== null || flashing}
                       onClick={() => void handleDisconnect()}
-                      aria-label="Disconnect and release the serial port"
+                      aria-label="Disconnect and release the serial transport"
                     >
                       <Unplug className="h-4 w-4" aria-hidden="true" />
                     </Button>
                   </Hint>
                 </div>
               </div>
+
+              {quickPorts.length > 0 && (
+                <div className="space-y-1.5">
+                  <span className="text-[11px] uppercase tracking-wider text-white/35">
+                    Quick reconnect — already authorized, no picker
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {quickPorts.map((p, i) => (
+                      <Hint key={i} label="One-click reconnect to a port you granted before">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="min-h-11 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10"
+                          disabled={busy !== null || flashing}
+                          onClick={() => void handleReconnectPort(p)}
+                          aria-label={`Reconnect to ${describeUsbDevice(p.getInfo())}`}
+                        >
+                          <History className="h-3.5 w-3.5" aria-hidden="true" />
+                          {describeUsbDevice(p.getInfo())}
+                        </Button>
+                      </Hint>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <Collapsible
+                open={showTrouble}
+                onOpenChange={setShowTrouble}
+                className="rounded-lg border border-amber-500/25 bg-amber-500/5"
+              >
+                <CollapsibleTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
+                    aria-expanded={showTrouble}
+                  >
+                    <span className="flex items-center gap-2 text-xs font-semibold text-amber-200">
+                      <Wrench className="h-3.5 w-3.5 text-amber-300" aria-hidden="true" />
+                      No compatible device found? Work the checklist
+                    </span>
+                    <ChevronDown
+                      className={cn("h-4 w-4 text-amber-200/60 transition-transform", showTrouble && "rotate-180")}
+                      aria-hidden="true"
+                    />
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <ul className="space-y-2 px-3 pb-3 text-[11px] leading-relaxed text-white/55">
+                    <li>
+                      <span className="font-semibold text-amber-200">Charge-only USB cable.</span> The #1 cause — a
+                      power-only cable enumerates nothing. Swap for a data cable.
+                    </li>
+                    <li>
+                      <span className="font-semibold text-amber-200">The picker is empty.</span> The OS itself doesn't
+                      see the board: cable, board power, or the port is held exclusively by another program.
+                    </li>
+                    <li>
+                      <span className="font-semibold text-amber-200">Close Arduino IDE / Arduino Lab.</span> Serial
+                      ports are single-tenant — any open serial monitor (including theirs) blocks everyone else.
+                    </li>
+                    <li>
+                      <span className="font-semibold text-amber-200">Browser.</span> Direct USB = Chrome/Edge on
+                      desktop. Firefox/Safari/mobile: use the Remote Serial Bridge below.
+                    </li>
+                    <li>
+                      <span className="font-semibold text-amber-200">Linux permissions.</span>{" "}
+                      <code className="rounded bg-slate-950 px-1 py-0.5 font-mono text-emerald-300">
+                        sudo usermod -aG dialout $USER
+                      </code>{" "}
+                      (log out + in), and disable modemmanager — it loves claiming fresh serial ports.
+                    </li>
+                    <li>
+                      <span className="font-semibold text-amber-200">Press RESET</span> on the board once, then
+                      reconnect — half-open ports get stuck.
+                    </li>
+                    <li>
+                      <span className="font-semibold text-amber-200">Clones (CP2102 / CH340).</span> Windows needs the
+                      vendor driver; ChromeOS + Chrome usually works out of the box.
+                    </li>
+                  </ul>
+                </CollapsibleContent>
+              </Collapsible>
+
+              <Collapsible
+                open={bridgeOpen}
+                onOpenChange={setBridgeOpen}
+                className="rounded-lg border border-violet-500/25 bg-violet-500/5"
+              >
+                <CollapsibleTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
+                    aria-expanded={bridgeOpen}
+                  >
+                    <span className="flex items-center gap-2 text-xs font-semibold text-violet-200">
+                      <Server className="h-3.5 w-3.5 text-violet-300" aria-hidden="true" />
+                      Remote Serial Bridge — any browser, any device
+                      {bridgeMode && (
+                        <Badge
+                          variant="outline"
+                          className="border-violet-500/40 bg-violet-500/10 font-mono text-[10px] text-violet-200"
+                        >
+                          LIVE
+                        </Badge>
+                      )}
+                    </span>
+                    <ChevronDown
+                      className={cn("h-4 w-4 text-violet-300/60 transition-transform", bridgeOpen && "rotate-180")}
+                      aria-hidden="true"
+                    />
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="space-y-2.5 px-3 pb-3">
+                    <p className="text-[11px] leading-relaxed text-white/50">
+                      Web Serial only exists in Chrome/Edge on desktop — the relay lifts both limits. Run{" "}
+                      <code className="rounded bg-slate-950 px-1 py-0.5 font-mono text-violet-300">
+                        node hardware/arduino-bridge.mjs
+                      </code>{" "}
+                      on the machine holding the board (Linux/macOS), then open its port from HERE — monitor, control
+                      terminal and AttendX ingestion stream over SSE, even from a phone on the same network. Flashing
+                      still wants direct USB.
+                    </p>
+                    <div className="flex gap-2">
+                      <Input
+                        value={bridgeUrlDraft}
+                        onChange={(e) => setBridgeUrlDraft(e.target.value)}
+                        aria-label="Bridge URL for the serial relay"
+                        placeholder="http://127.0.0.1:8791"
+                        className="h-9 min-h-11 border-slate-800 bg-slate-950/80 font-mono text-[11px]"
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 min-h-11 shrink-0 border-violet-500/40 text-violet-200 hover:bg-violet-500/10"
+                        disabled={bridgeBusy !== null}
+                        onClick={() => void handleBridgeList()}
+                        aria-label="List serial ports on the bridge machine"
+                      >
+                        {bridgeBusy === "listing" ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                        ) : (
+                          <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                        )}
+                        List ports
+                      </Button>
+                    </div>
+                    {bridgePorts !== null && (
+                      <div className="space-y-1.5">
+                        {bridgePorts.length === 0 ? (
+                          <p className="text-[11px] text-amber-300/80">
+                            No serial ports visible on the bridge machine — is the board plugged in there?
+                          </p>
+                        ) : (
+                          bridgePorts.map((p) => (
+                            <div
+                              key={p.path}
+                              className="flex items-center justify-between gap-2 rounded border border-slate-800 bg-slate-950/70 px-2.5 py-1.5"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate font-mono text-[11px] text-white/80">{p.path}</p>
+                                {p.boardName && <p className="truncate text-[10px] text-white/40">{p.boardName}</p>}
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="min-h-11 shrink-0 border-violet-500/40 text-violet-200 hover:bg-violet-500/10"
+                                disabled={bridgeBusy !== null || flashing}
+                                onClick={() => void handleBridgeOpen(p)}
+                                aria-label={`Open ${p.path} through the bridge`}
+                              >
+                                {bridgeBusy === "opening" ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                                ) : (
+                                  <Cable className="h-3.5 w-3.5" aria-hidden="true" />
+                                )}
+                                Open
+                              </Button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                    {bridgeNote && (
+                      <p className="text-[11px] leading-relaxed text-red-300/80" role="alert">
+                        {bridgeNote}
+                      </p>
+                    )}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
 
               <dl className="rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2">
                 <InfoRow label="Device" value={deviceLabel ?? "—"} />
@@ -1164,9 +1601,11 @@ export default function ArduinoPage() {
               <div className="mt-auto flex items-start gap-2 rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-[11px] leading-relaxed text-white/40">
                 <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-300/70" aria-hidden="true" />
                 <span>
-                  The browser only fires the <span className="font-mono text-violet-300">connect</span> event for ports
-                  you have granted access to before (permission is remembered per port). After your first Connect,
-                  re-plugging the board pops a toast here automatically.
+                  Permission is remembered per port: after your first Connect, the board shows up under Quick
+                  reconnect (no picker) and the browser fires the{" "}
+                  <span className="font-mono text-violet-300">connect</span> event the moment it's re-plugged. Boards
+                  on CP210x/FTDI/PL2303/ESP32/Pico chips appear in the picker too — identify reads the actual chip
+                  signature, not the USB name.
                 </span>
               </div>
             </GlowCard>
