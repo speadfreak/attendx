@@ -304,34 +304,3 @@ export async function windowSeries(minutes = 60) {
   return { windowSeconds: settings.gateWindowSeconds, discrepancyPct: settings.gateDiscrepancyPct, series };
 }
 
-/** Demo mode: inject a clearly-tagged synthetic mismatch for the last COMPLETED window. */
-export async function injectSimulatedDiscrepancy(mode: "missed_detections" | "sensor_conflict" = "missed_detections") {
-  const now = new Date();
-  const gateId = "gate-1";
-  const settings = await getSystemSettings();
-  const windowMs = settings.gateWindowSeconds * 1000;
-
-  // Target the last completed window so the validator (which only judges
-  // closed windows) can raise the alert immediately during a live demo.
-  const targetIdx = Math.floor(now.getTime() / windowMs) - 1;
-  const targetStartMs = targetIdx * windowMs;
-  const at = (offsetMs: number) => new Date(targetStartMs + Math.min(offsetMs, windowMs - 1000));
-  const rows: Array<{ gateId: string; sensor: string; occurredAt: Date; simulated: boolean }> = [];
-
-  if (mode === "sensor_conflict") {
-    // 4 ultrasonic vs 1 IR → the two sensors disagree with each other
-    for (let i = 0; i < 4; i++) rows.push({ gateId, sensor: "ultrasonic", occurredAt: at(i * 1500), simulated: true });
-    rows.push({ gateId, sensor: "ir_beam", occurredAt: at(5000), simulated: true });
-  } else {
-    // 3 ultrasonic + 3 IR while the camera matched nobody extra
-    for (let i = 0; i < 3; i++) rows.push({ gateId, sensor: "ultrasonic", occurredAt: at(i * 1500), simulated: true });
-    for (let i = 0; i < 3; i++) rows.push({ gateId, sensor: "ir_beam", occurredAt: at(i * 2000), simulated: true });
-  }
-
-  await db.insert(gateSensorEventsTable).values(rows);
-
-  // Validate with "now" pinned to the target window's end so it counts as completed.
-  const validation = await runGateValidation({ force: true, now: new Date(targetStartMs + windowMs) });
-  const alertIds = validation.alertsCreated.map((a) => a.id);
-  return { mode, injected: rows.length, windowStart: new Date(targetStartMs).toISOString(), validation, alertIds };
-}

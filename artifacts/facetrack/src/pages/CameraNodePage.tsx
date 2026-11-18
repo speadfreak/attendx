@@ -20,9 +20,10 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import {
-  loadModels, detectFacesDetailed, onLoadStatusChange, type FaceDetectionDetail, type LoadStatus,
+  loadModels, detectFacesDetailed, detectFacesFast, onLoadStatusChange, type FaceDetectionDetail, type LoadStatus,
 } from "@/lib/faceApi";
 import { drawFaceHud, type HudLabel } from "@/lib/face/hud";
+import { FaceTracker, pickTrackForLabel } from "@/lib/face/tracker";
 import {
   announceQrGate, isAnnounceEnabled, primeAudio, primeVoices, setAnnounceEnabled,
 } from "@/lib/audio/feedback";
@@ -58,6 +59,8 @@ import {
 
 const HEARTBEAT_INTERVAL_MS = 8_000;
 const FACE_FLUSH_INTERVAL_MS = 3_500;
+/** Identity-grade descriptor sampling cadence for the match batch (~0.8 Hz). */
+const DESCRIPTOR_SAMPLE_MS = 1_200;
 const MAX_FRAMES_PER_BATCH = 120;
 const QR_DEBOUNCE_MS = 5_000;
 const VERDICT_VISIBLE_MS = 4_000;
@@ -223,6 +226,7 @@ export default function CameraNodePage() {
   // ── HUD overlay state (face boxes / no-face / QR frame) ──
   const hudCanvasRef = useRef<HTMLCanvasElement>(null);
   const facesRef = useRef<FaceDetectionDetail[]>([]);
+  const trackerRef = useRef(new FaceTracker());
   const primaryBoxRef = useRef<{ box: FaceDetectionDetail["box"]; at: number } | null>(null);
   const hudMatchRef = useRef<{ name: string; confidence: number; committed: boolean; at: number; box: FaceDetectionDetail["box"] } | null>(null);
   const announceTimerRef = useRef<number | null>(null);
@@ -312,6 +316,7 @@ export default function CameraNodePage() {
   const applyMode = useCallback((m: NodeMode) => {
     setMode(m);
     facesRef.current = [];
+    trackerRef.current.reset();
     if (m === "qr") {
       announceQrGate();
       startQrAnnouncementLoop();
@@ -1001,8 +1006,11 @@ export default function CameraNodePage() {
     return () => window.clearInterval(id);
   }, [cameraOn]);
 
-  // ── FACE detection loop (own stream only) ──
-
+  // ── FACE engine (own stream only): two-stage pipeline ──
+  // STAGE 1 (fast loop): bare tiny-detector boxes at the profile's tracking Hz
+  // → FaceTracker → buttery HUD tracking. No landmarks, no descriptors.
+  // STAGE 2 (descriptor loop): full pipeline ~0.8 Hz → descriptors buffered
+  // for the server match batch + primary-face bookkeeping.
   useEffect(() => {
     const ownStreamMode = mode === "face" || (mode === "qr" && engineKind === "barcodedetector");
     const faceActive = cameraOn && cameraState === "on" && mode === "face" && ownStreamMode && modelStatus === "ready";
@@ -1021,24 +1029,12 @@ export default function CameraNodePage() {
         tickTimesRef.current.push(Date.now());
         try {
           setHealthStatus(healthRef.current.sample(video));
-          const detections = await detectFacesDetailed(video);
-          facesRef.current = detections;
-          setFacesInView(detections.length);
-          if (detections.length > 0) {
-            const primary = detections.reduce(
-              (best, f) => (f.box.width * f.box.height > best.box.width * best.box.height ? f : best),
-              detections[0],
-            );
-            primaryBoxRef.current = { box: primary.box, at: Date.now() };
-            framesRef.current.push(
-              detections.slice(0, 20).map((d) => Array.from(d.descriptor)),
-            );
-            while (framesRef.current.length > MAX_FRAMES_PER_BATCH) framesRef.current.shift();
-            if (Date.now() - lastFlushAtRef.current >= FACE_FLUSH_INTERVAL_MS) {
-              void flushFaces();
-            }
-          } else {
-            facesRef.current = [];
+          const dets = await detectFacesFast(video);
+          trackerRef.current.update(dets, Date.now());
+          setFacesInView(trackerRef.current.count);
+          const primary = trackerRef.current.primary();
+          if (primary) {
+            primaryBoxRef.current = { box: primary, at: Date.now() };
           }
         } catch {
           /* detector hiccup — skip this frame */
@@ -1052,10 +1048,57 @@ export default function CameraNodePage() {
     return () => {
       stopped = true;
       if (timer !== null) window.clearTimeout(timer);
+      trackerRef.current.reset();
     };
-  }, [cameraOn, cameraState, mode, engineKind, modelStatus, effectiveQuality, flushFaces]);
+  }, [cameraOn, cameraState, mode, engineKind, modelStatus, effectiveQuality]);
 
-  // ── HUD overlay render loop (futuristic face boxes / no-face / QR frame) ──
+  // ── STAGE 2: descriptor sampling for the identity match batch ──
+  useEffect(() => {
+    const faceActive = cameraOn && cameraState === "on" && mode === "face" && modelStatus === "ready";
+    if (!faceActive) return;
+
+    let stopped = false;
+    let busy = false;
+    let timer: number | null = null;
+
+    const tick = async () => {
+      if (stopped) return;
+      const video = videoRef.current;
+      if (video && video.readyState >= 2 && !document.hidden && !busy) {
+        busy = true;
+        try {
+          const detections = await detectFacesDetailed(video);
+          if (detections.length > 0) {
+            // Full-pipeline boxes also refine the tracker's motion model.
+            trackerRef.current.update(detections, Date.now());
+            facesRef.current = detections;
+            primaryBoxRef.current = { box: trackerRef.current.primary() ?? detections[0].box, at: Date.now() };
+            framesRef.current.push(
+              detections.slice(0, 20).map((d) => Array.from(d.descriptor)),
+            );
+            while (framesRef.current.length > MAX_FRAMES_PER_BATCH) framesRef.current.shift();
+            if (Date.now() - lastFlushAtRef.current >= FACE_FLUSH_INTERVAL_MS) {
+              void flushFaces();
+            }
+          } else {
+            facesRef.current = [];
+          }
+        } catch {
+          /* descriptor hiccup — skip this sample */
+        }
+        busy = false;
+      }
+      if (!stopped) timer = window.setTimeout(() => void tick(), DESCRIPTOR_SAMPLE_MS);
+    };
+
+    void tick();
+    return () => {
+      stopped = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [cameraOn, cameraState, mode, modelStatus, flushFaces]);
+
+  // ── HUD overlay render loop (tracker-predicted face boxes / no-face / QR frame) ──
 
   useEffect(() => {
     const fallbackActive = mode === "qr" && engineKind === "html5qrcode";
@@ -1067,11 +1110,16 @@ export default function CameraNodePage() {
       const video = videoRef.current;
       if (canvas && video && video.readyState >= 2) {
         const now = Date.now();
-        const faces = facesRef.current;
+        const tracked = trackerRef.current.predict(now);
         const match = hudMatchRef.current && now - hudMatchRef.current.at < 4500 ? hudMatchRef.current : null;
-        const labels: HudLabel[] = match
+        // The label rides the track the verdict was made on (IoU-anchored to
+        // the matched box) — it glides with that face and never jumps onto
+        // whoever walked closest after the match.
+        const labeled = match ? pickTrackForLabel(tracked, match.box) : null;
+        const labelBox = labeled ?? match?.box;
+        const labels: HudLabel[] = match && labelBox
           ? [{
-              box: match.box,
+              box: labelBox,
               title: match.name,
               sub: `${(match.confidence * 100).toFixed(0)}%${match.committed ? " · MARKED" : " · ALREADY IN"}`,
               tone: match.committed ? "green" : "amber",
@@ -1080,10 +1128,10 @@ export default function CameraNodePage() {
         drawFaceHud(canvas, {
           videoW: video.videoWidth,
           videoH: video.videoHeight,
-          faces: faces.map((f) => ({ box: f.box, score: f.score })),
+          faces: tracked,
           labels,
-          noFace: mode === "face" && faces.length === 0 && modelStatus === "ready",
-          scanning: mode === "face" && faces.length > 0 && !match,
+          noFace: mode === "face" && tracked.length === 0 && modelStatus === "ready",
+          scanning: mode === "face" && tracked.length > 0 && !match,
           qrMode: mode === "qr",
           now,
         });
@@ -1102,6 +1150,7 @@ export default function CameraNodePage() {
     return () => {
       stopQrAnnouncementLoop();
       facesRef.current = [];
+      trackerRef.current.reset();
     };
   }, [stopQrAnnouncementLoop]);
 

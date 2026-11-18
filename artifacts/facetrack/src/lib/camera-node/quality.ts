@@ -21,14 +21,19 @@ export interface QualitySpec {
 }
 
 /**
- * low      → 320x240 @ ~1.5 fps, thumbnail every 60s (cellular / data saver)
- * balanced → 640x480 @ ~5 fps, thumbnail every 20s (default on Wi-Fi)
- * hd       → 1280x720 @ ~12 fps detection target, thumbnail every 20s
+ * Tracking is now a two-stage pipeline: the FAST stage runs the bare tiny
+ * detector (no landmarks/descriptors — 5-10x cheaper), and the identity-grade
+ * full pipeline samples at ~0.8 Hz for the server match batch. That lets
+ * every profile run a much higher tracking Hz at the same CPU budget.
+ *
+ * low      → 320x240 @ ~4 fps tracking, thumbnail every 60s (cellular / data saver)
+ * balanced → 640x480 @ ~8 fps tracking, thumbnail every 20s (default on Wi-Fi)
+ * hd       → 1280x720 @ ~15 fps tracking, thumbnail every 20s
  */
 export const QUALITY_SPECS: Record<QualityProfile, QualitySpec> = {
-  low: { width: 320, height: 240, detectFps: 1.5, thumbnailSec: 60, label: "Low 320p" },
-  balanced: { width: 640, height: 480, detectFps: 5, thumbnailSec: 20, label: "Balanced 480p" },
-  hd: { width: 1280, height: 720, detectFps: 12, thumbnailSec: 20, label: "HD 720p" },
+  low: { width: 320, height: 240, detectFps: 4, thumbnailSec: 60, label: "Low 320p" },
+  balanced: { width: 640, height: 480, detectFps: 8, thumbnailSec: 20, label: "Balanced 480p" },
+  hd: { width: 1280, height: 720, detectFps: 15, thumbnailSec: 20, label: "HD 720p" },
 };
 
 export const QUALITY_ORDER: QualityProfile[] = ["low", "balanced", "hd"];

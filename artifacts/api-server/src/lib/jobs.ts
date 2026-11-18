@@ -141,8 +141,9 @@ async function runServerJob(job: ClaimedServerJob): Promise<void> {
       timezone,
     );
 
+    let delivery: Awaited<ReturnType<typeof sendSms>> | null = null;
     try {
-      await sendSms({
+      delivery = await sendSms({
         studentId: student.id,
         parentPhone: student.parentPhone,
         message,
@@ -186,20 +187,26 @@ async function runServerJob(job: ClaimedServerJob): Promise<void> {
       .update(jobsTable)
       .set({
         status: "done",
-        result: { deliveryStatus: "sent" },
+        result: { deliveryStatus: "sent", provider: delivery?.provider ?? null },
         error: null,
         completedAt: new Date(),
       })
       .where(eq(jobsTable.id, job.id));
 
     publishEvent("job.updated", { jobId: job.id, type: job.type, status: "done", worker: "api" });
-    publishEvent("sms.sent", { studentId: student.id, status, smsStatus: "sent" });
+    // NO SIMULATED DATA IN LIVE FEEDS: with no real gateway configured the
+    // "simulation" provider writes an honest sms_logs row (visible, labeled,
+    // zero side effects) — but it must NOT stream into the dashboards as if a
+    // message actually went out. Only real-provider deliveries broadcast.
+    if (delivery && delivery.provider !== "simulation") {
+      publishEvent("sms.sent", { studentId: student.id, status, smsStatus: "sent", provider: delivery.provider });
+    }
 
     await writeAudit({
       action: "sms.job.processed",
       targetType: "job",
       targetId: job.id,
-      payload: { deliveryStatus: "sent", studentId: student.id },
+      payload: { deliveryStatus: "sent", provider: delivery?.provider ?? null, simulated: delivery?.provider === "simulation", studentId: student.id },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

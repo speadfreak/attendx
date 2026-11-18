@@ -38,7 +38,7 @@ import {
 import type { PiPairingResponse } from "../../../../lib/api-client-react/src/generated/api.schemas";
 import { api } from "@/lib/api";
 import type {
-  GateAlertDetail, GateAlertRow, GateSensorEvent, GateSimulateMode, GateVerdict,
+  GateAlertDetail, GateAlertRow, GateSensorEvent, GateVerdict,
 } from "@/lib/api";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SmsHealthCard } from "@/components/SmsHealthCard";
@@ -147,7 +147,6 @@ export default function OperationsPage() {
   const settingsMutation = useMutation({ mutationFn: api.updateSystemSettings });
   const fanMutation = useSetFanOverride();
   const gateRunMutation = useMutation({ mutationFn: api.gateRunValidation });
-  const gateSimulateMutation = useMutation({ mutationFn: (mode: GateSimulateMode) => api.gateSimulate(mode) });
   const gateResolveMutation = useMutation({ mutationFn: (vars: { id: number; note?: string }) => api.gateResolveAlert(vars.id, vars.note) });
 
   const [deviceName, setDeviceName] = useState("");
@@ -168,8 +167,6 @@ export default function OperationsPage() {
   const [decisionNote, setDecisionNote] = useState("");
   const [selectedAlertId, setSelectedAlertId] = useState<number | null>(null);
   const [resolveNote, setResolveNote] = useState("");
-  const [simulateOpen, setSimulateOpen] = useState(false);
-  const [simulateMode, setSimulateMode] = useState<GateSimulateMode>("missed_detections");
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
 
   const gateDetailQuery = useQuery({
@@ -356,17 +353,6 @@ export default function OperationsPage() {
         void queryClient.invalidateQueries({ queryKey: ["gate"] });
       },
       onError: (error) => toast({ title: "Validation could not run", description: error.message, variant: "destructive" }),
-    });
-  };
-
-  const simulateGate = (mode: GateSimulateMode) => {
-    gateSimulateMutation.mutate(mode, {
-      onSuccess: () => {
-        toast({ title: "Simulated mismatch injected (demo)" });
-        setSimulateOpen(false);
-        void queryClient.invalidateQueries({ queryKey: ["gate"] });
-      },
-      onError: (error) => toast({ title: "Simulation failed", description: error.message, variant: "destructive" }),
     });
   };
 
@@ -620,35 +606,9 @@ export default function OperationsPage() {
                   <button type="button" className={actionClass} onClick={() => void gateCurrentQuery.refetch()} disabled={gateCurrentQuery.isFetching} aria-label="Refresh gate integrity">
                     <RefreshCw size={14} className={gateCurrentQuery.isFetching ? "animate-spin" : ""} />Refresh
                   </button>
-                  <button type="button" className={dangerAction} onClick={() => setSimulateOpen((open) => !open)} disabled={gateSimulateMutation.isPending} aria-expanded={simulateOpen} data-testid="button-gate-simulate">
-                    {gateSimulateMutation.isPending ? <LoaderCircle size={14} className="animate-spin" /> : <FlaskConical size={14} />}Simulate discrepancy
-                  </button>
                   <button type="button" className={actionClass} onClick={runGateValidation} disabled={gateRunMutation.isPending} data-testid="button-gate-run">
                     {gateRunMutation.isPending ? <LoaderCircle size={14} className="animate-spin" /> : <RefreshCw size={14} />}Run validation now
                   </button>
-                </div>
-              )}
-              {canAdmin && simulateOpen && (
-                <div className="mt-3 rounded-xl border border-amber-200/20 bg-amber-200/[0.05] p-3" role="group" aria-label="Simulation mode">
-                  <p className="text-xs font-semibold text-amber-200">Choose the mismatch to inject</p>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    {(["missed_detections", "sensor_conflict"] as const).map((mode) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        onClick={() => setSimulateMode(mode)}
-                        aria-pressed={simulateMode === mode}
-                        className={`min-h-9 rounded-lg border px-3 text-xs font-medium transition-colors ${simulateMode === mode ? "border-amber-300/35 bg-amber-300/10 text-amber-200" : "border-violet-200/10 bg-violet-200/[0.025] text-violet-200/60 hover:bg-violet-200/[0.06]"}`}
-                        data-testid={`button-gate-mode-${mode}`}
-                      >
-                        {mode.replaceAll("_", " ")}
-                      </button>
-                    ))}
-                    <button type="button" className={accentAction} onClick={() => simulateGate(simulateMode)} disabled={gateSimulateMutation.isPending} data-testid="button-gate-simulate-inject">
-                      {gateSimulateMutation.isPending ? <LoaderCircle size={15} className="animate-spin" /> : <FlaskConical size={15} />}Inject demo data
-                    </button>
-                  </div>
-                  <p className="mt-2 text-[11px] leading-relaxed text-amber-200/60">Injects synthetic sensor events for demonstration. Alerts created this way are tagged DEMO until they are resolved.</p>
                 </div>
               )}
               <div className="mt-4 border-t border-violet-200/[0.08] pt-4">

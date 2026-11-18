@@ -23,16 +23,25 @@ import {
 import { format } from "date-fns";
 import {
   loadModels, onLoadStatusChange, pickPrimaryFace,
-  detectFacesDetailed, type FaceDetectionDetail, type LoadStatus,
+  detectFacesDetailed, detectFacesFast, getBackendName, type FaceDetectionDetail, type LoadStatus,
 } from "@/lib/faceApi";
-import { drawFaceHud, type HudFace, type HudLabel } from "@/lib/face/hud";
+import { drawFaceHud, type HudLabel } from "@/lib/face/hud";
+import { FaceTracker, pickTrackForLabel, type TrackedFace } from "@/lib/face/tracker";
 import { playMarked, playDuplicate, playUnknown, playPing, primeAudio, isMuted, setMuted } from "@/lib/audio/feedback";
 
 const BASE = import.meta.env.BASE_URL ?? "/";
-/** Detection cadence — sub-second for responsive lock-on without melting the CPU. */
-const DETECT_INTERVAL_MS = 800;
+/** Identity-grade match cadence (full pipeline + server round-trip). */
+const MATCH_INTERVAL_MS = 750;
+/** While a verdict is fresh, skip re-matching — no duplicate-cue spam. */
+const MATCH_COOLDOWN_MS = 4500;
+/** Gap between fast detector-only tracking passes (back-to-back otherwise). */
+const FAST_LOOP_GAP_MS = 30;
 /** A server verdict stays painted on the HUD for this long. */
 const RESULT_TTL_MS = 5000;
+/** Rolling window used to compute the REAL detector Hz readout. */
+const FPS_WINDOW_MS = 3000;
+/** How often the tile pushes measured perf to the parent grid stats. */
+const PERF_PUSH_MS = 1000;
 
 interface FaceMatchResponse {
   studentId?: number;
@@ -61,27 +70,46 @@ interface NodeRowLite {
   batteryLevel: number | null;
 }
 
+/** Live perf measured by the tile — every number here is REAL, never estimated. */
+export interface TilePerf {
+  fps: number;
+  frames: number;
+  detectMs: number;
+  backend: string | null;
+}
+
 /** One camera tile: video + HUD overlay canvas + live face state. */
 function CameraTile({
-  deviceLabel, deviceId, scanning, onDetect, frameStat, facing = "user",
+  deviceLabel, deviceId, scanning, onDetect, onPerf, frameStat, facing = "user",
 }: {
   deviceLabel: string;
   deviceId: string;
   scanning: boolean;
   /** Parent runs the server match; returns the verdict for HUD painting. */
   onDetect: (video: HTMLVideoElement, faces: FaceDetectionDetail[], key: string) => Promise<FaceMatchResponse | null>;
-  frameStat: { fps: number; frames: number; last: FaceMatchResponse | null };
+  /** Tile reports REAL measured perf (detector Hz, frame count, backend). */
+  onPerf: (key: string, perf: TilePerf) => void;
+  frameStat: { fps: number; frames: number; detectMs?: number | null; last: FaceMatchResponse | null; backend?: string | null };
   facing?: "user" | "environment";
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hudRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const facesRef = useRef<FaceDetectionDetail[]>([]);
-  const resultRef = useRef<{ res: FaceMatchResponse | null; at: number; boxIndex: number } | null>(null);
-  const detectLoopRef = useRef(false);
+  const trackerRef = useRef(new FaceTracker());
+  const resultRef = useRef<{ res: FaceMatchResponse | null; at: number; box: { x: number; y: number; width: number; height: number } | null } | null>(null);
+  const onDetectRef = useRef(onDetect);
+  const onPerfRef = useRef(onPerf);
+  const tickTimesRef = useRef<number[]>([]);
+  const detectMsRef = useRef(0);
+  const framesTotalRef = useRef(0);
+  const lastPerfPushRef = useRef(0);
+  const matchBusyRef = useRef(false);
   const [ready, setReady] = useState(false);
   const [liveState, setLiveState] = useState<"no-face" | "scanning" | "matched">("no-face");
   const [facesInView, setFacesInView] = useState(0);
+
+  useEffect(() => { onDetectRef.current = onDetect; }, [onDetect]);
+  useEffect(() => { onPerfRef.current = onPerf; }, [onPerf]);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,51 +134,103 @@ function CameraTile({
     };
   }, [deviceId, facing]);
 
-  // ── detection loop: real face boxes + server match ──
+  // ── FAST loop: detector-only boxes at maximum sustainable Hz ──
+  // No landmarks, no descriptors, no server — pure tracking input for the
+  // HUD. Back-to-back passes with a tiny gap; the FaceTracker extrapolates
+  // motion between passes so the drawn brackets glide with the face.
   useEffect(() => {
     if (!scanning || !ready) {
-      facesRef.current = [];
+      trackerRef.current.reset();
       resultRef.current = null;
       setLiveState("no-face");
       setFacesInView(0);
       return;
     }
     let stopped = false;
-    detectLoopRef.current = true;
+    let timer: number | null = null;
     const tick = async () => {
       if (stopped) return;
       const video = videoRef.current;
       if (video && video.readyState >= 2 && !document.hidden) {
+        const t0 = performance.now();
         try {
-          const faces = await detectFacesDetailed(video);
-          facesRef.current = faces;
-          setFacesInView(faces.length);
-          if (faces.length > 0) {
-            const key = deviceId === "default" ? "default" : deviceId;
-            const res = await onDetect(video, faces, key);
-            // null can mean "no verdict yet (probe in flight)" — never wipe a
-            // still-fresh verdict in that case, or the HUD label would flicker.
-            const stale = !resultRef.current || Date.now() - resultRef.current.at > RESULT_TTL_MS;
-            if (res || stale) {
-              resultRef.current = { res, at: Date.now(), boxIndex: 0 };
-            }
+          const dets = await detectFacesFast(video);
+          detectMsRef.current = detectMsRef.current * 0.7 + (performance.now() - t0) * 0.3;
+          framesTotalRef.current += 1;
+          tickTimesRef.current.push(Date.now());
+          trackerRef.current.update(dets, Date.now());
+          setFacesInView((n) => (n === trackerRef.current.count ? n : trackerRef.current.count));
+          const now = Date.now();
+          if (now - lastPerfPushRef.current >= PERF_PUSH_MS) {
+            lastPerfPushRef.current = now;
+            tickTimesRef.current = tickTimesRef.current.filter((t) => now - t <= FPS_WINDOW_MS);
+            const fps = tickTimesRef.current.length / (FPS_WINDOW_MS / 1000);
+            onPerfRef.current(deviceId, {
+              fps: Math.round(fps * 10) / 10,
+              frames: framesTotalRef.current,
+              detectMs: Math.round(detectMsRef.current),
+              backend: getBackendName(),
+            });
           }
         } catch {
-          /* detector hiccup — skip frame */
+          /* detector hiccup — skip this pass */
         }
-      } else if (video && video.readyState < 2) {
-        facesRef.current = [];
+      } else if (!video || video.readyState < 2) {
+        trackerRef.current.reset();
       }
-      if (!stopped) window.setTimeout(() => void tick(), DETECT_INTERVAL_MS);
+      if (!stopped) timer = window.setTimeout(() => void tick(), FAST_LOOP_GAP_MS);
     };
     void tick();
     return () => {
       stopped = true;
-      detectLoopRef.current = false;
+      if (timer !== null) window.clearTimeout(timer);
+      trackerRef.current.reset();
     };
-  }, [scanning, ready, onDetect, deviceId]);
+  }, [scanning, ready, deviceId]);
 
-  // ── HUD render loop (smooth animations at display refresh) ──
+  // ── MATCH loop: identity-grade pipeline + server verdict, throttled ──
+  // Runs independently of tracking: a slow server round-trip can never slow
+  // the brackets down, and a fresh verdict suppresses redundant re-matches.
+  useEffect(() => {
+    if (!scanning || !ready) return;
+    let stopped = false;
+    let timer: number | null = null;
+    const key = deviceId;
+    const tick = async () => {
+      if (stopped) return;
+      const video = videoRef.current;
+      const now = Date.now();
+      const fresh = resultRef.current && now - resultRef.current.at < MATCH_COOLDOWN_MS;
+      if (video && video.readyState >= 2 && !document.hidden && !matchBusyRef.current && !fresh && trackerRef.current.count > 0) {
+        matchBusyRef.current = true;
+        try {
+          const faces = await detectFacesDetailed(video);
+          if (faces.length > 0) {
+            // Full-pipeline boxes refine the tracker's motion model too.
+            trackerRef.current.update(faces, now);
+            const anchor = pickPrimaryFace(faces)?.box ?? null;
+            const res = await onDetectRef.current(video, faces, key);
+            const stale = !resultRef.current || Date.now() - resultRef.current.at > RESULT_TTL_MS;
+            if (res || stale) {
+              resultRef.current = { res, at: Date.now(), box: anchor };
+            }
+          }
+        } catch {
+          /* match hiccup — retry on next cadence */
+        } finally {
+          matchBusyRef.current = false;
+        }
+      }
+      if (!stopped) timer = window.setTimeout(() => void tick(), MATCH_INTERVAL_MS);
+    };
+    void tick();
+    return () => {
+      stopped = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [scanning, ready, deviceId]);
+
+  // ── HUD render loop — tracker-predicted boxes at display refresh rate ──
   useEffect(() => {
     if (!scanning || !ready) return;
     let raf = 0;
@@ -159,33 +239,34 @@ function CameraTile({
       const video = videoRef.current;
       if (canvas && video) {
         const now = Date.now();
-        const faces = facesRef.current;
+        const tracked: TrackedFace[] = trackerRef.current.predict(now);
         const fresh = resultRef.current && now - resultRef.current.at < RESULT_TTL_MS ? resultRef.current : null;
-        const hudFaces: HudFace[] = faces.map((f) => ({ box: f.box, score: f.score }));
         const labels: HudLabel[] = [];
-        if (fresh?.res) {
+        // Label rides the track the verdict was made on (IoU-anchored) — it
+        // glides with that face and never jumps onto a different person.
+        const labeled = pickTrackForLabel(tracked, fresh?.box);
+        if (fresh?.res && labeled) {
           const r = fresh.res;
-          const primary = faces[fresh.boxIndex] ?? faces[0];
-          if (r.studentId && primary) {
+          if (r.studentId) {
             const tone = r.sentToReview || r.alreadyMarked ? "amber" : (r.confidence ?? 0) >= 0.72 ? "green" : "amber";
             labels.push({
-              box: primary.box,
+              box: labeled,
               title: r.studentName ?? "MATCH",
               sub: `${((r.confidence ?? 0) * 100).toFixed(0)}%${r.expectedSeat ? ` · seat ${r.expectedSeat}` : ""}${r.alreadyMarked ? " · ALREADY IN" : r.sentToReview ? " · REVIEW" : ""}`,
               tone,
             });
-          } else if (primary) {
-            labels.push({ box: primary.box, title: "UNRECOGNIZED", sub: "no DB match", tone: "red" });
+          } else {
+            labels.push({ box: labeled, title: "UNRECOGNIZED", sub: "no DB match", tone: "red" });
           }
         }
-        const state: "no-face" | "scanning" | "matched" = faces.length === 0 ? "no-face" : labels.length > 0 ? "matched" : "scanning";
+        const state: "no-face" | "scanning" | "matched" = tracked.length === 0 ? "no-face" : labels.length > 0 ? "matched" : "scanning";
         drawFaceHud(canvas, {
           videoW: video.videoWidth,
           videoH: video.videoHeight,
-          faces: hudFaces,
+          faces: tracked,
           labels,
-          noFace: faces.length === 0,
-          scanning: faces.length > 0 && labels.length === 0,
+          noFace: tracked.length === 0,
+          scanning: tracked.length > 0 && labels.length === 0,
           now,
         });
         // throttle React state churn — HUD itself is canvas-driven
@@ -223,6 +304,17 @@ function CameraTile({
               <Gauge size={10} className="text-emerald-400" />
               <span className="text-[9px] font-mono text-emerald-300">{frameStat.fps.toFixed(1)} fps</span>
               <span className="text-[9px] font-mono text-white/35">· {frameStat.frames} frames</span>
+              {frameStat.detectMs != null && frameStat.detectMs > 0 && (
+                <span className="text-[9px] font-mono text-white/35">· {frameStat.detectMs}ms</span>
+              )}
+              {frameStat.backend && (
+                <span
+                  className={`text-[8px] font-bold px-1 rounded ${frameStat.backend === "webgl" ? "bg-emerald-500/25 text-emerald-300" : "bg-white/10 text-white/50"}`}
+                  title={`tfjs backend: ${frameStat.backend}`}
+                >
+                  {frameStat.backend === "webgl" ? "GPU" : frameStat.backend.toUpperCase()}
+                </span>
+              )}
             </div>
             {scanning && (
               <div
@@ -386,9 +478,8 @@ export default function AttendancePage() {
   const [activeCams, setActiveCams] = useState<string[]>(["default"]);
   const [primaryFacing, setPrimaryFacing] = useState<"user" | "environment">("user");
   const [selectedClassroomId, setSelectedClassroomId] = useState<string>("all");
-  const [gridStat, setGridStat] = useState<Record<string, { fps: number; frames: number; last: FaceMatchResponse | null }>>({});
+  const [gridStat, setGridStat] = useState<Record<string, { fps: number; frames: number; detectMs?: number; backend?: string | null; last: FaceMatchResponse | null }>>({});
   const [scanResult, setScanResult] = useState<FaceMatchResponse | null>(null);
-  const [framesTotal, setFramesTotal] = useState(0);
   const [qrCode, setQrCode] = useState("");
   const [qrScanning, setQrScanning] = useState(false);
   const [manualStudentId, setManualStudentId] = useState("");
@@ -396,7 +487,6 @@ export default function AttendancePage() {
   const [muted, setMutedState] = useState(isMuted());
 
   const processingRef = useRef<Record<string, boolean>>({});
-  const fpsTracker = useRef<Record<string, { times: number[] }>>({});
   const qrScannerRef = useRef<Html5Qrcode | null>(null);
 
   const { data: classrooms, isError: classroomsError, error: classroomsErr, refetch: refetchClassrooms } = useListClassrooms();
@@ -440,29 +530,15 @@ export default function AttendancePage() {
     });
   };
 
-  // ── Core detection handler: real boxes in, server match out, loud cue out ──
+  // ── Core match handler: real descriptors in, server verdict out, loud cue out ──
   const handleDetection = useCallback(async (
     video: HTMLVideoElement,
     faces: FaceDetectionDetail[],
     key: string,
   ): Promise<FaceMatchResponse | null> => {
-    // Detection itself ran in the tile before this call; estimate its budget
-    // (~detector ms + server round-trip allowance) for the fps readout.
-    const dt = 220;
-    fpsTracker.current[key] = fpsTracker.current[key] ?? { times: [] };
-    const times = fpsTracker.current[key].times;
-    times.push(dt);
-    if (times.length > 12) times.shift();
-    const avgMs = times.reduce((a, b) => a + b, 0) / times.length;
-    const fps = 1000 / Math.max(avgMs + 700, 1);
-
-    if (faces.length === 0) {
-      setGridStat((prev) => ({ ...prev, [key]: { fps, frames: (prev[key]?.frames ?? 0) + 1, last: prev[key]?.last ?? null } }));
-      return null;
-    }
+    if (faces.length === 0) return null;
     if (processingRef.current[key]) return null;
     processingRef.current[key] = true;
-    setFramesTotal((n) => n + 1);
 
     try {
       const primary = pickPrimaryFace(faces);
@@ -484,7 +560,7 @@ export default function AttendancePage() {
 
       setGridStat((prev) => ({
         ...prev,
-        [key]: { fps, frames: (prev[key]?.frames ?? 0) + 1, last: result },
+        [key]: { ...(prev[key] ?? { fps: 0, frames: 0 }), last: result },
       }));
 
       if (!res.ok) {
@@ -513,6 +589,20 @@ export default function AttendancePage() {
       processingRef.current[key] = false;
     }
   }, [selectedClassroomId, refetchAttendance, toast, enumerateCameras]);
+
+  // Tile perf → grid stats. Numbers arrive measured from the tile itself.
+  const handlePerf = useCallback((key: string, perf: TilePerf) => {
+    setGridStat((prev) => ({
+      ...prev,
+      [key]: {
+        fps: perf.fps,
+        frames: perf.frames,
+        detectMs: perf.detectMs,
+        backend: perf.backend,
+        last: prev[key]?.last ?? null,
+      },
+    }));
+  }, []);
 
   // Auto reset scan result banner
   useEffect(() => {
@@ -587,7 +677,7 @@ export default function AttendancePage() {
   };
 
   const totalFps = Object.values(gridStat).reduce((acc, s) => acc + s.fps, 0);
-  const totalFrames = framesTotal;
+  const totalFrames = Object.values(gridStat).reduce((acc, s) => acc + s.frames, 0);
 
   const modelStatusBadge = () => {
     if (modelStatus === "ready") return <span className="text-[10px] st-green flex items-center gap-1"><Brain className="w-3 h-3" /> AI READY</span>;
@@ -725,6 +815,7 @@ export default function AttendancePage() {
                         deviceLabel={cam?.label ?? "Primary camera"}
                         scanning={autoMode || modelStatus === "ready"}
                         onDetect={handleDetection}
+                        onPerf={handlePerf}
                         frameStat={stat}
                         facing={primaryFacing}
                       />

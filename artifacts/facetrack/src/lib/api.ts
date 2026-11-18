@@ -388,14 +388,6 @@ export interface GateValidationResult {
   alertsCreated: Array<{ id: number; alertType: string; windowStart: string; simulated: boolean }>;
 }
 
-export interface GateSimulateResult {
-  simulated: boolean;
-  mode: GateSimulateMode;
-  injected: number;
-  validation: Record<string, unknown>;
-  alertIds: number[];
-}
-
 // ── System settings (attendance time rules + gate integrity) ────
 
 export interface SystemSettingsExtended {
@@ -853,8 +845,6 @@ export const api = {
   gateResolveAlert: (id: number, note?: string) =>
     post<{ ok: boolean }>(`/gate/integrity/alerts/${id}/resolve`, { note: note?.trim() || undefined }),
   gateRunValidation: () => post<GateValidationResult>("/gate/integrity/run", {}),
-  gateSimulate: (mode?: GateSimulateMode) =>
-    post<GateSimulateResult>("/gate/integrity/simulate", mode ? { mode } : {}),
 
   // System settings (attendance time rules + gate integrity)
   systemSettings: () => get<SystemSettingsExtended>("/system/settings"),

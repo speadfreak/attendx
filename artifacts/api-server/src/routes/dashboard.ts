@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, studentsTable, classroomsTable, attendanceLogsTable, smsLogsTable, jobsTable, gateDevicesTable, matchReviewsTable } from "@workspace/db";
-import { eq, count, sql, gte, lte, and, desc } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, lte, notLike, sql } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import { absenceRiskSummary } from "../lib/risk";
 import { getArrivalRules, minutesSinceMidnight } from "../lib/attendance-rules";
@@ -39,8 +39,15 @@ router.get("/dashboard/stats", requireAuth, async (_req, res): Promise<void> => 
     .where(and(eq(attendanceLogsTable.status, "absent"), gte(attendanceLogsTable.markedAt, todayStart), lte(attendanceLogsTable.markedAt, todayEnd)));
   const [{ total: lateToday }] = await db.select({ total: count() }).from(attendanceLogsTable)
     .where(and(eq(attendanceLogsTable.status, "late"), gte(attendanceLogsTable.markedAt, todayStart), lte(attendanceLogsTable.markedAt, todayEnd)));
+  // REAL deliveries only — simulated rows (no gateway configured) are honest
+  // bookkeeping but must never be counted as messages that went out.
   const [{ total: smsSentToday }] = await db.select({ total: count() }).from(smsLogsTable)
-    .where(and(gte(smsLogsTable.sentAt, todayStart), lte(smsLogsTable.sentAt, todayEnd)));
+    .where(and(
+      gte(smsLogsTable.sentAt, todayStart),
+      lte(smsLogsTable.sentAt, todayEnd),
+      inArray(smsLogsTable.status, ["queued", "sent", "delivered"]),
+      notLike(smsLogsTable.provider, "simulation%"),
+    ));
 
   const totalStudentsNum = Number(totalStudents);
   const presentNum = Number(presentToday);
@@ -85,10 +92,17 @@ router.get("/dashboard/command-center", requireAuth, async (_req, res): Promise<
     .where(and(eq(attendanceLogsTable.status, "absent"), gte(attendanceLogsTable.markedAt, todayStart), lte(attendanceLogsTable.markedAt, todayEnd)));
   const [{ total: lateToday }] = await db.select({ total: count() }).from(attendanceLogsTable)
     .where(and(eq(attendanceLogsTable.status, "late"), gte(attendanceLogsTable.markedAt, todayStart), lte(attendanceLogsTable.markedAt, todayEnd)));
+  // REAL deliveries only — simulated rows (no gateway configured) are honest
+  // bookkeeping but must never be counted as messages that went out.
   const [{ total: smsSentToday }] = await db.select({ total: count() }).from(smsLogsTable)
-    .where(and(gte(smsLogsTable.sentAt, todayStart), lte(smsLogsTable.sentAt, todayEnd)));
+    .where(and(
+      gte(smsLogsTable.sentAt, todayStart),
+      lte(smsLogsTable.sentAt, todayEnd),
+      inArray(smsLogsTable.status, ["queued", "sent", "delivered"]),
+      notLike(smsLogsTable.provider, "simulation%"),
+    ));
   const [{ total: smsFailedToday }] = await db.select({ total: count() }).from(smsLogsTable)
-    .where(and(eq(smsLogsTable.status, "failed"), gte(smsLogsTable.sentAt, todayStart), lte(smsLogsTable.sentAt, todayEnd)));
+    .where(and(eq(smsLogsTable.status, "failed"), gte(smsLogsTable.sentAt, todayStart), lte(smsLogsTable.sentAt, todayEnd), notLike(smsLogsTable.provider, "simulation%")));
   const [{ total: smsQueued }] = await db.select({ total: count() }).from(jobsTable)
     .where(and(eq(jobsTable.type, "send_sms"), eq(jobsTable.status, "pending")));
   const [{ total: reviewsPending }] = await db.select({ total: count() }).from(matchReviewsTable)

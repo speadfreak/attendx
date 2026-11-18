@@ -4,7 +4,7 @@ import { and, desc, eq, gte, lte } from "drizzle-orm";
 import { z } from "zod/v4";
 import { requirePiToken, type PiAuthenticatedRequest } from "../lib/pi-auth";
 import { requireStaff, requireAdminLevel } from "../lib/auth";
-import { runGateValidation, currentWindowSnapshot, windowSeries, injectSimulatedDiscrepancy } from "../lib/gate-integrity";
+import { runGateValidation, currentWindowSnapshot, windowSeries } from "../lib/gate-integrity";
 import { writeAudit } from "../lib/audit";
 import { publishEvent } from "../lib/events";
 
@@ -234,28 +234,6 @@ router.post("/gate/integrity/run", requireAdminLevel, async (req, res): Promise<
     payload: { ...validation, alertsCreated: validation.alertsCreated.length },
   });
   res.json(validation);
-});
-
-const simulateSchema = z.object({
-  mode: z.enum(["missed_detections", "sensor_conflict"]).optional(),
-});
-
-router.post("/gate/integrity/simulate", requireAdminLevel, async (req, res): Promise<void> => {
-  const parsed = simulateSchema.safeParse(req.body ?? {});
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
-  }
-  const mode = parsed.data.mode ?? "missed_detections";
-  const result = await injectSimulatedDiscrepancy(mode);
-  await writeAudit({
-    actorAdminId: adminId(req),
-    action: "gate.integrity.simulated",
-    targetType: "gate_alert",
-    targetId: result.alertIds.join(",") || null,
-    payload: { mode, injectedEvents: result.injected, simulated: true, alertIds: result.alertIds },
-  });
-  res.status(201).json({ simulated: true, ...result });
 });
 
 export default router;

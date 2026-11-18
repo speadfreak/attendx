@@ -14,8 +14,7 @@ export interface HudBox {
   height: number;
 }
 
-export interface HudFace {
-  box: HudBox;
+export interface HudFace extends HudBox {
   score?: number;
 }
 
@@ -274,9 +273,9 @@ export function drawFaceHud(canvas: HTMLCanvasElement, opts: HudOptions): void {
 
   const labeledBoxes = new Set(opts.labels.map((l) => `${l.box.x},${l.box.y},${l.box.width},${l.box.height}`));
   for (const face of opts.faces) {
-    const key = `${face.box.x},${face.box.y},${face.box.width},${face.box.height}`;
+    const key = `${face.x},${face.y},${face.width},${face.height}`;
     if (labeledBoxes.has(key)) continue;
-    const m = map(face.box);
+    const m = map(face);
     const tone: HudTone = opts.scanning ? "violet" : "cyan";
     drawBrackets(ctx, m.x, m.y, m.w, m.h, tone, opts.now, false);
     drawScanSweep(ctx, m.x, m.y, m.w, m.h, tone, opts.now);
